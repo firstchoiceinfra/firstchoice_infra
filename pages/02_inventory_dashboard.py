@@ -12,45 +12,35 @@ st.markdown("""
 
 if not st.session_state.get('logged_in'): st.stop()
 
-# डेटा की सुरक्षा के लिए चेक
+# डेटा इनिशियलाइज़ेशन
 if 'projects' not in st.session_state: st.session_state.projects = {}
 if 'plot_status' not in st.session_state: st.session_state.plot_status = {}
 if 'bookings' not in st.session_state: st.session_state.bookings = {}
 
 st.title("📊 Inventory Dashboard")
 
-# 1. प्रोजेक्ट सिलेक्शन (Safety Check)
 if not st.session_state.projects:
-    st.warning("No projects found. Please add a project in the Admin Panel first.")
+    st.warning("No projects found. Please add a project in the Admin Panel.")
 else:
     proj_list = list(st.session_state.projects.keys())
     current_proj = st.selectbox("Select Project", proj_list)
-    st.session_state.current_proj = current_proj
-
+    
     data = st.session_state.projects[current_proj]
-   # प्रोजेक्ट डिटेल्स को गहरे/साफ रंग में दिखाने के लिए
-    st.markdown("""
-        <div style="background-color: #eef2f3; padding: 10px; border-left: 5px solid #007bff; border-radius: 5px;">
-            <p style="margin: 0; color: #333; font-weight: bold;">
-                KH: """ + data['khasra'] + """ | PH: """ + data['ph_no'] + """ | Mauza: """ + data['mauza'] + """
-            </p>
-        </div>
-    """, unsafe_allow_html=True) (f"KH: {data['khasra']} | PH: {data['ph_no']} | Mauza: {data['mauza']}")
+    # साफ़ और बोल्ड प्रोजेक्ट डिटेल्स
+    st.write(f"**KH:** {data['khasra']} | **PH:** {data['ph_no']} | **Mauza:** {data['mauza']}")
 
-    # 2. प्लॉट ग्रिड
+    # प्लॉट ग्रिड
     cols = st.columns(5)
     for i in range(1, data['total_plots'] + 1):
         key = f"{current_proj}_{i}"
         status = st.session_state.plot_status.get(key, "Available")
-        
-        # बटन स्टाइलिंग
-        btn_style = "available-btn" if status == "Available" else "booked-btn"
+        btn_class = "available-btn" if status == "Available" else "booked-btn"
         
         if cols[i%5].button(f"Plot {i}\n({status})", key=key):
             st.session_state.selected_plot = i
             st.rerun()
 
-    # 3. बुकिंग या हिस्ट्री
+    # बुकिंग फॉर्म या हिस्ट्री
     if 'selected_plot' in st.session_state:
         p_idx = st.session_state.selected_plot
         key = f"{current_proj}_{p_idx}"
@@ -61,20 +51,27 @@ else:
             st.write(f"**Client:** {b.get('c_name')} | **Exec:** {b.get('exec_name')}")
             st.write(f"**Received:** ₹{b.get('received_amt')} on {b.get('recv_date')}")
             if st.button("🖨️ Print"): st.write("Generating print...")
-            if st.button("💬 WhatsApp"): st.write(f"WhatsApp link for {b.get('phone')}")
+            if st.button("💬 WhatsApp"): st.write(f"WhatsApp initiated for {b.get('phone')}")
         else:
             st.subheader(f"Booking Form - Plot {p_idx}")
             with st.form("booking_form"):
-                # (आपका वही बुकिंग फॉर्म)
-                c_name = st.text_input("Client Name")
-                received_amt = st.number_input("Received Amount")
-                recv_date = st.date_input("Received Date")
-                exec_name = st.text_input("Executive Name")
+                c1, c2 = st.columns(2)
+                with c1:
+                    c_name = st.text_input("Client Name"); dob = st.date_input("DOB")
+                    phone = st.text_input("Phone"); addr = st.text_area("Address")
+                    adhar = st.text_input("Aadhar"); pan = st.text_input("PAN")
+                with c2:
+                    nominee = st.text_input("Nominee"); nom_age = st.number_input("Nominee Age")
+                    area = st.number_input("Plot Area (Sqft)"); comp_rate = st.number_input("Company Rate")
+                    sell_rate = st.number_input("Selling Rate"); tah = st.text_input("Tahsil")
+                    dist = st.text_input("District"); exec_name = st.text_input("Executive Name")
+                    pay_mode = st.selectbox("Mode", ["Cash", "Cheque", "Online"])
+                    recv_date = st.date_input("Received Date"); received_amt = st.number_input("Received Amount")
                 
                 if st.form_submit_button("Save Booking"):
                     st.session_state.plot_status[key] = "Booked"
                     st.session_state.bookings[key] = {
-                        "c_name": c_name, "received_amt": received_amt, 
+                        "c_name": c_name, "phone": phone, "received_amt": received_amt, 
                         "recv_date": recv_date, "exec_name": exec_name
                     }
                     st.success("Booking Saved!")
