@@ -4,7 +4,10 @@ import datetime
 
 if not st.session_state.get('logged_in'): st.stop()
 
-# डेटाबेस इनिशियलाइज़ेशन
+# -------------------------------------------------------------
+# सेंट्रल मेमोरी (Central Database) इनिशियलाइज़ेशन 
+# (यही वो जादू है जिससे हर पेज का डेटा आपस में जुड़ता है)
+# -------------------------------------------------------------
 if 'exec_data' not in st.session_state: st.session_state.exec_data = {}
 if 'projects' not in st.session_state: st.session_state.projects = {}
 if 'bookings' not in st.session_state: st.session_state.bookings = {}
@@ -70,19 +73,20 @@ with st.expander("✏️ Edit Existing Entries (Click to Expand)"):
         st.caption("No entries available to edit yet.")
 
 # -------------------------------------------------------------
-# सेक्शन 3: Detailed Commission Statement (With TDS & Dates)
+# सेक्शन 3: Detailed Commission Statement (Connected with Inventory)
 # -------------------------------------------------------------
 st.write("---")
 st.subheader("📄 Commission Details Statement", divider="green")
 
-unique_execs = list(set([v["exec_name"] for v in st.session_state.exec_data.values()]))
+# स्मार्ट सिंक: उन सभी एग्जीक्यूटिव्स का नाम ढूंढना जो या तो यहाँ ऐड हुए हैं, या इन्वेंट्री बुकिंग में हैं!
+execs_from_struct = [v["exec_name"] for v in st.session_state.exec_data.values()]
+execs_from_bookings = [v.get("exec_name") for v in st.session_state.bookings.values() if v.get("exec_name")]
+unique_execs = list(set(execs_from_struct + execs_from_bookings))
 
 if unique_execs:
-    # 1. सर्च बार और डेट फ़िल्टर
     sc1, sc2, sc3 = st.columns([2, 1, 1])
     search_exec = sc1.selectbox("🔍 Select Executive", ["Select..."] + unique_execs)
     
-    # महीने की पहली तारीख से आज तक का डिफ़ॉल्ट फ़िल्टर
     start_date = sc2.date_input("📅 Start Date", value=datetime.date.today().replace(day=1))
     end_date = sc3.date_input("📅 End Date", value=datetime.date.today())
 
@@ -93,11 +97,11 @@ if unique_execs:
         sr_no = 1
         total_net_payable = 0
 
+        # सीधा इन्वेंट्री के डेटाबेस (st.session_state.bookings) से डाटा खींचना
         for b_key, b_val in st.session_state.bookings.items():
             if b_val.get("exec_name") == search_exec:
-                b_date = b_val.get("recv_date")
+                b_date = b_val.get("recv_date", datetime.date.today())
                 
-                # डेट फ़िल्टर लॉजिक
                 if isinstance(b_date, datetime.date) and (start_date <= b_date <= end_date):
                     proj_name, plot_no = b_key.rsplit("_", 1)
                     mauza = st.session_state.projects.get(proj_name, {}).get("mauza", "N/A")
@@ -105,7 +109,7 @@ if unique_execs:
                     # कमीशन कैलकुलेशन
                     struct_key = f"{search_exec}_{proj_name}"
                     gross_comm = 0
-                    rate_text = "N/A"
+                    rate_text = "Rule Not Set"
                     
                     if struct_key in st.session_state.exec_data:
                         struct = st.session_state.exec_data[struct_key]
@@ -117,24 +121,20 @@ if unique_execs:
                             gross_comm = rate
                             rate_text = f"₹{rate}"
 
-                    # डिस्काउंट कटौती (अभी यह 0 सेट है, अगर आप इन्वेंट्री में एग्जीक्यूटिव डिस्काउंट डालेंगे, तो यहाँ जुड़ जाएगा)
                     discount_deducted = b_val.get("exec_discount_penalty", 0) 
-                    
                     comm_after_disc = gross_comm - discount_deducted
-                    
-                    # 2% TDS कैलकुलेशन
                     tds_amount = comm_after_disc * 0.02
                     net_comm = comm_after_disc - tds_amount
                     
                     total_net_payable += net_comm
 
-                    # टेबल के लिए डेटा तैयार करना
+                    # टेबल के लिए डेटा
                     exec_bookings.append({
                         "Sr.": sr_no,
                         "Plot": f"{proj_name} - #{plot_no}",
-                        "Client Name": b_val.get("c_name"),
+                        "Client Name": b_val.get("c_name", "N/A"),
                         "Mauza": mauza,
-                        "Amount & Date": f"₹{b_val.get('received_amt')} on {b_date.strftime('%d-%m-%Y')}",
+                        "Amount & Date": f"₹{b_val.get('received_amt', 0)} on {b_date.strftime('%d-%m-%Y')}",
                         "Comm. Rate": rate_text,
                         "Calc. Comm.": f"₹{round(gross_comm, 2)}",
                         "Discount (-)": f"₹{round(discount_deducted, 2)}",
@@ -143,21 +143,15 @@ if unique_execs:
                     })
                     sr_no += 1
 
-        # टेबल दिखाना
         if exec_bookings:
             st.dataframe(pd.DataFrame(exec_bookings), use_container_width=True, hide_index=True)
-            
-            # ग्रैंड टोटल
             st.success(f"### 💰 Total Net Payable Commission: ₹{round(total_net_payable, 2)}")
             
             st.write("---")
-            # प्रिंट और व्हाट्सएप बटन
             c4, c5, c6 = st.columns([1, 1, 2])
             if c4.button("🖨️ Print Statement", use_container_width=True):
                 st.info("प्रिंटिंग प्रोसेस शुरू हो रहा है...")
             if c5.button("💬 WhatsApp Statement", use_container_width=True):
-                # यहाँ हम स्टेटमेंट का एक मैसेज बनाकर सीधा व्हाट्सएप पर भेज सकते हैं
                 st.success("WhatsApp लिंक जनरेट हो गया है!")
-                
         else:
             st.warning("🚨 इस एग्जीक्यूटिव की दी गई तारीखों के बीच कोई बुकिंग दर्ज नहीं है।")
