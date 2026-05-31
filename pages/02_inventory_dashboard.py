@@ -2,7 +2,7 @@ import streamlit as st
 
 if not st.session_state.get('logged_in'): st.stop()
 
-st.title("📊 Inventory & Booking")
+st.title("📊 Inventory Dashboard")
 
 # प्रोजेक्ट का सिलेक्शन
 for p_name in st.session_state.projects.keys():
@@ -10,36 +10,30 @@ for p_name in st.session_state.projects.keys():
         st.session_state.current_proj = p_name
 
 if 'current_proj' in st.session_state:
-    st.subheader(f"Project: {st.session_state.current_proj}")
+    proj_name = st.session_state.current_proj
+    data = st.session_state.projects[proj_name]
+    
+    # प्रोजेक्ट की जानकारी को हेडिंग में दिखाना
+    st.subheader(f"Project: {proj_name}")
+    st.info(f"**Khasra No:** {data['khasra']} | **PH No:** {data['ph_no']} | **Mauza:** {data['mauza']}")
     
     # प्लॉट ग्रिड
-    total = st.session_state.projects[st.session_state.current_proj]['total_plots']
+    total = data['total_plots']
     cols = st.columns(5)
+    
+    if 'plot_status' not in st.session_state: st.session_state.plot_status = {}
+    
     for i in range(1, total + 1):
-        if cols[i%5].button(f"Plot {i}"):
+        key = f"{proj_name}_{i}"
+        status = st.session_state.plot_status.get(key, "Available")
+        
+        # बटन का लेबल
+        label = f"Plot {i}\n({status})"
+        if cols[i%5].button(label):
             st.session_state.selected_plot = i
             st.rerun()
 
-    # पूरा बुकिंग फॉर्म
+    # बुकिंग या हिस्ट्री सेक्शन
     if 'selected_plot' in st.session_state:
-        st.markdown("---")
-        st.subheader(f"Booking Form: Plot {st.session_state.selected_plot}")
-        with st.form("full_booking_form"):
-            col1, col2 = st.columns(2)
-            with col1:
-                c_name = st.text_input("Client Name")
-                phone = st.text_input("Phone No")
-                nominee = st.text_input("Nominee Name")
-                area = st.number_input("Area (Sqft)")
-            with col2:
-                adhar = st.text_input("Aadhar No")
-                pan = st.text_input("PAN No")
-                rate = st.number_input("Selling Rate")
-                pay_mode = st.selectbox("Payment Mode", ["Cash", "Cheque", "Online"])
-            
-            received_amt = st.number_input("Received Amount")
-            
-            if st.form_submit_button("Save Booking"):
-                # डेटा सेव करने का लॉजिक (यहाँ हम इसे बाद में CSV में भेजेंगे)
-                st.success(f"Plot {st.session_state.selected_plot} booked successfully!")
-                st.balloons()
+        # यहाँ आगे हिस्ट्री और बुकिंग फॉर्म का कोड जुड़ेगा
+        st.write(f"Selected: Plot {st.session_state.selected_plot}")
