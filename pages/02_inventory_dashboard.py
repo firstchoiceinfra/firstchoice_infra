@@ -28,7 +28,14 @@ else:
     st.session_state.current_proj = current_proj
 
     data = st.session_state.projects[current_proj]
-    st.info(f"KH: {data['khasra']} | PH: {data['ph_no']} | Mauza: {data['mauza']}")
+   # प्रोजेक्ट डिटेल्स को गहरे/साफ रंग में दिखाने के लिए
+    st.markdown("""
+        <div style="background-color: #eef2f3; padding: 10px; border-left: 5px solid #007bff; border-radius: 5px;">
+            <p style="margin: 0; color: #333; font-weight: bold;">
+                KH: """ + data['khasra'] + """ | PH: """ + data['ph_no'] + """ | Mauza: """ + data['mauza'] + """
+            </p>
+        </div>
+    """, unsafe_allow_html=True) (f"KH: {data['khasra']} | PH: {data['ph_no']} | Mauza: {data['mauza']}")
 
     # 2. प्लॉट ग्रिड
     cols = st.columns(5)
