@@ -1,67 +1,52 @@
 import streamlit as st
 
-# एक्जीक्यूटिव डेटा (अस्थायी)
-if 'executives' not in st.session_state:
-    st.session_state.executives = {"8317259986": "shubham dekate"}
+# डेटा सेव करने के लिए (Session State)
+if 'projects' not in st.session_state: st.session_state.projects = {}
+if 'plots' not in st.session_state: st.session_state.plots = {} # {Project_Name: {Plot_No: "Available"}}
 
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-    st.session_state.role = None
-    st.session_state.username = None
-
-# ----------------- पुराना डैशबोर्ड फंक्शन -----------------
-def show_dashboard():
-    st.title("🏢 Firstchoice Infra ERP System")
-    st.markdown("---")
-    st.subheader("सिस्टम डैशबोर्ड")
-    st.write("स्वागत है! कृपया नीचे दिए गए विकल्पों में से किसी एक को चुनें:")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.button("📊 डैशबोर्ड देखें")
-    with col2:
-        st.button("📝 नई बुकिंग करें")
-    st.markdown("---")
-
-# ----------------- लॉगिन फंक्शन -----------------
-def login():
-    st.title("🔐 Firstchoice Infra - Login")
-    username = st.text_input("Username (Name for Exec)")
-    password = st.text_input("Password (Mobile for Exec)", type="password")
+def show_inventory(project_name):
+    st.title(f"Inventory: {project_name}")
+    proj_data = st.session_state.projects[project_name]
     
-    if st.button("Login"):
-        if username == "admin" and password == "admin123":
-            st.session_state.logged_in = True
-            st.session_state.role = "admin"
-            st.rerun()
-        elif username in st.session_state.executives.values() and password in st.session_state.executives.keys():
-            st.session_state.logged_in = True
-            st.session_state.role = "executive"
-            st.session_state.username = username
-            st.rerun()
-        else:
-            st.error("गलत Username या Password!")
+    # 5 कॉलम का ग्रिड
+    cols = st.columns(5)
+    for i in range(1, proj_data['total_plots'] + 1):
+        plot_status = st.session_state.plots[project_name].get(i, "Available")
+        color = "green" if plot_status == "Available" else "red"
+        
+        # बटन का रंग और क्लिक एक्शन
+        if cols[i % 5].button(f"Plot {i}", key=f"p_{i}"):
+            if plot_status == "Available":
+                st.session_state.selected_plot = i
+                st.session_state.selected_project = project_name
+                st.rerun() # बुकिंग फॉर्म दिखाने के लिए
+            else:
+                st.warning(f"Plot {i} is already Booked!")
 
-# ----------------- मेन लॉजिक -----------------
-if not st.session_state.logged_in:
-    login()
-else:
-    # एडमिन का अलग पैनल
-    if st.session_state.role == "admin":
-        st.title("🏢 Admin Panel")
-        with st.expander("➕ Add New Executive"):
-            new_name = st.text_input("Executive Name")
-            new_mobile = st.text_input("Mobile Number")
-            if st.button("Save Executive"):
-                st.session_state.executives[new_mobile] = new_name
-                st.success(f"Executive {new_name} saved!")
-        st.write("Registered Executives:", st.session_state.executives)
-        st.markdown("---")
-        show_dashboard() # एडमिन को डैशबोर्ड भी दिखेगा
+def main():
+    st.title("🏢 Firstchoice Infra ERP")
     
-    # एक्जीक्यूटिव का डैशबोर्ड
-    elif st.session_state.role == "executive":
-        show_dashboard() # एक्जीक्यूटिव को डैशबोर्ड दिखेगा
+    # प्रोजेक्ट बनाने का फॉर्म
+    with st.expander("➕ Add New Project"):
+        p_name = st.text_input("Project Name")
+        khasra = st.text_input("Khasra No")
+        mauza = st.text_input("Mauza")
+        total_plots = st.number_input("Total Plots", min_value=1, step=1)
+        
+        if st.button("Save Project"):
+            st.session_state.projects[p_name] = {"khasra": khasra, "mauza": mauza, "total_plots": total_plots}
+            st.session_state.plots[p_name] = {i: "Available" for i in range(1, total_plots + 1)}
+            st.success(f"Project {p_name} added!")
 
-    if st.button("Log out"):
-        st.session_state.logged_in = False
-        st.rerun()
+    # प्रोजेक्ट्स की लिस्ट
+    st.subheader("Select Project")
+    for p_name in st.session_state.projects.keys():
+        if st.button(f"Open: {p_name}"):
+            st.session_state.current_page = p_name
+            st.rerun()
+
+    # अगर कोई प्रोजेक्ट चुना गया है
+    if 'current_page' in st.session_state:
+        show_inventory(st.session_state.current_page)
+
+main()
