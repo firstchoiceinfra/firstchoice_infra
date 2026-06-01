@@ -1,7 +1,6 @@
 import streamlit as st
 import datetime
-import database # 👈 डेटाबेस सिस्टम को इम्पोर्ट किया
-
+import database 
 # 👈 पेज खुलते ही डेटाबेस से सारे प्रोजेक्ट और बुकिंग लोड करना
 database.init_db()
 
