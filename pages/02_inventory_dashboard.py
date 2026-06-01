@@ -16,10 +16,31 @@ if 'logged_in' not in st.session_state or not st.session_state.logged_in:
 database.init_db() 
 db_data = st.session_state.db_projects 
 
-# एग्जीक्यूटिव की लिस्ट (अगर आपने अलग से नहीं बनाई है, तो यह डिफ़ॉल्ट काम करेगी)
-if 'executives' not in st.session_state:
-    st.session_state.executives = ["Select Executive", "Executive 1", "Executive 2", "Direct Sale"]
-exec_list = st.session_state.executives
+# =========================================================
+# 🌟 असली एग्जीक्यूटिव लिस्ट (डेटाबेस से लाना)
+# =========================================================
+exec_list = ["एग्जीक्यूटिव चुनें (Select)", "Direct Sale"] # डिफ़ॉल्ट विकल्प
+
+# चेक करें कि क्या आपके डेटाबेस में executives का डेटा है
+if 'executives' in db_data:
+    saved_execs = db_data['executives']
+    if isinstance(saved_execs, dict):
+        # अगर डेटा डिक्शनरी है, तो उसके नाम (keys) निकाल लें
+        exec_list.extend(list(saved_execs.keys()))
+    elif isinstance(saved_execs, list):
+        # अगर डेटा लिस्ट है, तो सीधे जोड़ दें
+        exec_list.extend([str(e) for e in saved_execs if e])
+elif 'executives' in st.session_state:
+    # अगर session state में अलग से है
+    saved_execs = st.session_state.executives
+    if isinstance(saved_execs, dict):
+        exec_list.extend(list(saved_execs.keys()))
+    elif isinstance(saved_execs, list):
+        exec_list.extend([str(e) for e in saved_execs if e])
+        
+# डुप्लीकेट नाम हटाने के लिए (ताकि एक नाम दो बार ना दिखे)
+exec_list = list(dict.fromkeys(exec_list))
+# =========================================================
 
 # --- 4. साइडबार ---
 if st.sidebar.button("🔄 क्लाउड से सिंक करें (रिफ्रेश)"):
@@ -30,7 +51,7 @@ if st.sidebar.button("🔄 क्लाउड से सिंक करें (
 
 st.sidebar.divider()
 st.sidebar.header("प्रोजेक्ट चुनें")
-project_names = list(db_data.keys())
+project_names = [name for name in db_data.keys() if name != 'executives'] # executives फोल्डर को प्रोजेक्ट लिस्ट से हटाएं
 
 if not project_names:
     st.warning("कोई प्रोजेक्ट नहीं मिला। कृपया लैपटॉप से 'Admin Panel' में जाकर प्रोजेक्ट जोड़ें।")
@@ -60,7 +81,6 @@ if 'booking_popup' in st.session_state:
     plt = p_info['plot']
     curr_stat = p_info['current_status']
     
-    # प्रोजेक्ट की ज़मीन की जानकारी (एडमिन पैनल से)
     p_khasra = project_data.get('khasra', 'N/A')
     p_ph = project_data.get('ph_no', 'N/A')
     p_mauza = project_data.get('mauza', 'N/A')
@@ -95,7 +115,6 @@ if 'booking_popup' in st.session_state:
         company_rate = col9.number_input("कंपनी का रेट (Company Rate - ₹)", min_value=0.0, value=0.0, step=50.0)
         selling_rate = col10.number_input("सेलिंग रेट (Selling Rate - ₹)", min_value=0.0, value=0.0, step=50.0)
         
-        # लाइव डिस्काउंट कैलकुलेशन
         discount = company_rate - selling_rate
         if discount > 0:
             st.success(f"🎉 **इंस्टेंट डिस्काउंट (Instant Discount): ₹ {discount}**")
@@ -113,17 +132,17 @@ if 'booking_popup' in st.session_state:
         receive_date = col15.date_input("भुगतान की तारीख (Date of Receipt)")
         
         st.subheader("👨‍💼 एग्जीक्यूटिव की जानकारी", divider="blue")
+        
+        # 🌟 ड्रॉपडाउन में अब डेटाबेस वाली लिस्ट दिखेगी
         exec_name = st.selectbox("एग्जीक्यूटिव चुनें (Executive Name)", exec_list)
         
         st.write("")
-        # सेव बटन
         if st.button("💾 पूरी बुकिंग सुरक्षित करें (Save Booking)", use_container_width=True, type="primary"):
             if c_name.strip() == "" or c_phone.strip() == "":
                 st.error("🚨 कृपया क्लाइंट का नाम और फ़ोन नंबर ज़रूर डालें!")
-            elif exec_name == "Select Executive":
+            elif exec_name == "एग्जीक्यूटिव चुनें (Select)":
                 st.error("🚨 कृपया एग्जीक्यूटिव का नाम चुनें!")
             else:
-                # सारा डेटा JSON में पैक करें
                 booking_data = {
                     "status": "Booked",
                     "customer_name": c_name,
@@ -183,7 +202,6 @@ if 'booking_popup' in st.session_state:
         st.write("")
         st.warning("क्या आप इस प्लॉट की बुकिंग रद्द करके इसे वापस खाली (Available) करना चाहते हैं?")
         if st.button("✅ हाँ, प्लॉट खाली (Available) करें", use_container_width=True):
-            # पुरानी डिटेल्स डिलीट करें और खाली करें
             st.session_state.db_projects[proj]['plots'][plt] = {"status": "Available"}
             
             with st.spinner("क्लाउड में अपडेट हो रहा है..."):
@@ -192,7 +210,6 @@ if 'booking_popup' in st.session_state:
                     del st.session_state['booking_popup']
                     st.rerun()
 
-    # वापस जाने का बटन
     st.write("---")
     if st.button("❌ पीछे जाएं (Cancel / Back)", use_container_width=True):
         del st.session_state['booking_popup']
