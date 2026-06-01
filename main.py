@@ -1,5 +1,3 @@
-# main.py
-
 import streamlit as st
 import database # 👈 हमारा अपडेट किया हुआ डेटाबेस सिस्टम इम्पोर्ट किया
 import pages
