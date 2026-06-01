@@ -4,8 +4,7 @@ import json
 
 # 👇 इनवर्टेड कॉमा (" ") के अंदर अपना लिंक डालें और आख़िर में /erp_data.json ज़रूर लगाएं।
 # उदाहरण: "https://firstchoice-infra-default-rtdb.firebaseio.com/erp_data.json"
-FIREBASE_URL = "https://console.firebase.google.com/project/firstchoice-infra/database/firstchoice-infra-default-rtdb/data/~2F/erp_data.json"
-
+FIREBASE_URL = "https://firstchoice-infra-default-rtdb.firebaseio.com/erp_data.json
 def init_db():
     """ऐप शुरू होते ही क्लाउड (Firebase) से डेटा डाउनलोड करेगा"""
     db_data = {}
