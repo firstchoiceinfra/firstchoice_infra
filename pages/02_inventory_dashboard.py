@@ -22,13 +22,10 @@ db_data = st.session_state.db_projects
 project_names = []
 exec_list_temp = []
 
-# डेटाबेस को स्कैन करें
 for key, val in db_data.items():
-    # अगर डेटा में 'plots', 'khasra' या 'total_plots' है, तो वह प्रोजेक्ट है
     if isinstance(val, dict) and ('plots' in val or 'total_plots' in val or 'khasra' in val):
         project_names.append(key)
     else:
-        # जो प्रोजेक्ट नहीं है, वह पक्का एग्जीक्यूटिव पैनल का डेटा है!
         if isinstance(val, dict):
             for k, v in val.items():
                 exec_list_temp.append(str(k))
@@ -39,13 +36,11 @@ for key, val in db_data.items():
         elif isinstance(val, list):
             exec_list_temp.extend([str(e) for e in val if isinstance(e, str)])
 
-# एग्जीक्यूटिव की साफ़ लिस्ट तैयार करें (डुप्लीकेट हटाकर)
 exec_list = ["एग्जीक्यूटिव चुनें (Select)", "Direct Sale"] 
 for e in exec_list_temp:
     e_clean = e.strip()
     if e_clean and e_clean not in exec_list and e_clean.lower() not in ['true', 'false', 'none']:
         exec_list.append(e_clean)
-# =========================================================
 
 # --- 4. साइडबार ---
 if st.sidebar.button("🔄 क्लाउड से सिंक करें (रिफ्रेश)"):
@@ -62,13 +57,19 @@ if not project_names:
     st.stop()
 
 selected_project_name = st.sidebar.selectbox("प्रोजेक्ट", project_names)
-project_data = db_data[selected_project_name]
 
-# प्लॉट्स डेटा को सुरक्षित तरीके से लोड करना
+# =========================================================
+# 🛠️ FIREBASE ERROR FIX (TypeError को जड़ से ख़त्म करना)
+# =========================================================
+# सेव करने से पहले ही लिस्ट को डिक्शनरी में फिक्स कर दें
+if isinstance(st.session_state.db_projects[selected_project_name].get('plots'), list):
+    fixed_plots = {str(i): plot for i, plot in enumerate(st.session_state.db_projects[selected_project_name]['plots']) if plot is not None}
+    st.session_state.db_projects[selected_project_name]['plots'] = fixed_plots
+
+project_data = st.session_state.db_projects[selected_project_name]
+
 plots = project_data.get('plots')
-if isinstance(plots, list):
-    plots = {str(i): plot for i, plot in enumerate(plots) if plot is not None}
-elif plots is None:
+if plots is None:
     plots = {}
 
 if not plots:
@@ -137,7 +138,6 @@ if 'booking_popup' in st.session_state:
         
         st.subheader("👨‍💼 एग्जीक्यूटिव की जानकारी", divider="blue")
         
-        # 🌟 नया फीचर: अगर मोबाइल ड्रॉपडाउन में दिक्कत दे, तो सीधे टाइप कर लें!
         exec_mode = st.radio("एग्जीक्यूटिव का नाम कैसे दर्ज करना चाहते हैं?", ["डेटाबेस से खोजें (Search in List)", "मैन्युअल टाइप करें (Manual Type)"], horizontal=True)
         
         if exec_mode == "डेटाबेस से खोजें (Search in List)":
@@ -171,10 +171,11 @@ if 'booking_popup' in st.session_state:
                     "payment_mode": pay_mode,
                     "transaction_id": trans_id,
                     "receipt_date": str(receive_date),
-                    "executive_name": final_exec_name, # यहाँ चुना या टाइप किया हुआ नाम सेव होगा
+                    "executive_name": final_exec_name, 
                     "booking_date": str(datetime.date.today())
                 }
                 
+                # अब यहाँ TypeError बिल्कुल नहीं आएगा
                 st.session_state.db_projects[proj]['plots'][plt].update(booking_data)
                 
                 with st.spinner("क्लाउड में सेव हो रहा है..."):
