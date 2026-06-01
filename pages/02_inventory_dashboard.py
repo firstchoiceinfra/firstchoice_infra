@@ -1,125 +1,105 @@
 import streamlit as st
-import datetime
-import database 
-# 👈 पेज खुलते ही डेटाबेस से सारे प्रोजेक्ट और बुकिंग लोड करना
+import pandas as pd
+import database # 👈 हमारा अपडेट किया हुआ डेटाबेस सिस्टम इम्पोर्ट किया
+
+# पेज सेटअप
+st.set_page_config(layout="wide", page_title="FC Infra - इन्वेंट्री")
+st.title("FirstChoice Infra - इन्वेंट्री डैशबोर्ड 🏗️")
+
+# उपयोगकर्ता लॉगिन चेक करें
+if not st.session_state.get('logged_in'):
+    st.warning("कृपया ऐप को फिर से खोलें और लॉगिन करें।")
+    st.stop()
+
+# डेटाबेस को शुरू करें और डेटा लोड करें
 database.init_db()
+db_data = st.session_state.db_projects
 
-if not st.session_state.get('logged_in'): st.stop()
+# सिंक करने का बटन
+if st.button("🔄 क्लाउड से सिंक करें (रिफ्रेश)", key="refresh_db"):
+    with st.spinner("क्लाउड से डेटा सिंक हो रहा है..."):
+        database.load_db_data()
+        st.success("डेटा सिंक हो गया!")
+        st.rerun()
 
-st.markdown("## 🌈 Inventory & Booking Dashboard")
+# साइडबार में प्रोजेक्ट चयन
+st.sidebar.header("प्रोजेक्ट चुनें")
+project_names = list(db_data.keys())
+if not project_names:
+    st.warning("कोई प्रोजेक्ट नहीं मिला। कृपया एडमिन पैनल से प्रोजेक्ट जोड़ें।")
+    st.stop()
 
-if not st.session_state.projects:
-    st.error("🚨 कोई प्रोजेक्ट नहीं मिला। कृपया Admin Panel से प्रोजेक्ट जोड़ें।")
-else:
-    proj_list = list(st.session_state.projects.keys())
-    current_proj = st.selectbox("📌 Select Project", proj_list)
+selected_project_name = st.sidebar.selectbox("प्रोजेक्ट", project_names)
+project_data = db_data[selected_project_name]
+
+# प्रोजेक्ट की डिटेल्स दिखाएं
+st.header(f"प्रोजेक्ट: {selected_project_name}")
+
+
+# प्लॉट इन्वेंट्री ग्रिड
+plots = project_data.get('plots', {})
+if not plots:
+    st.info("इस प्रोजेक्ट में अभी कोई प्लॉट नहीं है।")
+    st.stop()
+
+# ग्रिड व्यू
+col_per_row = 5
+rows = [list(plots.items())[i:i + col_per_row] for i in range(0, len(plots), col_per_row)]
+
+st.subheader("प्लॉट स्थिति")
+for row in rows:
+    cols = st.columns(col_per_row)
+    for i, (plot_id, plot_info) in enumerate(row):
+        with cols[i]:
+            status = plot_info['status']
+            # हिंदी लेबल
+            status_hindi = "✅ उपलब्ध" if status == "Available" else "❌ बुक"
+            
+            st.metric(label=f"प्लॉट {plot_id}", value=status_hindi)
+            
+            # प्लॉट के लिए बुकिंग कार्रवाई बटन
+            if st.button(f"{plot_id} बुक/खाली करें", key=f"action_{plot_id}"):
+                st.session_state['selected_plot_for_booking'] = (selected_project_name, plot_id, status)
+
+# बुकिंग पॉपअप (साइडबार में)
+if 'selected_plot_for_booking' in st.session_state:
+    proj_name, p_id, current_status = st.session_state['selected_plot_for_booking']
+    st.sidebar.divider()
+    st.sidebar.subheader(f"प्लॉट {p_id} के लिए बुकिंग कार्रवाई")
     
-    data = st.session_state.projects[current_proj]
-    st.info(f"**🏢 {current_proj}** | **KH:** {data.get('khasra', '')} | **PH:** {data.get('ph_no', '')} | **Mauza:** {data.get('mauza', '')}")
-    
-    st.write("---")
-
-    cols = st.columns(5)
-    total_plots = data.get('total_plots', 0)
-    
-    for i in range(1, total_plots + 1):
-        key = f"{current_proj}_{i}"
-        status = st.session_state.plot_status.get(key, "Available")
+    new_status = ""
+    action_text = ""
+    if current_status == "Available":
+        new_status = "Booked"
+        action_text = "❌ प्लॉट बुक करें"
+    else:
+        new_status = "Available"
+        action_text = "✅ प्लॉट उपलब्ध कराएं (रद्द करें)"
         
-        if status == "Available":
-            btn_label = f"🟢 Plot {i}\n(Available)"
-        else:
-            btn_label = f"🔴 Plot {i}\n(Booked)"
-            
-        if cols[i%5].button(btn_label, key=key):
-            st.session_state.selected_plot = i
-            st.rerun()
-
-    if 'selected_plot' in st.session_state:
-        p_idx = st.session_state.selected_plot
-        key = f"{current_proj}_{p_idx}"
+    # ग्राहक का नाम पूछें (केवल बुकिंग के लिए)
+    customer_name = ""
+    if new_status == "Booked":
+        customer_name = st.sidebar.text_input(f"ग्राहक का नाम (प्लॉट {p_id} के लिए)", key=f"cust_name_{p_id}")
+    
+    if st.sidebar.button(action_text, key=f"confirm_booking_{p_id}"):
+        # 1. सत्र स्थिति में डेटा अपडेट करें
+        st.session_state.db_projects[proj_name]['plots'][p_id]['status'] = new_status
+        if new_status == "Booked":
+            st.session_state.db_projects[proj_name]['plots'][p_id]['customer_name'] = customer_name
+        elif new_status == "Available":
+            # पुराने डेटा को साफ़ करें
+            st.session_state.db_projects[proj_name]['plots'][p_id].pop('customer_name', None)
         
-        st.write("---") 
-
-        if st.session_state.plot_status.get(key) == "Booked":
-            st.subheader(f"🔴 Plot {p_idx} - Booking History", divider="red")
-            b = st.session_state.bookings.get(key, {})
-            
-            c1, c2, c3 = st.columns(3)
-            c1.metric("👤 Client Name", b.get('c_name', '-'))
-            c2.metric("💰 Received Amt", f"₹{b.get('received_amt', 0)}")
-            c3.metric("👔 Executive", b.get('exec_name', '-'))
-            
-            st.success(f"**💳 Payment:** Mode: {b.get('pay_mode')} | TX ID: {b.get('tx_id')} | Date: {b.get('recv_date')}")
-            
-            if b.get('exec_discount_penalty', 0) > 0:
-                st.error(f"**💡 Discount Deducted from Exec:** ₹{b.get('exec_discount_penalty')}")
-            
-            c4, c5 = st.columns(2)
-            if c4.button("🖨️ Print Receipt", use_container_width=True): st.write("Printing...")
-            if c5.button("💬 Send to WhatsApp", use_container_width=True): st.write(f"WhatsApp initiated...")
-
-        else:
-            st.subheader(f"🟢 Booking Form - Plot {p_idx}", divider="green")
-            
-            with st.form("booking_form"):
-                st.markdown("#### 👤 Client Details")
-                c1, c2 = st.columns(2)
-                c_name = c1.text_input("Client Name")
-                dob = c2.date_input("Date of Birth")
-                phone = c1.text_input("Phone No")
-                addr = c2.text_area("Client Address")
-                adhar = c1.text_input("Aadhar No")
-                pan = c2.text_input("PAN No")
-                nominee = c1.text_input("Nominee Name")
-                nom_age = c2.number_input("Nominee Age", min_value=0, max_value=100)
-
-                st.markdown("#### 🏡 Plot Details")
-                c3, c4 = st.columns(2)
-                area = c3.number_input("Plot Area (Sqft)")
-                comp_rate = c4.number_input("Company Rate")
-                sell_rate = c3.number_input("Selling Rate")
-                
-                st.info(f"💡 **Discount Given per Sqft:** ₹{int(comp_rate - sell_rate) if comp_rate else 0}")
-                
-                tah = c3.text_input("Tahsil")
-                dist = c4.text_input("District")
-                exec_name = c4.text_input("Executive Name")
-
-                st.markdown("#### 💳 Payment Details")
-                c5, c6 = st.columns(2)
-                pay_mode = c5.selectbox("Payment Mode", ["Cash", "Cheque", "Online (UPI/RTGS)"])
-                token = c6.number_input("Token Amount")
-                received_amt = c5.number_input("Total Received Amount")
-                recv_date = c6.date_input("Received Date")
-                tx_id = c5.text_input("Transaction ID / Cheque No")
-                
-                submit = st.form_submit_button("✅ Save Booking", use_container_width=True)
-                
-                if submit:
-                    total_discount = 0
-                    if comp_rate > sell_rate and area > 0:
-                        total_discount = (comp_rate - sell_rate) * area
-
-                    st.session_state.plot_status[key] = "Booked"
-                    
-                    st.session_state.bookings[key] = {
-                        "c_name": c_name, "phone": phone, "area": area,
-                        "comp_rate": comp_rate, "sell_rate": sell_rate,
-                        "pay_mode": pay_mode, "token": token,
-                        "received_amt": received_amt, "recv_date": recv_date, 
-                        "tx_id": tx_id, "exec_name": exec_name,
-                        "exec_discount_penalty": total_discount,
-                        "payment_history": [{
-                            "amount": received_amt,
-                            "date": recv_date,
-                            "mode": pay_mode,
-                            "tx_id": tx_id
-                        }]
-                    }
-                    
-                    # 👈 सबसे ज़रूरी लाइन: बुकिंग सेव होते ही फाइल में लॉक करना
-                    database.save_db()
-                    
-                    st.success("🎉 शानदार! बुकिंग सफलतापूर्वक सेव हो गई।")
-                    st.rerun()
+        # 2. !!! क्लाउड में डेटा सेव करें !!! (यही वह चरण है जो लैपटॉप और मोबाइल को सिंक में रखता है)
+        with st.spinner("क्लाउड में बुकिंग डेटा सेव हो रहा है..."):
+            if database.save_db_data():
+                st.success(f"प्लॉट {p_id} की स्थिति सफलतापूर्वक अपडेट की गई और क्लाउड में सेव हो गई!")
+                # पेज को रिफ्रेश करें और Pop-up को साफ़ करें
+                del st.session_state['selected_plot_for_booking']
+                st.rerun()
+            else:
+                st.error("डेटा सेव करने में समस्या आई।")
+    
+    if st.sidebar.button("रद्द करें", key=f"cancel_booking_{p_id}"):
+        del st.session_state['selected_plot_for_booking']
+        st.rerun()
