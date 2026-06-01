@@ -17,28 +17,24 @@ database.init_db()
 db_data = st.session_state.db_projects 
 
 # =========================================================
-# 🌟 असली एग्जीक्यूटिव लिस्ट (डेटाबेस से लाना)
+# 🌟 स्मार्ट एग्जीक्यूटिव फाइंडर (Smart Executive Finder)
 # =========================================================
-exec_list = ["एग्जीक्यूटिव चुनें (Select)", "Direct Sale"] # डिफ़ॉल्ट विकल्प
+exec_list = ["एग्जीक्यूटिव चुनें (Select)", "Direct Sale"] 
 
-# चेक करें कि क्या आपके डेटाबेस में executives का डेटा है
-if 'executives' in db_data:
-    saved_execs = db_data['executives']
-    if isinstance(saved_execs, dict):
-        # अगर डेटा डिक्शनरी है, तो उसके नाम (keys) निकाल लें
-        exec_list.extend(list(saved_execs.keys()))
-    elif isinstance(saved_execs, list):
-        # अगर डेटा लिस्ट है, तो सीधे जोड़ दें
-        exec_list.extend([str(e) for e in saved_execs if e])
-elif 'executives' in st.session_state:
-    # अगर session state में अलग से है
-    saved_execs = st.session_state.executives
-    if isinstance(saved_execs, dict):
-        exec_list.extend(list(saved_execs.keys()))
-    elif isinstance(saved_execs, list):
-        exec_list.extend([str(e) for e in saved_execs if e])
-        
-# डुप्लीकेट नाम हटाने के लिए (ताकि एक नाम दो बार ना दिखे)
+# डेटाबेस की हर फाइल/फोल्डर को गहराई से छान मारें
+for key, val in db_data.items():
+    if 'exec' in str(key).lower(): # Executive, executives, Exec_Panel कुछ भी नाम हो
+        if isinstance(val, dict):
+            # अगर डिक्शनरी है, तो उसके सारे नाम निकालें
+            for k, v in val.items():
+                exec_list.append(str(k))
+                # अगर अंदर 'name' नाम का फील्ड है तो उसे भी उठाएं
+                if isinstance(v, dict) and 'name' in v:
+                    exec_list.append(str(v['name']))
+        elif isinstance(val, list):
+            exec_list.extend([str(e) for e in val if e])
+
+# डुप्लीकेट नाम हटाकर लिस्ट को बिल्कुल साफ़ करें
 exec_list = list(dict.fromkeys(exec_list))
 # =========================================================
 
@@ -51,7 +47,9 @@ if st.sidebar.button("🔄 क्लाउड से सिंक करें (
 
 st.sidebar.divider()
 st.sidebar.header("प्रोजेक्ट चुनें")
-project_names = [name for name in db_data.keys() if name != 'executives'] # executives फोल्डर को प्रोजेक्ट लिस्ट से हटाएं
+
+# 🌟 सिर्फ असली प्रोजेक्ट्स को लिस्ट में दिखाएं (एग्जीक्यूटिव वाले फोल्डर को साइडबार से छुपाएं)
+project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data or 'total_plots' in data or 'khasra' in data)]
 
 if not project_names:
     st.warning("कोई प्रोजेक्ट नहीं मिला। कृपया लैपटॉप से 'Admin Panel' में जाकर प्रोजेक्ट जोड़ें।")
@@ -133,8 +131,8 @@ if 'booking_popup' in st.session_state:
         
         st.subheader("👨‍💼 एग्जीक्यूटिव की जानकारी", divider="blue")
         
-        # 🌟 ड्रॉपडाउन में अब डेटाबेस वाली लिस्ट दिखेगी
-        exec_name = st.selectbox("एग्जीक्यूटिव चुनें (Executive Name)", exec_list)
+        # 🌟 ड्रॉपडाउन बॉक्स (इस पर क्लिक करके इनिशियल टाइप करें)
+        exec_name = st.selectbox("एग्जीक्यूटिव का नाम टाइप करें या चुनें (Select / Type Executive Name)", exec_list)
         
         st.write("")
         if st.button("💾 पूरी बुकिंग सुरक्षित करें (Save Booking)", use_container_width=True, type="primary"):
