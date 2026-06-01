@@ -1,35 +1,47 @@
+# database.py
 import streamlit as st
 import requests
 import json
 
-# 👇 इनवर्टेड कॉमा (" ") के अंदर अपना लिंक डालें और आख़िर में /erp_data.json ज़रूर लगाएं।
-# उदाहरण: "https://firstchoice-infra-default-rtdb.firebaseio.com/erp_data.json"
-FIREBASE_URL = "https://firstchoice-infra-default-rtdb.firebaseio.com/erp_data.json
+# आपका असली Firebase डेटाबेस URL (जो आपने इमेज 12 में दिखाया था)
+# !!! सबसे ज़रूरी !!!: इसके आखिर में /erp_data.json ज़रूर लगाएँ।
+FIREBASE_URL = "https://firstchoice-infra-default-rtdb.firebaseio.com/erp_data.json"
+
+# 1. डेटाबेस को शुरू करने का फ़ंक्शन (main.py में लॉगिन के बाद कॉल करें)
 def init_db():
-    """ऐप शुरू होते ही क्लाउड (Firebase) से डेटा डाउनलोड करेगा"""
-    db_data = {}
+    if 'db_projects' not in st.session_state:
+        st.session_state.db_projects = {}
+    if 'init_call' not in st.session_state:
+        load_db_data()
+        st.session_state.init_call = True
+
+# 2. क्लाउड (Firebase) से डेटा डाउनलोड करने का फ़ंक्शन
+def load_db_data():
     try:
         response = requests.get(FIREBASE_URL)
-        if response.status_code == 200 and response.json() is not None:
-            db_data = response.json()
+        if response.status_code == 200:
+            data = response.json()
+            # यदि डेटाबेस खाली है (None), तो खाली डेटा सेट करें
+            st.session_state.db_projects = data if data is not None else {}
+        else:
+            # यदि डेटा लोड करने में समस्या हो, तो खाली डेटा रखें
+            st.session_state.db_projects = {}
     except Exception as e:
-        print("Cloud load error:", e)
+        st.error(f"Cloud load error: {e}")
+        st.session_state.db_projects = {}
 
-    # मेमोरी में सेट करना
-    if 'projects' not in st.session_state: st.session_state.projects = db_data.get('projects', {})
-    if 'plot_status' not in st.session_state: st.session_state.plot_status = db_data.get('plot_status', {})
-    if 'bookings' not in st.session_state: st.session_state.bookings = db_data.get('bookings', {})
-    if 'exec_data' not in st.session_state: st.session_state.exec_data = db_data.get('exec_data', {})
-
-def save_db():
-    """डेटा सेव होते ही उसे सीधा Firebase क्लाउड पर लॉक कर देगा"""
-    db_data = {
-        "projects": st.session_state.get('projects', {}),
-        "plot_status": st.session_state.get('plot_status', {}),
-        "bookings": st.session_state.get('bookings', {}),
-        "exec_data": st.session_state.get('exec_data', {})
-    }
+# 3. क्लाउड (Firebase) में डेटा सेव करने का फ़ंक्शन
+def save_db_data():
     try:
-        requests.put(FIREBASE_URL, data=json.dumps(db_data))
+        # सत्र स्थिति (st.session_state) में रखे डेटा को JSON में बदलें
+        json_data = json.dumps(st.session_state.db_projects, indent=4)
+        # Firebase को PUT कमांड से धकेलें
+        response = requests.put(FIREBASE_URL, data=json_data)
+        if response.status_code == 200:
+            return True
+        else:
+            st.error(f"Cloud save error. Status code: {response.status_code}")
+            return False
     except Exception as e:
-        st.error("क्लाउड पर सेव करने में समस्या आ रही है।")
+        st.error(f"Cloud save error: {e}")
+        return False
