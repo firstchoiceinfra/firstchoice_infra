@@ -17,25 +17,34 @@ database.init_db()
 db_data = st.session_state.db_projects 
 
 # =========================================================
-# 🌟 स्मार्ट एग्जीक्यूटिव फाइंडर (Smart Executive Finder)
+# 🌟 ब्रह्मास्त्र: डेटाबेस से एग्जीक्यूटिव और प्रोजेक्ट अलग करना
 # =========================================================
-exec_list = ["एग्जीक्यूटिव चुनें (Select)", "Direct Sale"] 
+project_names = []
+exec_list_temp = []
 
-# डेटाबेस की हर फाइल/फोल्डर को गहराई से छान मारें
+# डेटाबेस को स्कैन करें
 for key, val in db_data.items():
-    if 'exec' in str(key).lower(): # Executive, executives, Exec_Panel कुछ भी नाम हो
+    # अगर डेटा में 'plots', 'khasra' या 'total_plots' है, तो वह प्रोजेक्ट है
+    if isinstance(val, dict) and ('plots' in val or 'total_plots' in val or 'khasra' in val):
+        project_names.append(key)
+    else:
+        # जो प्रोजेक्ट नहीं है, वह पक्का एग्जीक्यूटिव पैनल का डेटा है!
         if isinstance(val, dict):
-            # अगर डिक्शनरी है, तो उसके सारे नाम निकालें
             for k, v in val.items():
-                exec_list.append(str(k))
-                # अगर अंदर 'name' नाम का फील्ड है तो उसे भी उठाएं
-                if isinstance(v, dict) and 'name' in v:
-                    exec_list.append(str(v['name']))
+                exec_list_temp.append(str(k))
+                if isinstance(v, dict):
+                    if 'name' in v: exec_list_temp.append(str(v['name']))
+                    if 'Name' in v: exec_list_temp.append(str(v['Name']))
+                    if 'exec_name' in v: exec_list_temp.append(str(v['exec_name']))
         elif isinstance(val, list):
-            exec_list.extend([str(e) for e in val if e])
+            exec_list_temp.extend([str(e) for e in val if isinstance(e, str)])
 
-# डुप्लीकेट नाम हटाकर लिस्ट को बिल्कुल साफ़ करें
-exec_list = list(dict.fromkeys(exec_list))
+# एग्जीक्यूटिव की साफ़ लिस्ट तैयार करें (डुप्लीकेट हटाकर)
+exec_list = ["एग्जीक्यूटिव चुनें (Select)", "Direct Sale"] 
+for e in exec_list_temp:
+    e_clean = e.strip()
+    if e_clean and e_clean not in exec_list and e_clean.lower() not in ['true', 'false', 'none']:
+        exec_list.append(e_clean)
 # =========================================================
 
 # --- 4. साइडबार ---
@@ -47,9 +56,6 @@ if st.sidebar.button("🔄 क्लाउड से सिंक करें (
 
 st.sidebar.divider()
 st.sidebar.header("प्रोजेक्ट चुनें")
-
-# 🌟 सिर्फ असली प्रोजेक्ट्स को लिस्ट में दिखाएं (एग्जीक्यूटिव वाले फोल्डर को साइडबार से छुपाएं)
-project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data or 'total_plots' in data or 'khasra' in data)]
 
 if not project_names:
     st.warning("कोई प्रोजेक्ट नहीं मिला। कृपया लैपटॉप से 'Admin Panel' में जाकर प्रोजेक्ट जोड़ें।")
@@ -131,15 +137,20 @@ if 'booking_popup' in st.session_state:
         
         st.subheader("👨‍💼 एग्जीक्यूटिव की जानकारी", divider="blue")
         
-        # 🌟 ड्रॉपडाउन बॉक्स (इस पर क्लिक करके इनिशियल टाइप करें)
-        exec_name = st.selectbox("एग्जीक्यूटिव का नाम टाइप करें या चुनें (Select / Type Executive Name)", exec_list)
+        # 🌟 नया फीचर: अगर मोबाइल ड्रॉपडाउन में दिक्कत दे, तो सीधे टाइप कर लें!
+        exec_mode = st.radio("एग्जीक्यूटिव का नाम कैसे दर्ज करना चाहते हैं?", ["डेटाबेस से खोजें (Search in List)", "मैन्युअल टाइप करें (Manual Type)"], horizontal=True)
+        
+        if exec_mode == "डेटाबेस से खोजें (Search in List)":
+            final_exec_name = st.selectbox("एग्जीक्यूटिव का नाम चुनें (Select Executive)", exec_list)
+        else:
+            final_exec_name = st.text_input("एग्जीक्यूटिव का पूरा नाम टाइप करें (Type Name)")
         
         st.write("")
         if st.button("💾 पूरी बुकिंग सुरक्षित करें (Save Booking)", use_container_width=True, type="primary"):
             if c_name.strip() == "" or c_phone.strip() == "":
                 st.error("🚨 कृपया क्लाइंट का नाम और फ़ोन नंबर ज़रूर डालें!")
-            elif exec_name == "एग्जीक्यूटिव चुनें (Select)":
-                st.error("🚨 कृपया एग्जीक्यूटिव का नाम चुनें!")
+            elif final_exec_name == "एग्जीक्यूटिव चुनें (Select)" or final_exec_name.strip() == "":
+                st.error("🚨 कृपया एग्जीक्यूटिव का नाम चुनें या टाइप करें!")
             else:
                 booking_data = {
                     "status": "Booked",
@@ -160,7 +171,7 @@ if 'booking_popup' in st.session_state:
                     "payment_mode": pay_mode,
                     "transaction_id": trans_id,
                     "receipt_date": str(receive_date),
-                    "executive_name": exec_name,
+                    "executive_name": final_exec_name, # यहाँ चुना या टाइप किया हुआ नाम सेव होगा
                     "booking_date": str(datetime.date.today())
                 }
                 
