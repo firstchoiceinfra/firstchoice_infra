@@ -16,7 +16,7 @@ database.init_db()
 db_data = st.session_state.db_projects
 
 # ====================================================================
-# 🎨 यूनिवर्सल लग्जरी थीम सिंक + कॉम्पैक्ट CSS स्टाइलिंग (Font Size Fix)
+# 🎨 यूनिवर्सल लग्जरी थीम सिंक + सुपर कॉम्पैक्ट CSS स्टाइलिंग (Ultra Sleek)
 # ====================================================================
 bg_url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
 p_color = "#1e3a8a"
@@ -39,11 +39,11 @@ st.markdown(f"""
 }}
 .block-container {{
     background-color: {c_bg} !important;
-    padding: 2rem 3rem !important;
+    padding: 1.5rem 2.5rem !important;
     border-radius: 20px;
     box-shadow: 0px 10px 30px rgba(0,0,0,0.3);
-    margin-top: 2rem;
-    margin-bottom: 2rem;
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
 }}
 h1, h2, h3, h4, h5, h6, [data-testid="stMarkdownContainer"] h1, [data-testid="stMarkdownContainer"] h2, [data-testid="stMarkdownContainer"] h3 {{
     color: {p_color} !important;
@@ -52,38 +52,52 @@ h1, h2, h3, h4, h5, h6, [data-testid="stMarkdownContainer"] h1, [data-testid="st
 .stButton>button {{
     background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%);
     color: white !important;
-    border-radius: 8px;
+    border-radius: 6px;
     font-weight: bold;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }}
 
-/* 🌟 बड़े अक्षरों को छोटा और सुंदर बनाने के लिए विशेष CSS नियम 🌟 */
+/* 🌟 कार्ड और टेक्स्ट को छोटा-सुंदर बनाने का अल्टीमेट नियम 🌟 */
 .ledger-box {{
     background-color: #ffffff;
-    border-left: 5px solid {p_color};
-    padding: 10px 15px !important;
-    border-radius: 8px;
-    box-shadow: 0px 2px 5px rgba(0,0,0,0.05);
-    margin-bottom: 5px !important;
+    border-left: 4px solid {p_color};
+    padding: 6px 12px !important;
+    border-radius: 6px;
+    box-shadow: 0px 1px 3px rgba(0,0,0,0.05);
+    margin-bottom: 4px !important;
 }}
 
-/* स्ट्रीमलिट के बड़े-बड़े मैट्रिक्स (Metrics) का आकार छोटा करना */
+/* मेट्रिक्स का साइज एकदम परफेक्ट और कॉम्पैक्ट करना */
 div[data-testid="stMetric"] div[data-testid="stMetricLabel"] {{
-    font-size: 13px !important;
+    font-size: 11px !important;
     font-weight: 600 !important;
     color: #475569 !important;
 }}
 div[data-testid="stMetric"] div[data-testid="stMetricValue"] {{
-    font-size: 18px !important;
+    font-size: 15px !important;
     font-weight: 700 !important;
     color: #0f172a !important;
+}}
+
+/* रो-वाइज़ डिलीट बटन को मेट्रिक्स के बराबर अलाइन करने के लिए विशेष स्टाइल */
+.custom-del-btn button {{
+    background: #fee2e2 !important;
+    color: #991b1b !important;
+    border: 1px solid #fca5a5 !important;
+    font-size: 12px !important;
+    padding: 0.2rem 0.5rem !important;
+    margin-top: 10px !important;
+}}
+.custom-del-btn button:hover {{
+    background: #fca5a5 !important;
+    color: #7f1d1d !important;
 }}
 </style>
 """, unsafe_allow_html=True)
 # ====================================================================
 
-st.markdown("<h1 style='text-align: center;'>👑 Executive & Commission Channel Panel</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; font-size: 15px; color: #475569; margin-bottom: 30px;'>कंपनी एसोसिएट्स, मोबाइल लॉगिन, मास्टर ड्यूल कमीशन एवं लाइव स्टेटमेंट इंजन</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; font-size: 28px;'>👑 Executive & Commission Channel Panel</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; font-size: 14px; color: #475569; margin-bottom: 25px;'>कंपनी एसोसिएट्स, मोबाइल लॉगिन, मास्टर ड्यूल कमीशन एवं लाइव स्टेटमेंट इंजन</p>", unsafe_allow_html=True)
 
 # --- SideBar: रिफ्रेश बटन ---
 if st.sidebar.button("🔄 क्लाउड से सिंक करें (रिफ्रेश)"):
@@ -150,7 +164,7 @@ with st.form("commission_form"):
             
             with st.spinner("क्लाउड में सुरक्षित हो रहा है..."):
                 if database.save_db_data():
-                    st.success(f"🎉 शानदार! {exec_clean} का प्रोफाइल, मोबाइल लॉगिन और मास्टर कमीशन एक साथ एक्टिवेट हो गए हैं!")
+                    st.success(f"🎉 शानदार! {exec_clean} का प्रोफाइल सुरक्षित हो गया!")
                     st.rerun()
 
 
@@ -258,16 +272,15 @@ else:
                 mime="text/csv",
                 use_container_width=True
             )
-            st.success("💡 सुझाव: ऊपर दिए गए बटन से फाइल डाउनलोड करके आप सीधे प्रिंट निकाल सकते हैं या व्हाट्सएप पर अटैचमेंट भेज सकते हैं!")
         else:
             st.warning("इस समय सीमा के बीच इस एग्जीक्यूटिव द्वारा की गई कोई भी बुकिंग नहीं मिली।")
 
 
 # ====================================================================
-# 📋 एडिट और मौजूदा एंट्रीज (Existing Partners Ledger - COMPACT VIEW)
+# 📋 एडिट और मौजूदा एंट्रीज (Sleek Horizontal Row Layout)
 # ====================================================================
 st.markdown("<br><hr>", unsafe_allow_html=True)
-st.markdown("<h4 style='margin-bottom:15px;'>📋 मौजूदा मास्टर पार्टनर्स प्रोफाइल एवं लॉगिन डिटेल्स</h4>", unsafe_allow_html=True)
+st.markdown("<h4 style='margin-bottom:12px; font-size:16px;'>📋 मौजूदा मास्टर पार्टनर्स प्रोफाइल एवं लॉगिन डिटेल्स</h4>", unsafe_allow_html=True)
 
 exec_clean_list_view = {k: v for k, v in exec_data_root.items() if isinstance(v, dict) and 'name' in v}
 
@@ -276,26 +289,32 @@ if not exec_clean_list_view:
 else:
     for ex_name, p_details in exec_clean_list_view.items():
         with st.container():
-            # 🌟 यहाँ अक्षरों का आकार कॉम्पैक्ट (Medium-Small) और बेहद स्लीक कर दिया गया है
+            # 1. हेडर स्ट्रिप (आईडी, सीनियर और पासवर्ड)
             st.markdown(f"""
             <div class="ledger-box">
-                <span style="font-size: 15px; font-weight: bold; color: {p_color};">👨‍💼 पार्टनर आईडी: {ex_name}</span> 
-                <span style="float: right; background-color: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size:11px; color: #475569; font-weight: 600;">🔑 पासवर्ड (Mob): {p_details.get('mobile','N/A')}</span>
-                <br><span style="font-size: 13px; color: #475569;">👴 <b>सीनियर चैन हेड:</b> {p_details.get('senior_name','N/A')} | 📅 अपडेटेड: {p_details.get('last_updated','N/A')}</span>
+                <span style="font-size: 13px; font-weight: bold; color: {p_color};">👨‍💼 पार्टनर आईडी: {ex_name}</span> 
+                <span style="float: right; background-color: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size:11px; color: #475569; font-weight: 600;">🔑 पासवर्ड (Mob): {p_details.get('mobile','N/A')}</span>
+                <br><span style="font-size: 11px; color: #64748b;">👴 <b>सीनियर चैन हेड:</b> {p_details.get('senior_name','N/A')} | 📅 अपडेटेड: {p_details.get('last_updated','N/A')}</span>
             </div>
             """, unsafe_allow_html=True)
             
-            # छोटे और सुंदर 3D मेट्रिक्स
-            c_m1, c_m2, c_m3, c_m4 = st.columns(4)
+            # 2. 🌟 जादुई 5-कॉलम लेआउट (सभी मेट्रिक्स और अंत में डिलीट बटन)
+            c_m1, c_m2, c_m3, c_m4, c_m5 = st.columns([1.1, 1.1, 1.2, 1.2, 0.9])
+            
             c_m1.metric("Exec %", f"{p_details.get('percentage_exec', 0)} %")
             c_m2.metric("Senior %", f"{p_details.get('percentage_senior', 0)} %")
             c_m3.metric("Exec ₹ (Fixed)", f"₹ {p_details.get('rupees_exec', 0)}")
             c_m4.metric("Senior ₹ (Fixed)", f"₹ {p_details.get('rupees_senior', 0)}")
             
-            col_del, _ = st.columns([1, 5])
-            if col_del.button("🗑️ पार्टनर हटाएं", key=f"del_{ex_name}"):
-                st.session_state.db_projects['executives'].pop(ex_name, None)
-                database.save_db_data()
-                st.success("पार्टनर प्रोफाइल सफलतापूर्वक हटा दी गई!")
-                st.rerun()
-            st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
+            # 🗑️ पार्टनर हटाने का बटन सबसे आखिरी (5वें) कॉलम में सेट कर दिया गया है
+            with c_m5:
+                st.markdown('<div class="custom-del-btn">', unsafe_allow_html=True)
+                if st.button("🗑️ हटाएँ", key=f"del_{ex_name}", use_container_width=True):
+                    st.session_state.db_projects['executives'].pop(ex_name, None)
+                    database.save_db_data()
+                    st.success(f"{ex_name} हटाया गया!")
+                    st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+            # रो के बीच हल्का डिवाइडर (स्टेप-वाइज नीचे जाने के लिए)
+            st.markdown("<div style='margin-bottom: 12px; border-bottom: 1px dashed #e2e8f0;'></div>", unsafe_allow_html=True)
