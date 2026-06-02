@@ -16,6 +16,38 @@ db_data = st.session_state.db_projects
 
 # ====================================================================
 # 🎨 यूनिवर्सल लग्जरी थीम सिंक + CSS स्टाइलिंग
+# ====================================================================
+bg_url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
+p_color = "#1e3a8a"
+s_color = "#3b82f6"
+c_bg = "rgba(255, 255, 255, 0.92)"
+
+if '_app_settings' in db_data:
+    global_settings = db_data['_app_settings']
+    bg_url = global_settings.get('bg_url', bg_url)
+    p_color = global_settings.get('primary_color', p_color)
+    s_color = global_settings.get('secondary_color', s_color)
+    c_bg = global_settings.get('card_bg', c_bg)
+
+st.markdown(f"""
+<style>
+.stApp {{
+    background-image: url("{bg_url}");
+    background-attachment: fixed;
+    background-size: cover;
+}}
+.block-container {{
+    background-color: {c_bg} !important;
+    padding: 2rem 3rem !important;
+    border-radius: 20px;
+    box-shadow: 0px 10px 30px rgba(0,0,0,0.3);
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+}}
+h1, h2, h3, h4, h5, h6, [data-testid="stMarkdownContainer"] h1, [data-testid="stMarkdownContainer"] h2, [data-testid="stMarkdownContainer"] h3 {{
+    color: {p_color} !important;
+    font-weight: 800;
+}}
 .stButton>button {{
     background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%);
     color: white !important;
@@ -57,9 +89,8 @@ with st.form("commission_form"):
     st.markdown("#### 👤 एसोसिएट्स का विवरण (Associates Details)")
     col_a1, col_a2 = st.columns(2)
     exec_name = col_a1.text_input("👨‍💼 एग्जीक्यूटिव का पूरा नाम (Executive Name) *")
-    senior_name = col_a2.text_input("👨‍राम सीनियर का नाम (Senior Name - यदि कोई हो)")
+    senior_name = col_a2.text_input("👨‍💼 सीनियर का नाम (Senior Name - यदि कोई हो)")
 
-    # 🌟 यहाँ दोनों कमीशन मोड एक साथ बिना छूटे एंट्री के लिए उपलब्ध हैं
     st.markdown("#### 💰 कमीशन बजट निर्धारण (Dual Commission Engine)")
     st.info("💡 आप इस एग्जीक्यूटिव के लिए परसेंटेज (%) और रुपए (₹) दोनों कमीशन एक साथ भर सकते हैं।")
     
@@ -87,14 +118,13 @@ with st.form("commission_form"):
             if 'executives' not in st.session_state.db_projects:
                 st.session_state.db_projects['executives'] = {}
                 
-            # यदि इस नाम का एग्जीक्यूटिव नहीं है तो उसका बेस फोल्डर बनाएं
             if exec_clean not in st.session_state.db_projects['executives']:
                 st.session_state.db_projects['executives'][exec_clean] = {
                     "name": exec_clean,
                     "commissions": {}
                 }
             
-            # उसी सिंगल एंट्री में दोनों डेटा (% और ₹) एक साथ प्रोजेक्ट के अंदर मैप करें
+            # एक ही एंट्री में दोनों डेटा (% और ₹) एक साथ प्रोजेक्ट के अंदर मैप करें
             st.session_state.db_projects['executives'][exec_clean]['commissions'][selected_proj] = {
                 "senior_name": senior_name.strip() if senior_name.strip() else "Direct",
                 "percentage_exec": exec_pct,
@@ -121,13 +151,11 @@ exec_data_root = db_data.get('executives', {})
 if not exec_data_root:
     st.caption("अभी तक कोई एग्जीक्यूटिव या कमीशन स्ट्रक्चर सेट नहीं किया गया है।")
 else:
-    # सभी सेव किये गए एग्जीक्यूटिव्स को लूप में घुमाएं
     for ex_name, ex_info in exec_data_root.items():
         if isinstance(ex_info, dict) and 'commissions' in ex_info:
             comms = ex_info['commissions']
             
             for p_title, p_details in comms.items():
-                # खूबसूरत स्टेटमेंट डिज़ाइन बॉक्स
                 with st.container():
                     st.markdown(f"""
                     <div class="ledger-box">
@@ -137,18 +165,15 @@ else:
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # डेटा मैट्रिक्स व्यू
                     c_m1, c_m2, c_m3, c_m4 = st.columns(4)
                     c_m1.metric("Exec %", f"{p_details.get('percentage_exec', 0)} %")
                     c_m2.metric("Senior %", f"{p_details.get('percentage_senior', 0)} %")
                     c_m3.metric("Exec ₹ (Fixed)", f"₹ {p_details.get('rupees_exec', 0)}")
                     c_m4.metric("Senior ₹ (Fixed)", f"₹ {p_details.get('rupees_senior', 0)}")
                     
-                    # एंट्री डिलीट करने का बटन
                     col_del, _ = st.columns([1, 5])
                     if col_del.button("🗑️ एंट्री हटाएं", key=f"del_{ex_name}_{p_title}"):
                         st.session_state.db_projects['executives'][ex_name]['commissions'].pop(p_title, None)
-                        # यदि एग्जीक्यूटिव की सारी कमीशन एंट्रीज खाली हो जाएं तो उसे रूट से भी साफ कर दें
                         if not st.session_state.db_projects['executives'][ex_name]['commissions']:
                             st.session_state.db_projects['executives'].pop(ex_name, None)
                             
