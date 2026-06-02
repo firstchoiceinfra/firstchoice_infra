@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit st
 import database
 import datetime
 import pandas as pd
@@ -16,7 +16,7 @@ database.init_db()
 db_data = st.session_state.db_projects
 
 # ====================================================================
-# 🎨 यूनिवर्सल लग्जरी थीम सिंक + सुपर कॉम्पैक्ट CSS स्टाइलिंग (Ultra Sleek)
+# 🎨 यूनिवर्सल लग्जरी थीम सिंक + सुपर कॉम्पैक्ट CSS स्टाइलिंग (100% Fixed)
 # ====================================================================
 bg_url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
 p_color = "#1e3a8a"
@@ -52,12 +52,11 @@ h1, h2, h3, h4, h5, h6, [data-testid="stMarkdownContainer"] h1, [data-testid="st
 .stButton>button {{
     background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%);
     color: white !important;
-    border-radius: 6px;
+    border-radius: 8px;
     font-weight: bold;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
 }}
 
-/* 🌟 कार्ड और टेक्स्ट को छोटा-सुंदर बनाने का अल्टीमेट नियम 🌟 */
 .ledger-box {{
     background-color: #ffffff;
     border-left: 4px solid {p_color};
@@ -67,28 +66,45 @@ h1, h2, h3, h4, h5, h6, [data-testid="stMarkdownContainer"] h1, [data-testid="st
     margin-bottom: 4px !important;
 }}
 
-/* मेट्रिक्स का साइज एकदम परफेक्ट और कॉम्पैक्ट करना */
 div[data-testid="stMetric"] div[data-testid="stMetricLabel"] {{
     font-size: 11px !important;
     font-weight: 600 !important;
     color: #475569 !important;
 }}
 div[data-testid="stMetric"] div[data-testid="stMetricValue"] {{
-    font-size: 15px !important;
+    font-size: 14px !important;
     font-weight: 700 !important;
     color: #0f172a !important;
 }}
 
-/* रो-वाइज़ डिलीट बटन को मेट्रिक्स के बराबर अलाइन करने के लिए विशेष स्टाइल */
-.custom-del-btn button {{
+/* 🌟 जादुई CSS: कतार के 5वें कॉलम (✏️ सुधारें) बटन को कस्टमाइज़ करना */
+div[data-testid="stHorizontalBlock"] > div:nth-child(5) button {{
+    background: #e0f2fe !important;
+    color: #0369a1 !important;
+    border: 1px solid #7dd3fc !important;
+    font-size: 12px !important;
+    padding: 0.2rem 0.5rem !important;
+    margin-top: 10px !important;
+    height: auto !important;
+    min-height: 32px !important;
+}}
+div[data-testid="stHorizontalBlock"] > div:nth-child(5) button:hover {{
+    background: #7dd3fc !important;
+    color: #0c4a6e !important;
+}}
+
+/* 🌟 जादुई CSS: कतार के 6ठें कॉलम (🗑️ हटाएँ) बटन को कस्टमाइज़ करना */
+div[data-testid="stHorizontalBlock"] > div:nth-child(6) button {{
     background: #fee2e2 !important;
     color: #991b1b !important;
     border: 1px solid #fca5a5 !important;
     font-size: 12px !important;
     padding: 0.2rem 0.5rem !important;
     margin-top: 10px !important;
+    height: auto !important;
+    min-height: 32px !important;
 }}
-.custom-del-btn button:hover {{
+div[data-testid="stHorizontalBlock"] > div:nth-child(6) button:hover {{
     background: #fca5a5 !important;
     color: #7f1d1d !important;
 }}
@@ -106,21 +122,25 @@ if st.sidebar.button("🔄 क्लाउड से सिंक करें (
         st.success("डेटा सिंक हुआ!")
         st.rerun()
 
-# डेटाबेस से सिर्फ असली प्रोजेक्ट्स की लिस्ट अलग निकालें
 project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data or 'total_plots' in data or 'khasra' in data)]
 
 # ====================================================================
-# 🏢 ऐड मास्टर कमीशन फॉर्म (Add Global Commission Structure)
+# 🏢 मास्टर कमीशन फॉर्म (Dynamic Mode for Add/Edit)
 # ====================================================================
-st.subheader("🏗️ नया पार्टनर एवं कमीशन चैनल सेट करें")
+is_editing = st.session_state.get('edit_mode_active', False)
+
+if is_editing:
+    st.subheader("✏️ पार्टनर प्रोफाइल एवं कमीशन सुधारें (Edit Mode)")
+else:
+    st.subheader("🏗️ नया पार्टनर एवं कमीशन चैनल सेट करें")
 
 with st.form("commission_form"):
     st.markdown("#### 👤 एसोसिएट्स का विवरण (Associates Details)")
     col_a1, col_a2 = st.columns(2)
-    exec_name = col_a1.text_input("👨‍💼 एग्जीक्यूटिव का पूरा नाम (Login ID) *")
-    senior_name = col_a2.text_input("👨‍💼 सीनियर का नाम (Senior Name - यदि कोई हो)")
-
-    exec_mobile = col_a1.text_input("📱 मोबाइल नंबर (Password के लिए अवश्य डालें) *", max_chars=10)
+    
+    exec_name = col_a1.text_input("👨‍💼 एग्जीक्यूटिव का पूरा नाम (Login ID) *", key="form_exec_name")
+    senior_name = col_a2.text_input("👨‍💼 सीनियर का नाम (Senior Name - यदि कोई हो)", key="form_senior_name")
+    exec_mobile = col_a1.text_input("📱 मोबाइल नंबर (Password के लिए अवश्य डालें) *", max_chars=10, key="form_exec_mobile")
     st.caption("⚠️ *नोट: एग्जीक्यूटिव का नाम ही उसकी 'लॉगिन आईडी' होगी और यहाँ डाला गया मोबाइल नंबर ही उसका 'पासवर्ड' होगा।*")
 
     st.markdown("#### 💰 मास्टर कमीशन बजट निर्धारण (Global Dual Commission Engine)")
@@ -138,7 +158,18 @@ with st.form("commission_form"):
         senior_rs = st.number_input("सीनियर कमीशन (₹ Fixed)", min_value=0.0, step=500.0, key="sr")
 
     st.write("")
-    save_comm = st.form_submit_button("💾 पूरा पार्टनर प्रोफाइल और लॉगिन सुरक्षित करें", use_container_width=True)
+    
+    if is_editing:
+        col_btn1, col_btn2 = st.columns(2)
+        save_comm = col_btn1.form_submit_button("💾 सुधार सुरक्षित करें (Update Profile)", use_container_width=True)
+        cancel_edit = col_btn2.form_submit_button("❌ रद्द करें (Cancel)", use_container_width=True)
+        
+        if cancel_edit:
+            for k in ['form_exec_name', 'form_senior_name', 'form_exec_mobile', 'ep', 'sp', 'er', 'sr', 'edit_mode_active', 'old_edit_name']:
+                st.session_state.pop(k, None)
+            st.rerun()
+    else:
+        save_comm = st.form_submit_button("💾 पूरा पार्टनर प्रोफाइल और लॉगिन सुरक्षित करें", use_container_width=True)
 
     if save_comm:
         if exec_name.strip() == "" or exec_mobile.strip() == "":
@@ -150,6 +181,11 @@ with st.form("commission_form"):
             
             if 'executives' not in st.session_state.db_projects:
                 st.session_state.db_projects['executives'] = {}
+            
+            if is_editing and 'old_edit_name' in st.session_state:
+                old_name = st.session_state['old_edit_name']
+                if old_name != exec_clean:
+                    st.session_state.db_projects['executives'].pop(old_name, None)
             
             st.session_state.db_projects['executives'][exec_clean] = {
                 "name": exec_clean,
@@ -164,7 +200,9 @@ with st.form("commission_form"):
             
             with st.spinner("क्लाउड में सुरक्षित हो रहा है..."):
                 if database.save_db_data():
-                    st.success(f"🎉 शानदार! {exec_clean} का प्रोफाइल सुरक्षित हो गया!")
+                    st.success("🎉 डेटाबेस सफलतापूर्वक अपडेट हो गया!")
+                    for k in ['form_exec_name', 'form_senior_name', 'form_exec_mobile', 'ep', 'sp', 'er', 'sr', 'edit_mode_active', 'old_edit_name']:
+                        st.session_state.pop(k, None)
                     st.rerun()
 
 
@@ -186,7 +224,7 @@ else:
     end_date = col_s3.date_input("📅 कब तक (End Date)", datetime.date.today())
 
     if st.button("🔍 स्टेटमेंट और रसीद जनरेट करें", use_container_width=True):
-        st.markdown(f"### 📄 क्लोजिंग स्टेटमेंट: {search_exec}")
+        st.markdown(f"### 📄 क्लोजिंग Statement: {search_exec}")
         st.caption(f"अवधि: {start_date} से {end_date}")
         
         ex_profile = exec_data_root[search_exec]
@@ -277,7 +315,7 @@ else:
 
 
 # ====================================================================
-# 📋 एडिट और मौजूदा एंट्रीज (Sleek Horizontal Row Layout)
+# 📋 एडिट और मौजूदा एंट्रीज (6-Column Ultra Sleek & 100% Fixed Layout)
 # ====================================================================
 st.markdown("<br><hr>", unsafe_allow_html=True)
 st.markdown("<h4 style='margin-bottom:12px; font-size:16px;'>📋 मौजूदा मास्टर पार्टनर्स प्रोफाइल एवं लॉगिन डिटेल्स</h4>", unsafe_allow_html=True)
@@ -289,7 +327,6 @@ if not exec_clean_list_view:
 else:
     for ex_name, p_details in exec_clean_list_view.items():
         with st.container():
-            # 1. हेडर स्ट्रिप (आईडी, सीनियर और पासवर्ड)
             st.markdown(f"""
             <div class="ledger-box">
                 <span style="font-size: 13px; font-weight: bold; color: {p_color};">👨‍💼 पार्टनर आईडी: {ex_name}</span> 
@@ -298,23 +335,34 @@ else:
             </div>
             """, unsafe_allow_html=True)
             
-            # 2. 🌟 जादुई 5-कॉलम लेआउट (सभी मेट्रिक्स और अंत में डिलीट बटन)
-            c_m1, c_m2, c_m3, c_m4, c_m5 = st.columns([1.1, 1.1, 1.2, 1.2, 0.9])
+            # 🌟 परफेक्ट 6-कॉलम लेआउट (4 मेट्रिक्स + 1 एडिट बटन + 1 डिलीट बटन)
+            c_m1, c_m2, c_m3, c_m4, c_m5, c_m6 = st.columns([1.0, 1.0, 1.1, 1.1, 0.7, 0.7])
             
             c_m1.metric("Exec %", f"{p_details.get('percentage_exec', 0)} %")
             c_m2.metric("Senior %", f"{p_details.get('percentage_senior', 0)} %")
             c_m3.metric("Exec ₹ (Fixed)", f"₹ {p_details.get('rupees_exec', 0)}")
             c_m4.metric("Senior ₹ (Fixed)", f"₹ {p_details.get('rupees_senior', 0)}")
             
-            # 🗑️ पार्टनर हटाने का बटन सबसे आखिरी (5वें) कॉलम में सेट कर दिया गया है
+            # ✏️ सुधारें (Edit) बटन - कॉलम नंबर 5 में (बिना किसी HTML रैपर के - अब बिल्कुल लाइव दिखेगा)
             with c_m5:
-                st.markdown('<div class="custom-del-btn">', unsafe_allow_html=True)
+                if st.button("✏️ सुधारें", key=f"edit_{ex_name}", use_container_width=True):
+                    st.session_state['form_exec_name'] = ex_name
+                    st.session_state['form_senior_name'] = p_details.get('senior_name', '')
+                    st.session_state['form_exec_mobile'] = p_details.get('mobile', '')
+                    st.session_state['ep'] = float(p_details.get('percentage_exec', 0.0))
+                    st.session_state['sp'] = float(p_details.get('percentage_senior', 0.0))
+                    st.session_state['er'] = float(p_details.get('rupees_exec', 0.0))
+                    st.session_state['sr'] = float(p_details.get('rupees_senior', 0.0))
+                    st.session_state['edit_mode_active'] = True
+                    st.session_state['old_edit_name'] = ex_name
+                    st.rerun()
+            
+            # 🗑️ हटाएँ (Delete) बटन - कॉलम नंबर 6 में (बिना किसी HTML रैपर के - अब बिल्कुल लाइव दिखेगा)
+            with c_m6:
                 if st.button("🗑️ हटाएँ", key=f"del_{ex_name}", use_container_width=True):
                     st.session_state.db_projects['executives'].pop(ex_name, None)
                     database.save_db_data()
                     st.success(f"{ex_name} हटाया गया!")
                     st.rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
                 
-            # रो के बीच हल्का डिवाइडर (स्टेप-वाइज नीचे जाने के लिए)
             st.markdown("<div style='margin-bottom: 12px; border-bottom: 1px dashed #e2e8f0;'></div>", unsafe_allow_html=True)
