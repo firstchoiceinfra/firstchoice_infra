@@ -1,3 +1,4 @@
+
 import streamlit as st
 import database
 import datetime
@@ -9,9 +10,13 @@ from PIL import Image
 # --- 1. Page Configuration ---
 st.set_page_config(layout="wide", page_title="FC Infra - Site Visits")
 
-# --- 2. Security Interceptor Check ---
+# --- 2. Security Interceptor Check (Strict Admin Lock) ---
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.warning("🔒 Please login on the Main Page portal first.")
+    st.stop()
+
+if st.session_state.get('user_role', 'admin') != 'admin':
+    st.error("🚨 Security Alert: Only authorized Administrators can access the Site Visit Monitoring Desk!")
     st.stop()
 
 # --- 3. Database Initialization ---
@@ -42,8 +47,8 @@ div[data-testid="stForm"] {{ background-color: #ffffff; border: 1px solid #e2e8f
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: center;'>📸 Associate Site Visit Verification Desk</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; font-size: 14px; color: #475569; margin-bottom: 30px;'>Real-Time Compressed Logs, Selfie Verifications & 6-Month Data Retention Guard</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>📸 Admin Site Visit Monitoring Desk</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; font-size: 14px; color: #475569; margin-bottom: 30px;'>Centralized Compressed Logs, Executive Verification & 6-Month Data Retention Control Panel</p>", unsafe_allow_html=True)
 
 # Initialize site visit storage list node if absent from global registry strings
 if 'site_visits' not in st.session_state.db_projects:
@@ -62,7 +67,7 @@ for visit in logged_visits:
         try:
             v_date = datetime.datetime.strptime(visit.get('visit_date'), "%Y-%m-%d").date()
             if v_date < retention_threshold:
-                visit['photo_base64'] = "" # Permanently delete photo to free cloud storage
+                visit['photo_base64'] = "" 
                 visit['photo_status'] = "Purged automatically via 6-Month Cloud Retention Policy"
                 retention_triggered = True
         except:
@@ -84,7 +89,7 @@ executives_root = db_data.get('executives', {})
 active_exec_list = sorted([k for k, v in executives_root.items() if isinstance(v, dict)])
 
 # --- Main Log Submission Form ---
-st.markdown("### 🗺️ Record New Client Site Inspection Tour")
+st.markdown("### 🗺️ Log or Verify Executive Site Inspection Tour")
 with st.form("site_visit_submission_form"):
     
     st.markdown("#### 📍 Layout Specification & Date Details")
@@ -95,17 +100,8 @@ with st.form("site_visit_submission_form"):
     st.markdown("#### 👤 Team Attribution & Hierarchy Details")
     col_t1, col_t2 = st.columns(2)
     
-    if st.session_state.get('user_role', 'executive') == 'executive':
-        logged_exec_name = st.session_state.get('current_user_name', 'Direct')
-        col_t2.text_input("Executive Account Holder Name", value=logged_exec_name, disabled=True)
-        final_exec = logged_exec_name
-        
-        exec_profile = executives_root.get(logged_exec_name, {})
-        senior_head_val = exec_profile.get('senior_name', 'Direct / Admin')
-        senior_name = col_t1.text_input("Authorized Senior Chain Head", value=senior_head_val, disabled=True)
-    else:
-        final_exec = col_t2.selectbox("Select Reporting Executive Account", ["Admin / Direct"] + active_exec_list)
-        senior_name = col_t1.text_input("Enter Senior Chain Head Name / Designation", placeholder="e.g., Senior Channel Lead")
+    final_exec = col_t2.selectbox("Select Reporting Executive Account", ["Admin / Direct Sale"] + active_exec_list)
+    senior_name = col_t1.text_input("Enter Senior Chain Head Name / Designation", placeholder="e.g., Senior Channel Lead")
 
     st.markdown("#### 👥 Client Records & Mandatory Media Attributions")
     col_c1, col_c2 = st.columns([1.1, 0.9])
@@ -129,12 +125,10 @@ with st.form("site_visit_submission_form"):
                 if raw_image.mode in ("RGBA", "P"):
                     raw_image = raw_image.convert("RGB")
                 
-                # Rescale image downscaling to optimal desktop/mobile standard dimensions
                 raw_image.thumbnail((800, 800))
                 
-                # Write back into compressed stream buffer arrays
                 compressed_buffer = io.BytesIO()
-                raw_image.save(compressed_buffer, format="JPEG", quality=40) # Drastically scales down memory footprints
+                raw_image.save(compressed_buffer, format="JPEG", quality=40) 
                 compressed_bytes = compressed_buffer.getvalue()
                 
                 base64_encoded_img = base64.b64encode(compressed_bytes).decode("utf-8")
@@ -145,7 +139,7 @@ with st.form("site_visit_submission_form"):
                     "project_name": visit_project,
                     "visit_date": str(visit_date),
                     "executive_name": final_exec,
-                    "senior_name": senior_name.strip() if hasattr(senior_name, 'strip') else senior_name,
+                    "senior_name": senior_name.strip() if senior_name.strip() else "Direct",
                     "customer_name": customer_name.strip(),
                     "photo_base64": image_data_url,
                     "photo_status": "Active (Compressed)",
@@ -164,21 +158,17 @@ with st.form("site_visit_submission_form"):
 
 # --- Live Site Visit Registry Logs Dashboard ---
 st.markdown("<br><hr>", unsafe_allow_html=True)
-st.markdown("### 📋 Historic Site Visit Registry & Selfie Gallery Tracking Dashboard")
+st.markdown("### 📋 Master Site Visit Registry & Selfie Gallery Tracking Dashboard")
 
 if not logged_visits:
     st.info("ℹ️ No historical site inspection registries logged inside central storage nodes.")
 else:
-    if st.session_state.get('user_role', 'executive') == 'executive':
-        logged_exec_name = st.session_state.get('current_user_name', 'Direct')
-        filtered_visits = [v for v in logged_visits if isinstance(v, dict) and v.get('executive_name') == logged_exec_name]
-    else:
-        filtered_visits = [v for v in logged_visits if isinstance(v, dict)]
+    # Admin can see all records seamlessly
+    filtered_visits = [v for v in logged_visits if isinstance(v, dict)]
         
     if not filtered_visits:
-        st.caption("No site visits registered under your executive profile parameters yet.")
+        st.caption("No site visits registered inside the parameters yet.")
     else:
-        # Show latest entries first
         display_list = list(filtered_visits)
         display_list.reverse()
         
@@ -200,7 +190,6 @@ else:
                     if img_str:
                         st.image(img_str, caption="Verified Selfie Frame Map", use_container_width=True)
                     else:
-                        # If image was deleted by the 6-month retention cleanup script
                         status_msg = visit.get('photo_status', "No verification photo attached.")
                         st.warning(f"⏳ {status_msg}")
                         
