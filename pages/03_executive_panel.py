@@ -16,7 +16,7 @@ database.init_db()
 db_data = st.session_state.db_projects
 
 # ====================================================================
-# 🎨 यूनिवर्सल लग्जरी थीम सिंक + सुपर कॉम्पैक्ट CSS स्टाइलिंग (100% Fixed)
+# 🎨 यूनिवर्सल लग्जरी थीम सिंक + सुपर कॉम्पैक्ट CSS स्टाइलिंग
 # ====================================================================
 bg_url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
 p_color = "#1e3a8a"
@@ -112,8 +112,30 @@ div[data-testid="stHorizontalBlock"] > div:nth-child(6) button:hover {{
 """, unsafe_allow_html=True)
 # ====================================================================
 
+# ====================================================================
+# 🌟 जादुई कॉलैक फंक्शन्स (StreamlitAPIException एरर को रोकने के लिए)
+# ====================================================================
+def prepare_edit(ex_name, details):
+    """यह फंक्शन फॉर्म रेंडर होने से पहले बैकग्राउंड में डेटा लोड कर देता है"""
+    st.session_state['form_exec_name'] = ex_name
+    st.session_state['form_senior_name'] = details.get('senior_name', '')
+    st.session_state['form_exec_mobile'] = details.get('mobile', '')
+    st.session_state['ep'] = float(details.get('percentage_exec', 0.0))
+    st.session_state['sp'] = float(details.get('percentage_senior', 0.0))
+    st.session_state['er'] = float(details.get('rupees_exec', 0.0))
+    st.session_state['sr'] = float(details.get('rupees_senior', 0.0))
+    st.session_state['edit_mode_active'] = True
+    st.session_state['old_edit_name'] = ex_name
+
+def clear_edit_fields():
+    """सुधार रद्द करने या सेव होने के बाद फॉर्म खाली करने के लिए"""
+    for k in ['form_exec_name', 'form_senior_name', 'form_exec_mobile', 'ep', 'sp', 'er', 'sr', 'edit_mode_active', 'old_edit_name']:
+        st.session_state.pop(k, None)
+# ====================================================================
+
+
 st.markdown("<h1 style='text-align: center; font-size: 28px;'>👑 Executive & Commission Channel Panel</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; font-size: 14px; color: #475569; margin-bottom: 25px;'>कंपनी एसोसिएट्स, मोबाइल लॉगिन, मास्टर ड्यूल कमीशन एवं live स्टेटमेंट इंजन</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; font-size: 14px; color: #475569; margin-bottom: 25px;'>कंपनी एसोसिएट्स, मोबाइल लॉगिन, मास्टर ड्यूल कमीशन एवं लाइव स्टेटमेंट इंजन</p>", unsafe_allow_html=True)
 
 # --- SideBar: रिफ्रेश बटन ---
 if st.sidebar.button("🔄 क्लाउड से सिंक करें (रिफ्रेश)"):
@@ -165,8 +187,7 @@ with st.form("commission_form"):
         cancel_edit = col_btn2.form_submit_button("❌ रद्द करें (Cancel)", use_container_width=True)
         
         if cancel_edit:
-            for k in ['form_exec_name', 'form_senior_name', 'form_exec_mobile', 'ep', 'sp', 'er', 'sr', 'edit_mode_active', 'old_edit_name']:
-                st.session_state.pop(k, None)
+            clear_edit_fields()
             st.rerun()
     else:
         save_comm = st.form_submit_button("💾 पूरा पार्टनर प्रोफाइल और लॉगिन सुरक्षित करें", use_container_width=True)
@@ -201,8 +222,7 @@ with st.form("commission_form"):
             with st.spinner("क्लाउड में सुरक्षित हो रहा है..."):
                 if database.save_db_data():
                     st.success("🎉 डेटाबेस सफलतापूर्वक अपडेट हो गया!")
-                    for k in ['form_exec_name', 'form_senior_name', 'form_exec_mobile', 'ep', 'sp', 'er', 'sr', 'edit_mode_active', 'old_edit_name']:
-                        st.session_state.pop(k, None)
+                    clear_edit_fields()
                     st.rerun()
 
 
@@ -315,7 +335,7 @@ else:
 
 
 # ====================================================================
-# 📋 एडिट और मौजूदा एंट्रीज (6-Column Ultra Sleek Layout)
+# 📋 एडिट और मौजूदा एंट्रीज (6-Column Ultra Sleek Layout - 100% Error Free)
 # ====================================================================
 st.markdown("<br><hr>", unsafe_allow_html=True)
 st.markdown("<h4 style='margin-bottom:12px; font-size:16px;'>📋 मौजूदा मास्टर पार्टनर्स प्रोफाइल एवं लॉगिन डिटेल्स</h4>", unsafe_allow_html=True)
@@ -330,39 +350,5 @@ else:
             st.markdown(f"""
             <div class="ledger-box">
                 <span style="font-size: 13px; font-weight: bold; color: {p_color};">👨‍💼 पार्टनर आईडी: {ex_name}</span> 
-                <span style="float: right; background-color: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size:11px; color: #475569; font-weight: 600;">🔑 पासवर्ड (Mob): {p_details.get('mobile','N/A')}</span>
-                <br><span style="font-size: 11px; color: #64748b;">👴 <b>सीनियर चैन हेड:</b> {p_details.get('senior_name','N/A')} | 📅 अपडेटेड: {p_details.get('last_updated','N/A')}</span>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # 🌟 परफेक्ट 6-कॉलम लेआउट (4 मेट्रिक्स + 1 एडिट बटन + 1 डिलीट बटन)
-            c_m1, c_m2, c_m3, c_m4, c_m5, c_m6 = st.columns([1.0, 1.0, 1.1, 1.1, 0.7, 0.7])
-            
-            c_m1.metric("Exec %", f"{p_details.get('percentage_exec', 0)} %")
-            c_m2.metric("Senior %", f"{p_details.get('percentage_senior', 0)} %")
-            c_m3.metric("Exec ₹ (Fixed)", f"₹ {p_details.get('rupees_exec', 0)}")
-            c_m4.metric("Senior ₹ (Fixed)", f"₹ {p_details.get('rupees_senior', 0)}")
-            
-            # ✏️ सुधारें (Edit) बटन
-            with c_m5:
-                if st.button("✏️ सुधारें", key=f"edit_{ex_name}", use_container_width=True):
-                    st.session_state['form_exec_name'] = ex_name
-                    st.session_state['form_senior_name'] = p_details.get('senior_name', '')
-                    st.session_state['form_exec_mobile'] = p_details.get('mobile', '')
-                    st.session_state['ep'] = float(p_details.get('percentage_exec', 0.0))
-                    st.session_state['sp'] = float(p_details.get('percentage_senior', 0.0))
-                    st.session_state['er'] = float(p_details.get('rupees_exec', 0.0))
-                    st.session_state['sr'] = float(p_details.get('rupees_senior', 0.0))
-                    st.session_state['edit_mode_active'] = True
-                    st.session_state['old_edit_name'] = ex_name
-                    st.rerun()
-            
-            # 🗑️ हटाएँ (Delete) बटन
-            with c_m6:
-                if st.button("🗑️ हटाएँ", key=f"del_{ex_name}", use_container_width=True):
-                    st.session_state.db_projects['executives'].pop(ex_name, None)
-                    database.save_db_data()
-                    st.success(f"{ex_name} हटाया गया!")
-                    st.rerun()
-                
-            st.markdown("<div style='margin-bottom: 12px; border-bottom: 1px dashed #e2e8f0;'></div>", unsafe_allow_html=True)
+                <span style="float: right; background-color: #f1f5f9; padding
+
