@@ -16,7 +16,7 @@ database.init_db()
 db_data = st.session_state.db_projects
 
 # ====================================================================
-# 🎨 यूनिवर्सल लग्जरी थीम सिंक + CSS स्टाइलिंग
+# 🎨 यूनिवर्सल लग्जरी थीम सिंक + कॉम्पैक्ट CSS स्टाइलिंग (Font Size Fix)
 # ====================================================================
 bg_url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
 p_color = "#1e3a8a"
@@ -56,20 +56,34 @@ h1, h2, h3, h4, h5, h6, [data-testid="stMarkdownContainer"] h1, [data-testid="st
     font-weight: bold;
     box-shadow: 0 4px 10px rgba(0,0,0,0.2);
 }}
+
+/* 🌟 बड़े अक्षरों को छोटा और सुंदर बनाने के लिए विशेष CSS नियम 🌟 */
 .ledger-box {{
     background-color: #ffffff;
     border-left: 5px solid {p_color};
-    padding: 15px;
+    padding: 10px 15px !important;
     border-radius: 8px;
     box-shadow: 0px 2px 5px rgba(0,0,0,0.05);
-    margin-bottom: 15px;
+    margin-bottom: 5px !important;
+}}
+
+/* स्ट्रीमलिट के बड़े-बड़े मैट्रिक्स (Metrics) का आकार छोटा करना */
+div[data-testid="stMetric"] div[data-testid="stMetricLabel"] {{
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #475569 !important;
+}}
+div[data-testid="stMetric"] div[data-testid="stMetricValue"] {{
+    font-size: 18px !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
 }}
 </style>
 """, unsafe_allow_html=True)
 # ====================================================================
 
 st.markdown("<h1 style='text-align: center;'>👑 Executive & Commission Channel Panel</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; font-size: 16px; color: #475569; margin-bottom: 30px;'>कंपनी एसोसिएट्स, मोबाइल लॉगिन, मास्टर ड्यूल कमीशन एवं लाइव स्टेटमेंट इंजन</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; font-size: 15px; color: #475569; margin-bottom: 30px;'>कंपनी एसोसिएट्स, मोबाइल लॉगिन, मास्टर ड्यूल कमीशन एवं लाइव स्टेटमेंट इंजन</p>", unsafe_allow_html=True)
 
 # --- SideBar: रिफ्रेश बटन ---
 if st.sidebar.button("🔄 क्लाउड से सिंक करें (रिफ्रेश)"):
@@ -141,7 +155,7 @@ with st.form("commission_form"):
 
 
 # ====================================================================
-# 📊 NEW Section: एग्जीक्यूटिव कमीशन स्ट्रक्चर / स्टेटमेंट जनरेटर
+# 📊 Section: एग्जीक्यूटिव कमीशन स्ट्रक्चर / स्टेटमेंट जनरेटर
 # ====================================================================
 st.markdown("<br><hr>", unsafe_allow_html=True)
 st.subheader("📊 एग्जीक्यूटिव कमीशन स्टेटमेंट (Live Commission Ledger Dashboard)")
@@ -161,7 +175,6 @@ else:
         st.markdown(f"### 📄 क्लोजिंग स्टेटमेंट: {search_exec}")
         st.caption(f"अवधि: {start_date} से {end_date}")
         
-        # एग्जीक्यूटिव की मास्टर प्रोफाइल से रेट्स निकालना
         ex_profile = exec_data_root[search_exec]
         ex_pct = float(ex_profile.get('percentage_exec', 0.0))
         ex_rs = float(ex_profile.get('rupees_exec', 0.0))
@@ -169,23 +182,18 @@ else:
         statement_rows = []
         s_no = 1
         
-        # पूरे डेटाबेस में सभी प्रोजेक्ट्स के अंदर बुकिंग स्कैन करना
         for p_name in project_names:
             p_info = db_data[p_name]
-            p_mode = p_info.get('comm_type', 'Percentage (%)') # एडमिन पैनल का नियम
+            p_mode = p_info.get('comm_type', 'Percentage (%)')
             p_mauza = p_info.get('mauza', 'N/A')
             p_plots = p_info.get('plots', {})
             
-            # डिक्शनरी सेफ्टी चेक
             if isinstance(p_plots, list):
                 p_plots = {str(idx): p for idx, p in enumerate(p_plots) if p is not None}
                 
             for plot_id, plot_info in p_plots.items():
                 if isinstance(plot_info, dict) and plot_info.get('status') == 'Booked':
-                    # अगर बुकिंग इस एग्जीक्यूटिव की है
                     if plot_info.get('executive_name') == search_exec:
-                        
-                        # तारीख चेक करना
                         b_date_str = plot_info.get('booking_date', plot_info.get('receipt_date', ''))
                         try:
                             b_date = datetime.datetime.strptime(b_date_str, "%Y-%m-%d").date()
@@ -193,28 +201,22 @@ else:
                             b_date = datetime.date.today()
                             
                         if start_date <= b_date <= end_date:
-                            # 1. प्राप्त राशि
                             t_amt = float(plot_info.get('token_amount', 0.0))
                             s_rate = float(plot_info.get('selling_rate', 0.0))
                             cust_name = plot_info.get('customer_name', 'N/A')
                             
-                            # 2. सकल कमीशन (Gross Commission) गणना एडमिन पैनल के नियम से
                             if "Percentage" in p_mode:
                                 gross_comm = (s_rate * ex_pct) / 100.0
                             else:
                                 gross_comm = ex_rs
                                 
-                            # 3. डिस्काउंट एडजस्टमेंट
                             discount_given = float(plot_info.get('discount', 0.0))
-                            if discount_given < 0: discount_given = 0.0 # सेफ्टी
+                            if discount_given < 0: discount_given = 0.0
                             
                             comm_after_disc = gross_comm - discount_given
                             if comm_after_disc < 0: comm_after_disc = 0.0
                             
-                            # 4. 2% टीडीएस गणना
                             tds_amt = (comm_after_disc * 2.0) / 100.0
-                            
-                            # 5. शुद्ध राशि (Net Commission)
                             net_comm = comm_after_disc - tds_amt
                             
                             statement_rows.append({
@@ -234,11 +236,8 @@ else:
                             
         if statement_rows:
             df_statement = pd.DataFrame(statement_rows)
-            
-            # लग्जरी टेबल डिस्प्ले
             st.dataframe(df_statement, use_container_width=True, hide_index=True)
             
-            # कुल योग दिखाना (Summary)
             total_token = df_statement["प्राप्त टोकन (₹)"].sum()
             total_gross = df_statement["सकल कमीशन (₹)"].sum()
             total_tds = df_statement["2% टीडीएस (₹)"].sum()
@@ -251,7 +250,6 @@ else:
             c_sum3.metric("कुल टीडीएस कटौती (2%)", f"₹ {total_tds}")
             c_sum4.metric("🏆 शुद्ध देय नेट कमीशन", f"₹ {total_net}", delta="Final Payout")
             
-            # 🌟 व्हाट्सएप और प्रिंट का पक्का रास्ता (Download CSV/Excel option for WhatsApp)
             csv_data = df_statement.to_csv(index=False).encode('utf-8-sig')
             st.download_button(
                 label="📥 एक्सपोर्ट स्टेटमेंट (Print / Share on WhatsApp)",
@@ -266,10 +264,10 @@ else:
 
 
 # ====================================================================
-# 📋 मौजूदा पार्टनर्स लिस्ट (View Master Partners List)
+# 📋 एडिट और मौजूदा एंट्रीज (Existing Partners Ledger - COMPACT VIEW)
 # ====================================================================
 st.markdown("<br><hr>", unsafe_allow_html=True)
-st.subheader("📋 मौजूदा मास्टर पार्टनर्स प्रोफाइल एवं लॉगिन डिटेल्स")
+st.markdown("<h4 style='margin-bottom:15px;'>📋 मौजूदा मास्टर पार्टनर्स प्रोफाइल एवं लॉगिन डिटेल्स</h4>", unsafe_allow_html=True)
 
 exec_clean_list_view = {k: v for k, v in exec_data_root.items() if isinstance(v, dict) and 'name' in v}
 
@@ -278,14 +276,16 @@ if not exec_clean_list_view:
 else:
     for ex_name, p_details in exec_clean_list_view.items():
         with st.container():
+            # 🌟 यहाँ अक्षरों का आकार कॉम्पैक्ट (Medium-Small) और बेहद स्लीक कर दिया गया है
             st.markdown(f"""
             <div class="ledger-box">
-                <span style="font-size: 18px; font-weight: bold; color: {p_color};">👨‍💼 पार्टनर आईडी: {ex_name}</span> 
-                <span style="float: right; background-color: #e2e8f0; padding: 2px 8px; border-radius: 4px; font-size:12px;">🔑 पासवर्ड (Mob): {p_details.get('mobile','N/A')}</span>
-                <br>👴 <b>सीनियर चैन हेड:</b> {p_details.get('senior_name','N/A')} | 📅 अपडेटेड: {p_details.get('last_updated','N/A')}
+                <span style="font-size: 15px; font-weight: bold; color: {p_color};">👨‍💼 पार्टनर आईडी: {ex_name}</span> 
+                <span style="float: right; background-color: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size:11px; color: #475569; font-weight: 600;">🔑 पासवर्ड (Mob): {p_details.get('mobile','N/A')}</span>
+                <br><span style="font-size: 13px; color: #475569;">👴 <b>सीनियर चैन हेड:</b> {p_details.get('senior_name','N/A')} | 📅 अपडेटेड: {p_details.get('last_updated','N/A')}</span>
             </div>
             """, unsafe_allow_html=True)
             
+            # छोटे और सुंदर 3D मेट्रिक्स
             c_m1, c_m2, c_m3, c_m4 = st.columns(4)
             c_m1.metric("Exec %", f"{p_details.get('percentage_exec', 0)} %")
             c_m2.metric("Senior %", f"{p_details.get('percentage_senior', 0)} %")
@@ -298,4 +298,4 @@ else:
                 database.save_db_data()
                 st.success("पार्टनर प्रोफाइल सफलतापूर्वक हटा दी गई!")
                 st.rerun()
-            st.markdown("<div style='margin-bottom: 25px;'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
