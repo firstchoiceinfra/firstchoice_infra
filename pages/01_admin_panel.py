@@ -1,24 +1,44 @@
 import streamlit as st
 import database
 
-# --- 1. पेज सेटअप ---
+# --- 1. सबसे पहली कमांड: पेज सेटअप ---
 st.set_page_config(layout="wide", page_title="FC Infra - एडमिन पैनल")
 
-# ==========================================
-# 🎨 एडमिन पैनल का कस्टम UI (सुंदर डिज़ाइन)
-# ==========================================
-st.markdown("""
+# --- 2. सुरक्षा चेक ---
+if 'logged_in' not in st.session_state or not st.session_state.logged_in:
+    st.warning("🔒 कृपया पहले मुख्य पेज (Main Page) पर जाकर लॉगिन करें।")
+    st.stop()
+
+# --- 3. डेटाबेस शुरू और लोड करना ---
+database.init_db()
+
+# यदि डेटाबेस में कोई थीम सेटिंग्स नहीं है, तो डिफ़ॉल्ट सेट करें
+if '_app_settings' not in st.session_state.db_projects:
+    st.session_state.db_projects['_app_settings'] = {
+        "bg_url": "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop",
+        "primary_color": "#1e3a8a",
+        "secondary_color": "#3b82f6",
+        "card_bg": "rgba(255, 255, 255, 0.92)"
+    }
+
+# क्लाउड से लोड की हुई सेटिंग्स निकालना
+settings = st.session_state.db_projects['_app_settings']
+
+# ====================================================================
+# 🎨 डायनामिक कस्टम UI (जो यूजर के चुने हुए रंगों के हिसाब से बदलेगा)
+# ====================================================================
+st.markdown(f"""
 <style>
-/* पीछे की बैकग्राउंड इमेज सेट करना */
-.stApp {
-    background-image: url("https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop");
+/* पीछे की बैकग्राउंड इमेज - डायनामिक */
+.stApp {{
+    background-image: url("{settings.get('bg_url')}");
     background-attachment: fixed;
     background-size: cover;
-}
+}}
 
-/* बीच वाले बॉक्स (फॉर्म) को पारदर्शी सफेद (Glass effect) बनाना */
-.block-container {
-    background-color: rgba(255, 255, 255, 0.92) !important;
+/* बीच वाले बॉक्स (फॉर्म) का ग्लास इफेक्ट */
+.block-container {{
+    background-color: {settings.get('card_bg')} !important;
     padding-top: 2rem !important;
     padding-bottom: 3rem !important;
     padding-left: 3rem !important;
@@ -27,17 +47,17 @@ st.markdown("""
     box-shadow: 0px 10px 30px rgba(0,0,0,0.3);
     margin-top: 2rem;
     margin-bottom: 2rem;
-}
+}}
 
-/* मेन टाइटल का रंग */
-h1 {
-    color: #1e3a8a !important; /* डार्क ब्लू */
+/* मेन टाइटल्स और हेडिंग्स का रंग - डायनामिक */
+h1, h2, h3 {{
+    color: {settings.get('primary_color')} !important;
     font-weight: 800;
-}
+}}
 
-/* ग्रेडिएंट और 3D सेव बटन */
-.stButton>button {
-    background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%);
+/* ग्रेडिएंट और 3D सेव बटन - डायनामिक */
+.stButton>button {{
+    background: linear-gradient(90deg, {settings.get('primary_color')} 0%, {settings.get('secondary_color')} 100%);
     color: white !important;
     border-radius: 8px;
     border: none;
@@ -46,45 +66,73 @@ h1 {
     box-shadow: 0 4px 10px rgba(0,0,0,0.2);
     transition: all 0.3s ease;
     padding: 0.5rem 1rem;
-}
+}}
 
 /* बटन पर माउस ले जाने का इफ़ेक्ट */
-.stButton>button:hover {
+.stButton>button:hover {{
     transform: translateY(-3px);
     box-shadow: 0 6px 15px rgba(0,0,0,0.3);
-    background: linear-gradient(90deg, #1e40af 0%, #2563eb 100%);
-}
+    background: linear-gradient(90deg, {settings.get('secondary_color')} 0%, {settings.get('primary_color')} 100%);
+}}
 
-/* फॉर्म का बैकग्राउंड थोड़ा और हल्का सफेद करना */
-[data-testid="stForm"] {
+/* फॉर्म का अंदरूनी स्टाइल */
+[data-testid="stForm"] {{
     background-color: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
     padding: 20px;
-}
+}}
 </style>
 """, unsafe_allow_html=True)
-# ==========================================
+# ====================================================================
 
-# --- 2. सुरक्षा चेक ---
-if 'logged_in' not in st.session_state or not st.session_state.logged_in:
-    st.warning("🔒 कृपया पहले मुख्य पेज (Main Page) पर जाकर लॉगिन करें।")
-    st.stop()
 
-# --- 3. डेटाबेस लोड करना ---
-database.init_db()
-
-if 'db_projects' not in st.session_state:
-    st.session_state.db_projects = {}
-
-# --- मुख्य पेज UI ---
+# --- मुख्य पेज टाइटल्स ---
 st.markdown("<h1 style='text-align: center;'>⚙️ FirstChoice Infra - Admin Panel</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; font-size: 18px; color: #64748b; margin-bottom: 30px;'>प्रोजेक्ट और कमीशन मैनेजमेंट सिस्टम</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; font-size: 18px; color: #475569; margin-bottom: 30px;'>प्रोजेक्ट, कमीशन और थीम मैनेजमेंट सिस्टम</p>", unsafe_allow_html=True)
+
+
+# ====================================================================
+# 🛠️ नया कंट्रोल पैनल: थीम और रंग कस्टमाइज़ करने का सेक्शन
+# ====================================================================
+with st.expander("🎨 ऐप का रंग-रूप और बैकग्राउंड बदलें (Theme Settings)", expanded=False):
+    st.markdown("#### Here you can change the theme instantly:")
+    
+    # 1. बैकग्राउंड इमेज का इनपुट
+    new_bg = st.text_input("🔗 बैकग्राउंड इमेज का लिंक (Image URL)", value=settings.get('bg_url'))
+    
+    # 2. कलर पिकर्स
+    col_t1, col_t2 = st.columns(2)
+    new_primary = col_t1.color_picker("🎨 मुख्य रंग (Headings & Buttons Color)", value=settings.get('primary_color'))
+    new_secondary = col_t2.color_picker("✨ सहायक रंग (Gradient Accent Color)", value=settings.get('secondary_color'))
+    
+    # 3. बॉक्स का गाढ़ापन/पारदर्शिता
+    new_transparency = st.select_slider(
+        "⬜ डेटा बॉक्स की पारदर्शिता (Box Background)",
+        options=["rgba(255, 255, 255, 0.7)", "rgba(255, 255, 255, 0.85)", "rgba(255, 255, 255, 0.92)", "rgba(255, 255, 255, 1.0)"],
+        value=settings.get('card_bg', 'rgba(255, 255, 255, 0.92)')
+    )
+    
+    # थीम सेव करने का बटन
+    if st.button("💾 नया लुक सुरक्षित करें (Save Theme Layout)"):
+        st.session_state.db_projects['_app_settings'] = {
+            "bg_url": new_bg,
+            "primary_color": new_primary,
+            "secondary_color": new_secondary,
+            "card_bg": new_transparency
+        }
+        with st.spinner("नयी थीम क्लाउड में अपडेट हो रही है..."):
+            if database.save_db_data():
+                st.success("🎉 नया लुक सफलतापूर्वक पूरे ऐप पर लागू हो गया!")
+                st.rerun()
+
+st.markdown("<br>", unsafe_allow_html=True)
+
 
 # -------------------------------------------------------------
-# नया प्रोजेक्ट और कमीशन सेट करना
+# नया प्रोजेक्ट और कमीशन सेट करना (यथावत पुराना लॉजिक)
 # -------------------------------------------------------------
-st.markdown("<h3 style='color: #0f172a;'>🏢 नया प्रोजेक्ट सेट करें (Add New Project)</h3>", unsafe_allow_html=True)
+st.markdown("### 🏢 नया प्रोजेक्ट सेट करें (Add New Project)")
 
 with st.form("add_project_form"):
     proj_name = st.text_input("✨ प्रोजेक्ट का नाम (Project Name - e.g., First Choice City, Sai Samruddhi)")
@@ -106,14 +154,13 @@ with st.form("add_project_form"):
     comm_type = st.radio("कमीशन का प्रकार (Commission Type)", ["Percentage (%)", "Rupees (₹)"], horizontal=True)
     max_comm = st.number_input(f"कुल अधिकतम कमीशन ({comm_type})", min_value=0.0)
 
-    st.write("") # बटन के ऊपर थोड़ा स्पेस
-    submit_proj = st.form_submit_button("💾 प्रोजेक्ट और इन्वेंट्री सुरक्षित करें (Save)", use_container_width=True)
+    st.write("") 
+    submit_proj = st.form_submit_button("💾 प्रोजेक्ट और इन्वेंट्री सुरक्षित करें (Save Project)", use_container_width=True)
    
     if submit_proj:
         if proj_name.strip() == "":
             st.error("🚨 कृपया प्रोजेक्ट का नाम ज़रूर लिखें!")
         else:
-            # इन्वेंट्री के लिए अपने आप खाली प्लॉट्स तैयार करना
             plots_dict = {}
             for i in range(1, int(total_plots) + 1):
                 plots_dict[str(i)] = {"status": "Available"}
@@ -127,10 +174,9 @@ with st.form("add_project_form"):
                 "total_plots": total_plots,
                 "comm_type": comm_type,
                 "max_commission": max_comm,
-                "plots": plots_dict # इन्वेंट्री को यही डेटा चाहिए
+                "plots": plots_dict 
             }
            
-            # सबसे ज़रूरी लाइन: प्रोजेक्ट डेटा को क्लाउड (Firebase) में लॉक करना
             with st.spinner("क्लाउड में सेव हो रहा है..."):
                 if database.save_db_data():
                     st.success(f"🎉 शानदार! प्रोजेक्ट '{proj_name}' सफलतापूर्वक सेट हो गया है!")
@@ -140,10 +186,10 @@ with st.form("add_project_form"):
 # मौजूदा प्रोजेक्ट्स देखना
 # -------------------------------------------------------------
 st.markdown("<br><hr>", unsafe_allow_html=True)
-st.markdown("<h3 style='color: #0f172a;'>📋 मौजूदा प्रोजेक्ट्स (Existing Projects)</h3>", unsafe_allow_html=True)
+st.markdown("### 📋 मौजूदा प्रोजेक्ट्स (Existing Projects)")
 
 if st.session_state.db_projects:
-    # सिर्फ उन फाइलों को दिखाएं जो प्रोजेक्ट हैं (एग्जीक्यूटिव लिस्ट को छुपाएं)
+    # सिर्फ असली प्रोजेक्ट्स को लिस्ट में लाएं (थीम सेटिंग्स और एग्जीक्यूटिव्स को छुपाएं)
     projects_only = {k: v for k, v in st.session_state.db_projects.items() if isinstance(v, dict) and 'plots' in v}
     
     if not projects_only:
