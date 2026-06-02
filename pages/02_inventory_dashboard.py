@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 import database
 import datetime
 
@@ -11,10 +12,12 @@ if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.stop()
 
 # --- 3. Database Sync ---
-database.init_db()
-db_data = st.session_state.db_projects
+database.init_db() 
+db_data = st.session_state.db_projects 
 
-# Global Theme Sync Setup
+# ====================================================================
+# 🎨 Universal Theme Sync + Premium CSS Layout
+# ====================================================================
 bg_url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
 p_color = "#1e3a8a"
 s_color = "#3b82f6"
@@ -29,119 +32,300 @@ if '_app_settings' in db_data:
 
 st.markdown(f"""
 <style>
-.stApp {{ background-image: url("{bg_url}"); background-attachment: fixed; background-size: cover; }}
-.block-container {{ background-color: {c_bg} !important; padding: 1.5rem 2.5rem !important; border-radius: 20px; box-shadow: 0px 10px 30px rgba(0,0,0,0.3); margin-top: 1.5rem; margin-bottom: 1.5rem; }}
-h1, h2, h3 {{ color: {p_color} !important; font-weight: 800; }}
-.stButton>button {{ background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%); color: white !important; border-radius: 6px; font-weight: bold; }}
-.plot-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 8px; margin-top: 15px; margin-bottom: 25px; }}
-.plot-box {{ padding: 12px 5px; text-align: center; border-radius: 6px; font-weight: 700; color: white; font-size: 13px; box-shadow: inset 0px -3px 0px rgba(0,0,0,0.2); }}
-.plot-available {{ background-color: #22c55e; border: 1px solid #16a34a; }}
-.plot-booked {{ background-color: #ef4444; border: 1px solid #dc2626; }}
-div[data-testid="stForm"] {{ background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }}
+.stApp {{
+    background-image: url("{bg_url}");
+    background-attachment: fixed;
+    background-size: cover;
+}}
+.block-container {{
+    background-color: {c_bg} !important;
+    padding: 2rem 3rem !important;
+    border-radius: 20px;
+    box-shadow: 0px 10px 30px rgba(0,0,0,0.3);
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+}}
+h1, h2, h3, h4, h5, h6, [data-testid="stMarkdownContainer"] h1, [data-testid="stMarkdownContainer"] h2, [data-testid="stMarkdownContainer"] h3 {{
+    color: {p_color} !important;
+    font-weight: 800;
+}}
+.plot-card {{
+    padding: 15px;
+    border-radius: 10px;
+    text-align: center;
+    margin-bottom: 10px;
+    box-shadow: 0px 4px 6px rgba(0,0,0,0.1);
+    font-weight: bold;
+}}
+.plot-available {{
+    background-color: #d4edda !important;
+    color: #155724 !important;
+    border: 2px solid #c3e6cb;
+}}
+.plot-booked {{
+    background-color: #f8d7da !important;
+    color: #721c24 !important;
+    border: 2px solid #f5c6cb;
+}}
+.stButton>button {{
+    background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%);
+    color: white !important;
+    border-radius: 6px;
+    font-weight: bold;
+}}
+div[data-testid="stForm"] {{
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 25px;
+}}
 </style>
 """, unsafe_allow_html=True)
+# ====================================================================
 
-st.markdown("<h1 style='text-align: center;'>📊 Inventory Mapping & Allocation Matrix</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; font-size: 14px; color: #475569; margin-bottom: 30px;'>Real-time Interactive Plot Grid and Processing Desk</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>🏗️ FirstChoice Infra - Inventory Dashboard</h1>", unsafe_allow_html=True)
 
-# Fetching list of available layout profiles
-project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data or 'total_plots' in data)]
+# =========================================================
+# 🌟 Smart Associate Auto-Complete Registry Scanner
+# =========================================================
+project_names = []
+exec_list_temp = []
+
+for key, val in db_data.items():
+    if isinstance(val, dict) and ('plots' in val or 'total_plots' in val or 'khasra' in val):
+        project_names.append(key)
+    else:
+        if isinstance(val, dict):
+            for k, v in val.items():
+                exec_list_temp.append(str(k))
+                if isinstance(v, dict):
+                    if 'name' in v: exec_list_temp.append(str(v['name']))
+                    if 'Name' in v: exec_list_temp.append(str(v['Name']))
+                    if 'exec_name' in v: exec_list_temp.append(str(v['exec_name']))
+        elif isinstance(val, list):
+            exec_list_temp.extend([str(e) for e in val if isinstance(e, str)])
+
+exec_list = ["Direct Sale"] 
+for e in exec_list_temp:
+    e_clean = e.strip()
+    if e_clean and e_clean not in exec_list and e_clean.lower() not in ['true', 'false', 'none', 'select']:
+        exec_list.append(e_clean)
+exec_list.sort()
+# =========================================================
+
+# --- Sidebar Controls ---
+if st.sidebar.button("🔄 Sync Cloud Storage (Refresh)"):
+    with st.spinner("Synchronizing database..."):
+        database.load_db_data()
+        st.success("Cloud Synchronized!")
+        st.rerun()
+
+st.sidebar.divider()
+st.sidebar.header("Select Project Blueprint")
 
 if not project_names:
-    st.warning("⚠️ No active projects configured in Cloud Dashboard. Please initialize projects via Admin Desk first.")
+    st.warning("No initialized layout found. Please construct projects via Admin Desk.")
     st.stop()
 
-# Selector Controls
-selected_proj = st.selectbox("🏢 Select Layout Project Blueprint", project_names)
-proj_profile = db_data[selected_proj]
-plot_registry = proj_profile.get('plots', {})
+selected_project_name = st.sidebar.selectbox("Active Blueprints Registry", project_names)
 
-# Data Safety check mapping structures
-if isinstance(plot_registry, list):
-    plot_registry = {str(idx): p for idx, p in enumerate(plot_registry) if p is not None}
+# Array Node Structure Safety Fix
+if isinstance(st.session_state.db_projects[selected_project_name].get('plots'), list):
+    fixed_plots = {str(i): plot for i, plot in enumerate(st.session_state.db_projects[selected_project_name]['plots']) if plot is not None}
+    st.session_state.db_projects[selected_project_name]['plots'] = fixed_plots
 
-# Count allocation variables
-total_units = len(plot_registry)
-booked_units = sum(1 for p in plot_registry.values() if isinstance(p, dict) and p.get('status') == 'Booked')
-available_units = total_units - booked_units
+project_data = st.session_state.db_projects[selected_project_name]
+plots = project_data.get('plots', {})
 
-# Metrics summary bar
-c_m1, c_m2, c_m3 = st.columns(3)
-c_m1.metric("Total Plots Registered", total_units)
-c_m2.metric("Available Inventory Plots", available_units, delta="Ready to Book")
-c_m3.metric("Booked Allocation Units", booked_units, delta="- Closed Deals", delta_color="inverse")
+if not plots:
+    st.info("No plot matrix mapped inside this project profile.")
+    st.stop()
 
-# --- Interactive Layout Map Matrix ---
-st.markdown("### 🗺️ Live Graphical Layout Chart Map")
-st.markdown("""<div style='display: flex; gap: 15px; font-size:12px; font-weight:600; margin-bottom:10px;'>
-    <div style='display:flex; align-items:center; gap:5px;'><div style='width:15px; height:15px; background:#22c55e; border-radius:3px;'></div>Available Plot</div>
-    <div style='display:flex; align-items:center; gap:5px;'><div style='width:15px; height:15px; background:#ef4444; border-radius:3px;'></div>Booked Out Unit</div>
-</div>""", unsafe_allow_html=True)
 
-grid_html = '<div class="plot-grid">'
-sorted_keys = sorted(plot_registry.keys(), key=lambda x: int(x) if x.isdigit() else 9999)
+# =========================================================
+# 📝 Interactive Booking Assignment Form Desk
+# =========================================================
+if 'booking_popup' in st.session_state:
+    p_info = st.session_state.booking_popup
+    proj = p_info['project']
+    plt = p_info['plot']
+    curr_stat = p_info['current_status']
+    
+    p_khasra = project_data.get('khasra', 'N/A')
+    p_ph = project_data.get('ph_no', 'N/A')
+    p_mauza = project_data.get('mauza', 'N/A')
+    p_tahsil = project_data.get('tahsil', 'N/A')
+    p_dist = project_data.get('district', 'N/A')
 
-for p_num in sorted_keys:
-    p_details = plot_registry[p_num]
-    status_style = "plot-booked" if p_details.get('status') == 'Booked' else "plot-available"
-    grid_html += f'<div class="plot-box {status_style}">P-{p_num}</div>'
-grid_html += '</div>'
-st.markdown(grid_html, unsafe_allow_html=True)
-
-# Filter open plots dropdown matrix
-vacant_plots_list = [p for p in sorted_keys if plot_registry[p].get('status', 'Available') == 'Available']
-
-# --- Real-time Booking Panel Desk ---
-st.markdown("<hr>", unsafe_allow_html=True)
-st.markdown("### ✍️ Processing Ledger Form Assignment")
-
-if not vacant_plots_list:
-    st.info("🎉 Outstanding! This project's registered inventory has completely sold out!")
-else:
-    with st.form("plot_booking_form"):
-        col_f1, col_f2 = st.columns(2)
-        target_plot = col_f1.selectbox("🎯 Choose Target Plot for Reservation", vacant_plots_list)
-        client_name = col_f2.text_input("👤 Client Full Name *")
+    st.markdown(f"### 📝 Project Matrix: {proj} | Secure Plot Node Assignment: P-{plt}")
+    
+    # --- A. Full Booking Form (Restored with ALL Missing Columns) ---
+    if curr_stat == "Available":
+        st.info(f"📍 **Land Location Specifications:** Khasra No: {p_khasra} | PH No: {p_ph} | Mauza: {p_mauza} | Tahsil: {p_tahsil} | District: {p_dist}")
         
-        st.markdown("#### 💵 Commercial Payout Audit Specifications")
-        col_c1, col_c2, col_c3 = st.columns(3)
-        selling_rate = col_c1.number_input("Selling Gross Value (Total Base Rate ₹) *", min_value=0.0, step=10000.0)
-        token_amt = col_c2.number_input("Token / Advance Value Collected (₹)", min_value=0.0, step=5000.0)
-        discount_val = col_c3.number_input("Authorized Special Adjustments / Discount Given (₹)", min_value=0.0, step=1000.0)
+        st.subheader("👤 Client KYC & Personal Information", divider="blue")
+        col1, col2, col3 = st.columns(3)
+        c_name = col1.text_input("Client Full Name *")
+        c_dob = col2.date_input("Date of Birth (DOB)", min_value=datetime.date(1950, 1, 1))
+        c_phone = col3.text_input("Contact Mobile Number *")
         
-        # Smart Role Management Selection Check
-        executives_root = db_data.get('executives', {})
-        active_exec_list = [k for k, v in executives_root.items() if isinstance(v, dict)]
+        c_address = st.text_area("Permanent Residential Address")
         
-        st.markdown("#### 🔐 Associated Network Attributions")
-        # Rule Check: If user is simple executive profile, block cross-profile assignment tampering
+        col4, col5 = st.columns(2)
+        c_aadhaar = col4.text_input("Aadhaar National ID Number")
+        c_pan = col5.text_input("PAN Card Alpha-Numeric ID")
+        
+        col6, col7 = st.columns(2)
+        n_name = col6.text_input("Nominee Attributed Full Name")
+        n_age = col7.text_input("Nominee Declared Age")
+        
+        st.subheader("📐 Layout Specifications & Commercial Valuation", divider="blue")
+        col8, col9, col10 = st.columns(3)
+        plot_area = col8.text_input("Plot Dimensions / Area (Sq.Ft / Sq.M)")
+        company_rate = col9.number_input("Standard Company Base Rate (₹)", min_value=0.0, step=50.0)
+        selling_rate = col10.number_input("Final Negotiated Selling Rate (₹) *", min_value=0.0, step=50.0)
+        
+        # Automatic pricing adjustments string output
+        discount = company_rate - selling_rate
+        if discount > 0:
+            st.success(f"🎉 **Authorized Instant Discount: ₹ {discount}**")
+        elif discount < 0:
+            st.warning(f"⚠️ Premium Surcharge Value Applied: ₹ {abs(discount)}")
+            
+        st.subheader("💳 Secured Advance & Token Collection Details", divider="blue")
+        col11, col12, col13 = st.columns(3)
+        token_amt = col11.number_input("Deposited Token Amount (₹) *", min_value=0.0, step=1000.0)
+        pay_mode = col12.selectbox("Payment Channel Mode", ["Cash", "Online/UPI", "Cheque", "RTGS/NEFT"])
+        trans_id = col13.text_input("Transaction ID / Instrument Reference Number")
+        
+        receive_date = st.date_input("Date of Advance Receipt Collection")
+        
+        st.subheader("👨‍💼 Associated Partner Credit Allocation", divider="blue")
+        st.caption("💡 *Type the initial characters in the input dropdown box to trigger the auto-search indexing filters instantly.*")
+        
+        # Role Protection Guard Engine
         if st.session_state.get('user_role', 'executive') == 'executive':
-            logged_name = st.session_state.get('current_user_name', 'Direct')
-            st.text_input("Associate Credit Assignment Account", value=logged_name, disabled=True)
-            chosen_exec = logged_name
+            logged_name = st.session_state.get('current_user_name', 'Direct Sale')
+            st.text_input("Attributed Partner Profile", value=logged_name, disabled=True)
+            final_exec_name = logged_name
         else:
-            # Administrators retain the privilege to freely select or override staff allocations
-            chosen_exec = st.selectbox("Associate Account Holder Credit Allocation", ["Direct"] + active_exec_list)
-
+            final_exec_name = st.selectbox("Attributed Partner Profile", exec_list, index=0)
+        
         st.write("")
-        process_booking = st.form_submit_button("🔒 Lock Plot Reservation & Log Commercial Ledger", use_container_width=True)
-
-        if process_booking:
-            if client_name.strip() == "" or selling_rate <= 0:
-                st.error("🚨 Client Name and Selling Gross Value are mandatory to secure inventory!")
+        if st.button("🔒 Execute Permanent Inventory Lock & Allocation", use_container_width=True, type="primary"):
+            if c_name.strip() == "" or c_phone.strip() == "":
+                st.error("🚨 Validation Failure: Client Name and Mobile Contact Number are mandatory fields!")
+            elif token_amt <= 0:
+                st.error("🚨 Accounting Failure: Token Deposit Value must be greater than zero!")
             else:
-                # Update targeted plot index node directly on database
-                st.session_state.db_projects[selected_proj]['plots'][target_plot] = {
+                booking_data = {
                     "status": "Booked",
-                    "customer_name": client_name.strip(),
+                    "customer_name": c_name.strip(),
+                    "dob": str(c_dob),
+                    "phone": c_phone.strip(),
+                    "address": c_address.strip(),
+                    "aadhaar": c_aadhaar.strip(),
+                    "pan": c_pan.strip(),
+                    "nominee_name": n_name.strip(),
+                    "nominee_age": n_age.strip(),
+                    "plot_area": plot_area.strip(),
+                    "company_rate": company_rate,
                     "selling_rate": selling_rate,
+                    "discount": discount,
                     "token_amount": token_amt,
-                    "discount": discount_val,
-                    "executive_name": chosen_exec,
+                    "payment_mode": pay_mode,
+                    "transaction_id": trans_id.strip(),
+                    "receipt_date": str(receive_date),
+                    "executive_name": final_exec_name, 
                     "booking_date": str(datetime.date.today())
                 }
                 
-                with st.spinner("Logging allocation data onto secure ledger..."):
+                st.session_state.db_projects[proj]['plots'][plt].update(booking_data)
+                
+                with st.spinner("Locking transaction matrix onto cloud cloud security..."):
                     if database.save_db_data():
-                        st.success(f"🚀 Success! Plot P-{target_plot} successfully locked under client '{client_name.strip()}'!")
+                        st.success(f"🎉 Congratulations! Plot Unit P-{plt} successfully secured under client reference '{c_name.strip()}'!")
+                        del st.session_state['booking_popup']
                         st.rerun()
+
+    # --- B. Comprehensive Statement Dashboard (If Unit is Already Booked) ---
+    else:
+        p_data = st.session_state.db_projects[proj]['plots'][plt]
+        st.error(f"⚠️ Allocation Alert: This plot is locked out. Comprehensive allotment statement details below:")
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Customer Identity Holder", p_data.get('customer_name', 'N/A'))
+        c1.write(f"**DOB:** {p_data.get('dob', 'N/A')} | **Address:** {p_data.get('address', 'N/A')}")
+        
+        c2.metric("Contact Profile String", p_data.get('phone', 'N/A'))
+        c2.write(f"**Aadhaar ID:** {p_data.get('aadhaar', 'N/A')} | **PAN Card ID:** {p_data.get('pan', 'N/A')}")
+        
+        c3.metric("Credential Credit Owner", p_data.get('executive_name', 'N/A'))
+        c3.write(f"**Nominee:** {p_data.get('nominee_name', 'N/A')} (Age Ref: {p_data.get('nominee_age', 'N/A')})")
+        
+        with st.expander("📄 Financial Commercial Statement & Payout Ledger", expanded=True):
+            col_s1, col_s2, col_s3 = st.columns(3)
+            col_s1.write(f"📐 **Mapped Plot Size:** {p_data.get('plot_area', 'N/A')}")
+            col_s1.write(f"📆 **Allotment Settlement Date:** {p_data.get('booking_date', 'N/A')}")
+            
+            col_s2.write(f"🏢 **Base Book Value:** ₹{p_data.get('company_rate', 0)}")
+            col_s2.write(f"💰 **Gross Selling Rate:** ₹{p_data.get('selling_rate', 0)}")
+            col_s2.success(f"💸 **Adjusted Discount Cut:** ₹{p_data.get('discount', 0)}")
+            
+            col_s3.warning(f"💳 **Deposited Advance Token:** ₹{p_data.get('token_amount', 0)}")
+            col_s3.write(f"🏪 **Payment Channel Mode:** {p_data.get('payment_mode', 'N/A')}")
+            col_s3.write(f"🔑 **Instrument/Ref ID:** {p_data.get('transaction_id', 'N/A')}")
+            col_s3.write(f"📅 **Advance Receipt Date:** {p_data.get('receipt_date', 'N/A')}")
+            
+        # Admin Override Privilege Check for Termination
+        if st.session_state.get('user_role', 'admin') == 'admin':
+            st.write("")
+            st.warning("Strategic Action: Proceed with structural contract termination to restore unit to Vacant Inventory?")
+            if st.button("✅ Force Cancel Allotment & Revoke Allocation", use_container_width=True):
+                st.session_state.db_projects[proj]['plots'][plt] = {"status": "Available"}
+                with st.spinner("Revoking ledger data strings..."):
+                    if database.save_db_data():
+                        st.success(f"Plot P-{plt} successfully restored to active open inventory!")
+                        del st.session_state['booking_popup']
+                        st.rerun()
+
+    st.write("---")
+    if st.button("❌ Back to Grid Matrix Map View", use_container_width=True):
+        del st.session_state['booking_popup']
+        st.rerun()
+
+    st.stop() 
+
+
+# =========================================================
+# 📊 Interactive Plot Grid Matrix Render Layout
+# =========================================================
+st.markdown(f"### 📋 Project Inventory Gallery: {selected_project_name}")
+st.write(f"📍 Location Profile Matrix: Khasra No: {project_data.get('khasra','N/A')} | Mauza: {project_data.get('mauza','N/A')} | Registered Unit Base Count: {project_data.get('total_plots', 0)}")
+
+cols_per_row = 5 
+plot_items = list(plots.items())
+rows = [plot_items[i:i + cols_per_row] for i in range(0, len(plot_items), cols_per_row)]
+
+for row in rows:
+    cols = st.columns(cols_per_row)
+    for i, (plot_id, plot_info) in enumerate(row):
+        with cols[i]:
+            status = plot_info.get('status', 'Available')
+            
+            if status == "Available":
+                st.markdown(f'<div class="plot-card plot-available">🏠 Plot {plot_id}<br>✅ Available</div>', unsafe_allow_html=True)
+                btn_txt = "📝 Book Unit"
+            else:
+                cust = plot_info.get('customer_name', 'N/A')
+                st.markdown(f'<div class="plot-card plot-booked">🛑 Plot {plot_id}<br>❌ Booked ({cust})</div>', unsafe_allow_html=True)
+                btn_txt = "📄 Statement"
+            
+            if st.button(btn_txt, key=f"btn_{selected_project_name}_{plot_id}", use_container_width=True):
+                st.session_state['booking_popup'] = {
+                    'project': selected_project_name,
+                    'plot': plot_id,
+                    'current_status': status
+                }
+                st.rerun()
+
