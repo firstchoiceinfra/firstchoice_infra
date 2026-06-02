@@ -1,10 +1,10 @@
 import streamlit as st
 import database
 import datetime
-import base64
+import pandas as pd
 
 # --- 1. Page Configuration ---
-st.set_page_config(layout="wide", page_title="FC Infra - Admin Panel")
+st.set_page_config(layout="wide", page_title="FC Infra - Commission Channel")
 
 # --- 2. Security Check (Strict Admin Lock) ---
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
@@ -12,105 +12,221 @@ if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.stop()
 
 if st.session_state.get('user_role', 'admin') != 'admin':
-    st.error("🚨 Security Alert: You do not have permission to access the Admin Panel!")
+    st.error("🚨 Security Alert: You do not have permission to access the Commission Panel!")
     st.stop()
 
-# --- 3. Database Initialization ---
+# --- 3. Cloud Database Integration ---
 database.init_db()
 db_data = st.session_state.db_projects
 
-# Set default theme settings if not present
-if '_app_settings' not in st.session_state.db_projects:
-    st.session_state.db_projects['_app_settings'] = {
-        "bg_url": "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop",
-        "primary_color": "#1e3a8a",
-        "secondary_color": "#3b82f6",
-        "card_bg": "rgba(255, 255, 255, 0.92)"
-    }
+# Global Theme Synchronization Logic
+bg_url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
+p_color = "#1e3a8a"
+s_color = "#3b82f6"
+c_bg = "rgba(255, 255, 255, 0.92)"
 
-settings = st.session_state.db_projects['_app_settings']
-bg_url = settings.get('bg_url', '')
-p_color = settings.get('primary_color', '#1e3a8a')
-s_color = settings.get('secondary_color', '#3b82f6')
-c_bg = settings.get('card_bg', 'rgba(255, 255, 255, 0.92)')
+if '_app_settings' in db_data:
+    global_settings = db_data['_app_settings']
+    bg_url = global_settings.get('bg_url', bg_url)
+    p_color = global_settings.get('primary_color', p_color)
+    s_color = global_settings.get('secondary_color', s_color)
+    c_bg = global_settings.get('card_bg', c_bg)
 
-# --- CSS Styling (Global Theme Integration) ---
 st.markdown(f"""
 <style>
 .stApp {{ background-image: url("{bg_url}"); background-attachment: fixed; background-size: cover; }}
 .block-container {{ background-color: {c_bg} !important; padding: 1.5rem 2.5rem !important; border-radius: 20px; box-shadow: 0px 10px 30px rgba(0,0,0,0.3); margin-top: 1.5rem; margin-bottom: 1.5rem; }}
 h1, h2, h3 {{ color: {p_color} !important; font-weight: 800; }}
-.stButton>button {{ background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%); color: white !important; border-radius: 8px; font-weight: bold; }}
-div[data-testid="stForm"] {{ background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; }}
+.stButton>button {{ background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%); color: white !important; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }}
+.ledger-box {{ background-color: #ffffff; border-left: 4px solid {p_color}; padding: 6px 12px !important; border-radius: 6px; box-shadow: 0px 1px 3px rgba(0,0,0,0.05); margin-bottom: 4px !important; }}
+div[data-testid="stMetric"] div[data-testid="stMetricLabel"] {{ font-size: 11px !important; font-weight: 600 !important; color: #475569 !important; }}
+div[data-testid="stMetric"] div[data-testid="stMetricValue"] {{ font-size: 14px !important; font-weight: 700 !important; color: #0f172a !important; }}
+
+/* Row Action Buttons Alignment Colors */
+div[data-testid="stHorizontalBlock"] > div:nth-child(5) button {{ background: #e0f2fe !important; color: #0369a1 !important; border: 1px solid #7dd3fc !important; font-size: 12px !important; padding: 0.2rem 0.5rem !important; margin-top: 10px !important; min-height: 32px !important; }}
+div[data-testid="stHorizontalBlock"] > div:nth-child(5) button:hover {{ background: #7dd3fc !important; color: #0c4a6e !important; }}
+div[data-testid="stHorizontalBlock"] > div:nth-child(6) button {{ background: #fee2e2 !important; color: #991b1b !important; border: 1px solid #fca5a5 !important; font-size: 12px !important; padding: 0.2rem 0.5rem !important; margin-top: 10px !important; min-height: 32px !important; }}
+div[data-testid="stHorizontalBlock"] > div:nth-child(6) button:hover {{ background: #fca5a5 !important; color: #7f1d1d !important; }}
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: center;'>⚙️ FirstChoice Infra - Admin Panel</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; font-size: 14px; color: #475569; margin-bottom: 25px;'>Project Customization, Infrastructure Budget & Branding Control Center</p>", unsafe_allow_html=True)
+# --- Dynamic Safe-Edit Callback Engine ---
+def prepare_edit(ex_name, details):
+    st.session_state['form_exec_name'] = ex_name
+    st.session_state['form_senior_name'] = details.get('senior_name', '')
+    st.session_state['form_exec_mobile'] = details.get('mobile', '')
+    st.session_state['ep'] = float(details.get('percentage_exec', 0.0))
+    st.session_state['sp'] = float(details.get('percentage_senior', 0.0))
+    st.session_state['er'] = float(details.get('rupees_exec', 0.0))
+    st.session_state['sr'] = float(details.get('rupees_senior', 0.0))
+    st.session_state['edit_mode_active'] = True
+    st.session_state['old_edit_name'] = ex_name
 
-# --- Theme Configuration Manager ---
-with st.expander("🎨 Change App Appearance & Background Photo (Theme Settings)", expanded=False):
-    uploaded_file = st.file_uploader("📁 Choose background photo from desktop or mobile", type=["jpg", "jpeg", "png"])
-    col_t1, col_t2 = st.columns(2)
-    new_primary = col_t1.color_picker("🎨 Primary Headings & Buttons Color", value=p_color)
-    new_secondary = col_t2.color_picker("✨ Secondary Gradient Accent Color", value=s_color)
-    new_transparency = st.select_slider("⬜ Card Box Opacity / Transparency", options=["rgba(255, 255, 255, 0.7)", "rgba(255, 255, 255, 0.85)", "rgba(255, 255, 255, 0.92)", "rgba(255, 255, 255, 1.0)"], value=c_bg)
-    
-    if st.button("💾 Apply New Theme Layout"):
-        if uploaded_file is not None:
-            encoded_img = base64.b64encode(uploaded_file.read()).decode("utf-8")
-            bg_data_url = f"data:{uploaded_file.type};base64,{encoded_img}"
-        else:
-            bg_data_url = bg_url
-            
-        st.session_state.db_projects['_app_settings'] = {"bg_url": bg_data_url, "primary_color": new_primary, "secondary_color": new_secondary, "card_bg": new_transparency}
-        if database.save_db_data():
-            st.success("🎉 New theme layout successfully applied across the app!")
+def clear_edit_fields():
+    for k in ['form_exec_name', 'form_senior_name', 'form_exec_mobile', 'ep', 'sp', 'er', 'sr', 'edit_mode_active', 'old_edit_name']:
+        st.session_state.pop(k, None)
+
+st.markdown("<h1 style='text-align: center;'>👑 Executive & Commission Channel Panel</h1>", unsafe_allow_html=True)
+
+# --- Main Setup Profile Form ---
+is_editing = st.session_state.get('edit_mode_active', False)
+st.subheader("✏️ Edit Partner Profile & Commissions (Update Mode)" if is_editing else "🏗️ Add New Partner Account & Commission Structure")
+
+with st.form("commission_form"):
+    st.markdown("#### 👤 Associate Personal Credentials")
+    col_a1, col_a2 = st.columns(2)
+    exec_name = col_a1.text_input("👨‍💼 Executive Full Name (Login ID) *", key="form_exec_name")
+    senior_name = col_a2.text_input("👨‍💼 Senior Chain Head Name", key="form_senior_name")
+    exec_mobile = col_a1.text_input("📱 10-Digit Mobile Number (Account Password) *", max_chars=10, key="form_exec_mobile")
+    st.caption("⚠️ *Note: The Executive Name will serve as their Login User ID, and the Mobile Number will be their Login Password.*")
+
+    st.markdown("#### 💰 Global Master Commission Engine Configuration")
+    st.info("💡 The system will automatically deploy either Percentage or Fixed Cash profiles matching individual project layout settings.")
+    col_c1, col_c2 = st.columns(2)
+    with col_c1:
+        st.markdown("<h5 style='color: #0d9488;'>📈 Channel 1: Percentage-Based Rule (% Master Rate)</h5>", unsafe_allow_html=True)
+        exec_pct = st.number_input("Executive Split (%)", min_value=0.0, max_value=100.0, step=0.1, key="ep")
+        senior_pct = st.number_input("Senior Split (%)", min_value=0.0, max_value=100.0, step=0.1, key="sp")
+    with col_c2:
+        st.markdown("<h5 style='color: #b45309;'>💵 Channel 2: Fixed Cash Rule (Fixed Amount Rate)</h5>", unsafe_allow_html=True)
+        exec_rs = st.number_input("Executive Payout (Fixed ₹)", min_value=0.0, step=500.0, key="er")
+        senior_rs = st.number_input("Senior Payout (Fixed ₹)", min_value=0.0, step=500.0, key="sr")
+
+    st.write("")
+    if is_editing:
+        col_btn1, col_btn2 = st.columns(2)
+        save_comm = col_btn1.form_submit_button("💾 Update Partner Profile", use_container_width=True)
+        if col_btn2.form_submit_button("❌ Cancel / Abort", use_container_width=True):
+            clear_edit_fields()
             st.rerun()
+    else:
+        save_comm = st.form_submit_button("💾 Register Profile & Activate Credentials", use_container_width=True)
 
-# --- Project Configuration Form ---
-st.markdown("### 🏢 Add New Project Setup")
-with st.form("add_project_form"):
-    proj_name = st.text_input("✨ Project Name (e.g., First Choice City 2, Sai Samruddhi)")
-    st.markdown("#### 📍 Land & Layout Specifications")
-    c1, c2, c3 = st.columns(3)
-    khasra = c1.text_input("Khasra No.")
-    ph_no = c2.text_input("PH No.")
-    mauza = c3.text_input("Mauza / Location")
-   
-    c4, c5, c6 = st.columns(3)
-    tahsil = c4.text_input("Tahsil")
-    dist = c5.text_input("District")
-    total_plots = c6.number_input("Total Number of Plots", min_value=1, step=1)
-   
-    st.markdown("#### 💰 Project Commission Rules Setup")
-    comm_type = st.radio("Commission Type Rule for This Project", ["Percentage (%)", "Rupees (₹)"], horizontal=True)
-    max_comm = st.number_input(f"Maximum Allocated Project Commission Budget ({comm_type})", min_value=0.0)
-
-    if st.form_submit_button("💾 Save Project & Initialize Inventory", use_container_width=True):
-        if proj_name.strip() == "":
-            st.error("🚨 Project Name is required!")
+    if save_comm:
+        if exec_name.strip() == "" or exec_mobile.strip() == "":
+            st.error("🚨 Full Name and Mobile Number are mandatory fields!")
+        elif len(exec_mobile.strip()) < 10:
+            st.error("🚨 Please enter a valid 10-digit mobile number layout!")
         else:
-            plots_dict = {str(i): {"status": "Available"} for i in range(1, int(total_plots) + 1)}
-            st.session_state.db_projects[proj_name] = {
-                "khasra": khasra, "ph_no": ph_no, "mauza": mauza, "tahsil": tahsil, "district": dist,
-                "total_plots": total_plots, "comm_type": comm_type, "max_commission": max_comm, "plots": plots_dict 
+            exec_clean = exec_name.strip()
+            if 'executives' not in st.session_state.db_projects:
+                st.session_state.db_projects['executives'] = {}
+            if is_editing and 'old_edit_name' in st.session_state:
+                old_name = st.session_state['old_edit_name']
+                if old_name != exec_clean:
+                    st.session_state.db_projects['executives'].pop(old_name, None)
+            
+            st.session_state.db_projects['executives'][exec_clean] = {
+                "name": exec_clean, "mobile": exec_mobile.strip(), 
+                "senior_name": senior_name.strip() if senior_name.strip() else "Direct",
+                "percentage_exec": exec_pct, "percentage_senior": senior_pct,
+                "rupees_exec": exec_rs, "rupees_senior": senior_rs,
+                "last_updated": str(datetime.date.today())
             }
             if database.save_db_data():
-                st.success(f"🎉 Project '{proj_name}' successfully created with plot matrix!")
+                st.success("🎉 Associate registry updated successfully!")
+                clear_edit_fields()
                 st.rerun()
 
-# --- Active Project List ---
+# --- Live Statement Ledger Engine ---
 st.markdown("<br><hr>", unsafe_allow_html=True)
-st.markdown("### 📋 Existing Active Projects Registry")
+st.subheader("📊 Executive Commission Statement (Live Ledger Dashboard)")
+exec_data_root = db_data.get('executives', {})
+exec_clean_list = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
 project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data or 'total_plots' in data)]
 
-if not project_names:
-    st.caption("No projects found in cloud registry.")
-else:
-    for p_name in project_names:
-        p_data = db_data[p_name]
-        with st.expander(f"📁 {p_name} - (Total Plots: {p_data.get('total_plots', 0)})"):
-            st.write(f"**Location Details:** Khasra: {p_data.get('khasra')} | Mauza: {p_data.get('mauza')} | District: {p_data.get('district')}")
-            st.success(f"**Budget Rule:** {p_data.get('max_commission', 0)} ({p_data.get('comm_type')}) Allocated")
+if exec_clean_list:
+    col_s1, col_s2, col_s3 = st.columns(3)
+    search_exec = col_s1.selectbox("🔎 Select Executive", exec_clean_list)
+    start_date = col_s2.date_input("📅 Start Date", datetime.date.today() - datetime.timedelta(days=30))
+    end_date = col_s3.date_input("📅 End Date", datetime.date.today())
 
+    if st.button("🔍 Generate Real-Time Statement", use_container_width=True):
+        ex_profile = exec_data_root[search_exec]
+        ex_pct = float(ex_profile.get('percentage_exec', 0.0))
+        ex_rs = float(ex_profile.get('rupees_exec', 0.0))
+        statement_rows = []
+        s_no = 1
+        
+        for p_name in project_names:
+            p_info = db_data[p_name]
+            p_mode = p_info.get('comm_type', 'Percentage (%)')
+            p_mauza = p_info.get('mauza', 'N/A')
+            p_plots = p_info.get('plots', {})
+            if isinstance(p_plots, list):
+                p_plots = {str(idx): p for idx, p in enumerate(p_plots) if p is not None}
+                
+            for plot_id, plot_info in p_plots.items():
+                if isinstance(plot_info, dict) and plot_info.get('status') == 'Booked':
+                    if plot_info.get('executive_name') == search_exec:
+                        b_date_str = plot_info.get('booking_date', plot_info.get('receipt_date', ''))
+                        try: b_date = datetime.datetime.strptime(b_date_str, "%Y-%m-%d").date()
+                        except: b_date = datetime.date.today()
+                            
+                        if start_date <= b_date <= end_date:
+                            t_amt = float(plot_info.get('token_amount', 0.0))
+                            s_rate = float(plot_info.get('selling_rate', 0.0))
+                            if "Percentage" in p_mode: gross_comm = (s_rate * ex_pct) / 100.0
+                            else: gross_comm = ex_rs
+                                
+                            discount_given = float(plot_info.get('discount', 0.0))
+                            comm_after_disc = max(0.0, gross_comm - max(0.0, discount_given))
+                            tds_amt = (comm_after_disc * 2.0) / 100.0
+                            net_comm = comm_after_disc - tds_amt
+                            
+                            statement_rows.append({
+                                "S.No.": s_no, "Client Name": plot_info.get('customer_name', 'N/A'),
+                                "Project": p_name, "Plot No.": plot_id, "Mauza": p_mauza,
+                                "Received Token (₹)": t_amt, "Payment Date": b_date_str,
+                                "Gross Comm (₹)": round(gross_comm, 2), "Discount Cut (₹)": round(discount_given, 2),
+                                "2% TDS (₹)": round(tds_amt, 2), "Net Payout (₹)": round(net_comm, 2)
+                            })
+                            s_no += 1
+        if statement_rows:
+            df_statement = pd.DataFrame(statement_rows)
+            st.dataframe(df_statement, use_container_width=True, hide_index=True)
+            st.write("---")
+            c_sum1, c_sum2, c_sum3, c_sum4 = st.columns(4)
+            c_sum1.metric("Total Received Amount", f"₹ {df_statement['Received Token (₹)'].sum()}")
+            c_sum2.metric("Total Gross Commission", f"₹ {df_statement['Gross Comm (₹)'].sum()}")
+            c_sum3.metric("Total TDS Deduction (2%)", f"₹ {df_statement['2% TDS (₹)'].sum()}")
+            c_sum4.metric("🏆 Net Payable Commission", f"₹ {df_statement['Net Payout (₹)'].sum()}")
+            
+            csv_data = df_statement.to_csv(index=False).encode('utf-8-sig')
+            st.download_button("📥 Export Statement File (Print / Share on WhatsApp)", csv_data, f"Statement_{search_exec}.csv", "text/csv", use_container_width=True)
+        else:
+            st.warning("No booking records found for this executive within the specified date range.")
+
+# --- Active Partner Registry (6-Column Grid Layout) ---
+st.markdown("<br><hr>", unsafe_allow_html=True)
+st.markdown("<h4 style='font-size:16px;'>📋 Current Active Partners & Login Credentials</h4>", unsafe_allow_html=True)
+exec_clean_list_view = {k: v for k, v in exec_data_root.items() if isinstance(v, dict) and 'name' in v}
+
+if not exec_clean_list_view:
+    st.caption("No registered partners available.")
+else:
+    for ex_name, p_details in exec_clean_list_view.items():
+        with st.container():
+            st.markdown(f"""
+            <div class="ledger-box">
+                <span style="font-size: 13px; font-weight: bold; color: {p_color};">👨‍💼 Partner ID: {ex_name}</span> 
+                <span style="float: right; background-color: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size:11px; color: #475569; font-weight: 600;">🔑 Password (Mob): {p_details.get('mobile','N/A')}</span>
+                <br><span style="font-size: 11px; color: #64748b;">👴 <b>Senior Chain Head:</b> {p_details.get('senior_name','N/A')} | 📅 Updated: {p_details.get('last_updated','N/A')}</span>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            c_m1, c_m2, c_m3, c_m4, c_m5, c_m6 = st.columns([1.0, 1.0, 1.1, 1.1, 0.7, 0.7])
+            c_m1.metric("Exec %", f"{p_details.get('percentage_exec', 0)} %")
+            c_m2.metric("Senior %", f"{p_details.get('percentage_senior', 0)} %")
+            c_m3.metric("Exec ₹ (Fixed)", f"₹ {p_details.get('rupees_exec', 0)}")
+            c_m4.metric("Senior ₹ (Fixed)", f"₹ {p_details.get('rupees_senior', 0)}")
+            
+            with c_m5:
+                st.button("✏️ Edit", key=f"edit_{ex_name}", use_container_width=True, on_click=prepare_edit, args=(ex_name, p_details))
+            with c_m6:
+                if st.button("🗑️ Delete", key=f"del_{ex_name}", use_container_width=True):
+                    st.session_state.db_projects['executives'].pop(ex_name, None)
+                    database.save_db_data()
+                    st.success(f"Partner Account '{ex_name}' successfully removed!")
+                    st.rerun()
+            st.markdown("<div style='margin-bottom: 12px; border-bottom: 1px dashed #e2e8f0;'></div>", unsafe_allow_html=True)
