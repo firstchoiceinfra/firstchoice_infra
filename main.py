@@ -1,11 +1,11 @@
 import streamlit as st
 import database
 
-# 1. डेटाबेस को शुरू और लोड करें
+# 1. Initialize and Load Database
 database.init_db()
 
 # ====================================================================
-# 🎨 यूनिवर्सल थीम रेंडरर
+# 🎨 Universal Theme Engine Integration
 # ====================================================================
 if 'db_projects' in st.session_state and '_app_settings' in st.session_state.db_projects:
     global_settings = st.session_state.db_projects['_app_settings']
@@ -19,18 +19,18 @@ if 'db_projects' in st.session_state and '_app_settings' in st.session_state.db_
     """, unsafe_allow_html=True)
 # ====================================================================
 
-st.markdown("<h1 style='text-align: center;'>FirstChoice Infra - ERP सिस्टम 🏗️</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; font-size: 16px; color: #475569;'>Nagpur, Maharashtra</p>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>FirstChoice Infra - ERP System 🏗️</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; font-size: 15px; color: #475569;'>Nagpur, Maharashtra</p>", unsafe_allow_html=True)
 
-# --- 🌟 स्मार्ट केस-इन्सेन्सिटिव लॉगिन लॉजिक ---
+# --- Smart Case-Insensitive Login Authentication ---
 def verify_user_login(user_id, password):
-    # A. मुख्य एडमिन चेक
+    # A. Master Administrator Authorization
     if user_id.strip().lower() == "admin" and password.strip() == "admin123":
         st.session_state.user_role = "admin"
         st.session_state.current_user_name = "Admin"
         return True
         
-    # B. एग्जीक्यूटिव स्टाफ चेक (नाम बड़ा हो या छोटा, अब काम करेगा)
+    # B. Dynamic Executive / Associate Authorization
     executives_db = st.session_state.db_projects.get('executives', {})
     user_clean = user_id.strip().lower()
     
@@ -48,25 +48,25 @@ def verify_user_login(user_id, password):
             
     return False
 
-# लॉगिन इंटरफेस
+# --- User Interface Logic ---
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
-    st.subheader("🔒 क्रेडेंशियल्स दर्ज करें (Login Panel)")
-    username = st.text_input("लॉगिन आईडी / आपका नाम (User ID)")
-    password = st.text_input("पासवर्ड / मोबाइल नंबर (Password)", type="password")
-    login_btn = st.button("सफलतापूर्वक लॉगिन करें", use_container_width=True)
+    st.subheader("🔒 Authentication Portal Required")
+    username = st.text_input("Username / Registered Name (User ID)")
+    password = st.text_input("Password / Contact Number (Password)", type="password")
+    login_btn = st.button("Authenticate System Access", use_container_width=True)
 
     if login_btn:
         if verify_user_login(username, password):
             st.session_state.logged_in = True
-            st.success(f"🎉 लॉगिन सफल! स्वागत है {st.session_state.current_user_name}।")
+            st.success(f"🎉 Access Granted! Welcome back, {st.session_state.current_user_name}.")
             st.rerun()
         else:
-            st.error("🚨 गलत आईडी या मोबाइल नंबर! कृपया सही विवरण दर्ज करें।")
+            st.error("🚨 Invalid Credentials! Please double-check your User ID and Password string layout.")
 else:
-    st.success(f"✅ आप वर्तमान में **{st.session_state.current_user_name}** ({st.session_state.user_role.upper()}) के रूप में लॉगिन हैं!")
-    st.info("← बाईं ओर दिए गए साइडबार मेनू (Sidebar ☰) से इन्वेंट्री डैशबोर्ड पर जाएँ।")
+    st.success(f"✅ Secure Session Active: **{st.session_state.current_user_name}** ({st.session_state.user_role.upper()})")
+    st.info("← Expand the sidebar configuration panel (Sidebar ☰) to view the Inventory Grid Layout or generate Statements.")
     
-    if st.sidebar.button("लॉगआउट (Logout)"):
+    if st.sidebar.button("Secure Logout"):
         st.session_state.logged_in = False
         st.session_state.user_role = None
         st.session_state.current_user_name = None
