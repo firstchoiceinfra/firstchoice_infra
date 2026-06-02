@@ -5,7 +5,6 @@ import datetime
 
 # --- 1. पेज सेटअप ---
 st.set_page_config(layout="wide", page_title="FC Infra - इन्वेंट्री")
-st.title("FirstChoice Infra - इन्वेंट्री डैशबोर्ड 🏗️")
 
 # --- 2. सुरक्षा चेक ---
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
@@ -16,8 +15,73 @@ if 'logged_in' not in st.session_state or not st.session_state.logged_in:
 database.init_db() 
 db_data = st.session_state.db_projects 
 
+# ====================================================================
+# 🎨 यूनिवर्सल थीम सिंक + इन्वेंट्री का प्रीमियम CSS लुक
+# ====================================================================
+bg_url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
+p_color = "#1e3a8a"
+s_color = "#3b82f6"
+c_bg = "rgba(255, 255, 255, 0.92)"
+
+if '_app_settings' in db_data:
+    global_settings = db_data['_app_settings']
+    bg_url = global_settings.get('bg_url', bg_url)
+    p_color = global_settings.get('primary_color', p_color)
+    s_color = global_settings.get('secondary_color', s_color)
+    c_bg = global_settings.get('card_bg', c_bg)
+
+st.markdown(f"""
+<style>
+.stApp {{
+    background-image: url("{bg_url}");
+    background-attachment: fixed;
+    background-size: cover;
+}}
+.block-container {{
+    background-color: {c_bg} !important;
+    padding: 2rem 3rem !important;
+    border-radius: 20px;
+    box-shadow: 0px 10px 30px rgba(0,0,0,0.3);
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+}}
+h1, h2, h3, h4, h5, h6, [data-testid="stMarkdownContainer"] h1, [data-testid="stMarkdownContainer"] h2, [data-testid="stMarkdownContainer"] h3 {{
+    color: {p_color} !important;
+    font-weight: 800;
+}}
+/* प्लॉट कार्ड्स की स्टाइलिंग */
+.plot-card {{
+    padding: 15px;
+    border-radius: 10px;
+    text-align: center;
+    margin-bottom: 10px;
+    box-shadow: 0px 4px 6px rgba(0,0,0,0.1);
+    font-weight: bold;
+}}
+.plot-available {{
+    background-color: #d4edda !important;
+    color: #155724 !important;
+    border: 2px solid #c3e6cb;
+}}
+.plot-booked {{
+    background-color: #f8d7da !important;
+    color: #721c24 !important;
+    border: 2px solid #f5c6cb;
+}}
+.stButton>button {{
+    background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%);
+    color: white !important;
+    border-radius: 6px;
+    font-weight: bold;
+}}
+</style>
+""", unsafe_allow_html=True)
+# ====================================================================
+
+st.markdown("<h1 style='text-align: center;'>🏗️ FirstChoice Infra - इन्वेंट्री डैशबोर्ड</h1>", unsafe_allow_html=True)
+
 # =========================================================
-# 🌟 ब्रह्मास्त्र: डेटाबेस से एग्जीक्यूटिव और प्रोजेक्ट अलग करना
+# 🌟 स्मार्ट एग्जीक्यूटिव लिस्ट फाइंडर (डेटाबेस से असली नाम खींचना)
 # =========================================================
 project_names = []
 exec_list_temp = []
@@ -36,41 +100,37 @@ for key, val in db_data.items():
         elif isinstance(val, list):
             exec_list_temp.extend([str(e) for e in val if isinstance(e, str)])
 
-exec_list = ["एग्जीक्यूटिव चुनें (Select)", "Direct Sale"] 
+exec_list = ["Direct Sale"] 
 for e in exec_list_temp:
     e_clean = e.strip()
-    if e_clean and e_clean not in exec_list and e_clean.lower() not in ['true', 'false', 'none']:
+    if e_clean and e_clean not in exec_list and e_clean.lower() not in ['true', 'false', 'none', 'select']:
         exec_list.append(e_clean)
+exec_list.sort()
+# =========================================================
 
-# --- 4. साइडबार ---
+# --- SideBar: प्रोजेक्ट सिलेक्शन ---
 if st.sidebar.button("🔄 क्लाउड से सिंक करें (रिफ्रेश)"):
-    with st.spinner("क्लाउड से नवीनतम डेटा आ रहा है..."):
+    with st.spinner("सिंक हो रहा है..."):
         database.load_db_data()
-        st.success("डेटा सिंक हो गया!")
+        st.success("डेटा सिंक हुआ!")
         st.rerun()
 
 st.sidebar.divider()
 st.sidebar.header("प्रोजेक्ट चुनें")
 
 if not project_names:
-    st.warning("कोई प्रोजेक्ट नहीं मिला। कृपया लैपटॉप से 'Admin Panel' में जाकर प्रोजेक्ट जोड़ें।")
+    st.warning("कोई प्रोजेक्ट नहीं मिला। कृपया एडमिन पैनल से प्रोजेक्ट जोड़ें।")
     st.stop()
 
-selected_project_name = st.sidebar.selectbox("प्रोजेक्ट", project_names)
+selected_project_name = st.sidebar.selectbox("प्रोजेक्ट की सूची", project_names)
 
-# =========================================================
-# 🛠️ FIREBASE ERROR FIX (TypeError को जड़ से ख़त्म करना)
-# =========================================================
-# सेव करने से पहले ही लिस्ट को डिक्शनरी में फिक्स कर दें
+# Firebase List Array Fix
 if isinstance(st.session_state.db_projects[selected_project_name].get('plots'), list):
     fixed_plots = {str(i): plot for i, plot in enumerate(st.session_state.db_projects[selected_project_name]['plots']) if plot is not None}
     st.session_state.db_projects[selected_project_name]['plots'] = fixed_plots
 
 project_data = st.session_state.db_projects[selected_project_name]
-
-plots = project_data.get('plots')
-if plots is None:
-    plots = {}
+plots = project_data.get('plots', {})
 
 if not plots:
     st.info("इस प्रोजेक्ट में अभी कोई प्लॉट नहीं है।")
@@ -92,11 +152,11 @@ if 'booking_popup' in st.session_state:
     p_tahsil = project_data.get('tahsil', 'N/A')
     p_dist = project_data.get('district', 'N/A')
 
-    st.markdown(f"## 📝 प्लॉट {plt} - बुकिंग मैनेजमेंट")
+    st.markdown(f"### 📝 प्रोजेक्ट: {proj} | प्लॉट नंबर: {plt} की बुकिंग जानकारी")
     
-    # --- A. अगर प्लॉट खाली है (नया बुकिंग फॉर्म) ---
+    # --- A. नया बुकिंग फॉर्म (अगर प्लॉट खाली है) ---
     if curr_stat == "Available":
-        st.info(f"**प्रोजेक्ट:** {proj} | **खसरा:** {p_khasra} | **PH:** {p_ph} | **मौजा:** {p_mauza} | **तहसील:** {p_tahsil} | **जिला:** {p_dist}")
+        st.info(f"📍 **लोकेशन विवरण:** खसरा: {p_khasra} | PH: {p_ph} | मौजा: {p_mauza} | तहसील: {p_tahsil} | जिला: {p_dist}")
         
         st.subheader("👤 क्लाइंट की जानकारी (Client Details)", divider="blue")
         col1, col2, col3 = st.columns(3)
@@ -117,8 +177,8 @@ if 'booking_popup' in st.session_state:
         st.subheader("📐 प्लॉट और रेट की जानकारी", divider="blue")
         col8, col9, col10 = st.columns(3)
         plot_area = col8.text_input("प्लॉट एरिया (Sq.Ft/Sq.M)")
-        company_rate = col9.number_input("कंपनी का रेट (Company Rate - ₹)", min_value=0.0, value=0.0, step=50.0)
-        selling_rate = col10.number_input("सेलिंग रेट (Selling Rate - ₹)", min_value=0.0, value=0.0, step=50.0)
+        company_rate = col9.number_input("कंपनी का रेट (Company Rate - ₹)", min_value=0.0, step=50.0)
+        selling_rate = col10.number_input("सेलिंग रेट (Selling Rate - ₹)", min_value=0.0, step=50.0)
         
         discount = company_rate - selling_rate
         if discount > 0:
@@ -126,31 +186,27 @@ if 'booking_popup' in st.session_state:
         elif discount < 0:
             st.warning(f"⚠️ प्रीमियम चार्ज (Premium): ₹ {abs(discount)}")
             
+        # 🌟 पेमेंट डिटेल्स (सिर्फ टोकन अमाउंट कॉलम रखा गया है, प्राप्त राशि हटा दी गई है)
         st.subheader("💳 पेमेंट डिटेल्स (Payment Details)", divider="blue")
-        col11, col12 = st.columns(2)
-        token_amt = col11.number_input("टोकन अमाउंट (Token Amount)", min_value=0.0, step=1000.0)
-        received_amt = col12.number_input("प्राप्त राशि (Received Amount)", min_value=0.0, step=1000.0)
+        col11, col12, col13 = st.columns(3)
+        token_amt = col11.number_input("टोकन अमाउंट (Token Amount - ₹) *", min_value=0.0, step=1000.0)
+        pay_mode = col12.selectbox("पेमेंट का प्रकार (Mode)", ["Cash", "Online/UPI", "Cheque", "RTGS/NEFT"])
+        trans_id = col13.text_input("ट्रांज़ैक्शन ID / चेक नंबर")
         
-        col13, col14, col15 = st.columns(3)
-        pay_mode = col13.selectbox("पेमेंट का प्रकार (Mode)", ["Cash", "Online/UPI", "Cheque", "RTGS/NEFT"])
-        trans_id = col14.text_input("ट्रांज़ैक्शन ID / चेक नंबर")
-        receive_date = col15.date_input("भुगतान की तारीख (Date of Receipt)")
+        receive_date = st.date_input("टोकन भुगतान की तारीख (Date of Receipt)")
         
-        st.subheader("👨‍💼 एग्जीक्यूटिव की जानकारी", divider="blue")
+        st.subheader("👨‍💼 एग्जीक्यूटिव की जानकारी (Executive)", divider="blue")
+        st.caption("💡 नीचे बॉक्स पर क्लिक करके नाम का पहला अक्षर (Initial) टाइप करें, नाम तुरंत आ जाएगा।")
         
-        exec_mode = st.radio("एग्जीक्यूटिव का नाम कैसे दर्ज करना चाहते हैं?", ["डेटाबेस से खोजें (Search in List)", "मैन्युअल टाइप करें (Manual Type)"], horizontal=True)
-        
-        if exec_mode == "डेटाबेस से खोजें (Search in List)":
-            final_exec_name = st.selectbox("एग्जीक्यूटिव का नाम चुनें (Select Executive)", exec_list)
-        else:
-            final_exec_name = st.text_input("एग्जीक्यूटिव का पूरा नाम टाइप करें (Type Name)")
+        # 🌟 असली इनिशियल-सर्च बॉक्स
+        final_exec_name = st.selectbox("एग्जीक्यूटिव का नाम चुनें या टाइप करें", exec_list, index=0)
         
         st.write("")
-        if st.button("💾 पूरी बुकिंग सुरक्षित करें (Save Booking)", use_container_width=True, type="primary"):
+        if st.button("💾 पूरी बुकिंग सुरक्षित करें (Confirm Booking)", use_container_width=True, type="primary"):
             if c_name.strip() == "" or c_phone.strip() == "":
                 st.error("🚨 कृपया क्लाइंट का नाम और फ़ोन नंबर ज़रूर डालें!")
-            elif final_exec_name == "एग्जीक्यूटिव चुनें (Select)" or final_exec_name.strip() == "":
-                st.error("🚨 कृपया एग्जीक्यूटिव का नाम चुनें या टाइप करें!")
+            elif token_amt <= 0:
+                st.error("🚨 कृपया टोकन अमाउंट दर्ज करें!")
             else:
                 booking_data = {
                     "status": "Booked",
@@ -167,7 +223,6 @@ if 'booking_popup' in st.session_state:
                     "selling_rate": selling_rate,
                     "discount": discount,
                     "token_amount": token_amt,
-                    "received_amount": received_amt,
                     "payment_mode": pay_mode,
                     "transaction_id": trans_id,
                     "receipt_date": str(receive_date),
@@ -175,48 +230,51 @@ if 'booking_popup' in st.session_state:
                     "booking_date": str(datetime.date.today())
                 }
                 
-                # अब यहाँ TypeError बिल्कुल नहीं आएगा
                 st.session_state.db_projects[proj]['plots'][plt].update(booking_data)
                 
-                with st.spinner("क्लाउड में सेव हो रहा है..."):
+                with st.spinner("क्लाउड में सुरक्षित हो रहा है..."):
                     if database.save_db_data():
-                        st.success(f"🎉 प्लॉट {plt} सफलतापूर्वक बुक हो गया!")
+                        st.success(f"🎉 बधाई हो! प्लॉट {plt} सफलतापूर्वक बुक हो गया है!")
                         del st.session_state['booking_popup']
                         st.rerun()
 
-    # --- B. अगर प्लॉट बुक है (पूरी स्टेटमेंट/डिटेल्स दिखाना) ---
+    # --- B. पूरा स्टेटमेंट (अगर प्लॉट पहले से बुक है) ---
     else:
         p_data = st.session_state.db_projects[proj]['plots'][plt]
-        st.error(f"⚠️ यह प्लॉट पहले से बुक है। नीचे पूरा स्टेटमेंट (Statement) दिया गया है:")
+        st.error(f"⚠️ यह प्लॉट पहले से बुक है। नीचे इसका पूरा स्टेटमेंट दिया गया है:")
         
         c1, c2, c3 = st.columns(3)
-        c1.metric("क्लाइंट का नाम", p_data.get('customer_name', 'N/A'))
-        c2.metric("फ़ोन नंबर", p_data.get('phone', 'N/A'))
-        c3.metric("एग्जीक्यूटिव", p_data.get('executive_name', 'N/A'))
+        c1.metric("कस्टमर का नाम", p_data.get('customer_name', 'N/A'))
+        c1.write(f"**DOB:** {p_data.get('dob', 'N/A')} | **पता:** {p_data.get('address', 'N/A')}")
         
-        with st.expander("📄 पूरी जानकारी (Full Details) खोलें", expanded=True):
-            st.write(f"**प्लॉट एरिया:** {p_data.get('plot_area', 'N/A')} | **बुकिंग डेट:** {p_data.get('booking_date', 'N/A')}")
-            st.write(f"**क्लाइंट का पता:** {p_data.get('address', 'N/A')} | **DOB:** {p_data.get('dob', 'N/A')}")
-            st.write(f"**आधार:** {p_data.get('aadhaar', 'N/A')} | **पैन:** {p_data.get('pan', 'N/A')}")
-            st.write(f"**नॉमिनी:** {p_data.get('nominee_name', 'N/A')} (उम्र: {p_data.get('nominee_age', 'N/A')})")
+        c2.metric("फ़ोन नंबर", p_data.get('phone', 'N/A'))
+        c2.write(f"**आधार:** {p_data.get('aadhaar', 'N/A')} | **पैन:** {p_data.get('pan', 'N/A')}")
+        
+        c3.metric("बुक करने वाला एग्जीक्यूटिव", p_data.get('executive_name', 'N/A'))
+        c3.write(f"**नॉमिनी:** {p_data.get('nominee_name', 'N/A')} (उम्र: {p_data.get('nominee_age', 'N/A')})")
+        
+        with st.expander("📄 प्लॉट, रेट एवं पेमेंट स्टेटमेंट (Full Statement)", expanded=True):
+            col_s1, col_s2, col_s3 = st.columns(3)
+            col_s1.write(f"📐 **प्लॉट एरिया:** {p_data.get('plot_area', 'N/A')}")
+            col_s1.write(f"📆 **बुकिंग की तारीख:** {p_data.get('booking_date', 'N/A')}")
             
-            st.divider()
-            st.write(f"**कंपनी रेट:** ₹{p_data.get('company_rate', 0)} | **सेलिंग रेट:** ₹{p_data.get('selling_rate', 0)}")
-            st.success(f"**डिस्काउंट दिया गया:** ₹{p_data.get('discount', 0)}")
+            col_s2.write(f"🏢 **कंपनी रेट:** ₹{p_data.get('company_rate', 0)}")
+            col_s2.write(f"💰 **सेलिंग रेट:** ₹{p_data.get('selling_rate', 0)}")
+            col_s2.success(f"💸 **दिया गया डिस्काउंट:** ₹{p_data.get('discount', 0)}")
             
-            st.divider()
-            st.write(f"**टोकन अमाउंट:** ₹{p_data.get('token_amount', 0)} | **प्राप्त राशि:** ₹{p_data.get('received_amount', 0)}")
-            st.write(f"**पेमेंट प्रकार:** {p_data.get('payment_mode', 'N/A')} | **तारीख:** {p_data.get('receipt_date', 'N/A')}")
-            st.write(f"**ट्रांज़ैक्शन ID:** {p_data.get('transaction_id', 'N/A')}")
+            # सिर्फ टोकन अमाउंट का ही स्टेटमेंट दिखेगा
+            col_s3.warning(f"💳 **टोकन अमाउंट जमा:** ₹{p_data.get('token_amount', 0)}")
+            col_s3.write(f"🏪 **पेमेंट मोड:** {p_data.get('payment_mode', 'N/A')}")
+            col_s3.write(f"🔑 **ट्रांज़ैक्शन/चेक ID:** {p_data.get('transaction_id', 'N/A')}")
+            col_s3.write(f"📅 **भुगतान रसीद डेट:** {p_data.get('receipt_date', 'N/A')}")
             
         st.write("")
-        st.warning("क्या आप इस प्लॉट की बुकिंग रद्द करके इसे वापस खाली (Available) करना चाहते हैं?")
-        if st.button("✅ हाँ, प्लॉट खाली (Available) करें", use_container_width=True):
+        st.warning("क्या आप इस प्लॉट की बुकिंग रद्द करके इसे वापस उपलब्ध (Available) करना चाहते हैं?")
+        if st.button("✅ हाँ, बुकिंग रद्द करें और प्लॉट खाली करें", use_container_width=True):
             st.session_state.db_projects[proj]['plots'][plt] = {"status": "Available"}
-            
-            with st.spinner("क्लाउड में अपडेट हो रहा है..."):
+            with st.spinner("क्लाउड अपडेट हो रहा है..."):
                 if database.save_db_data():
-                    st.success(f"प्लॉट {plt} अब खाली (Available) है!")
+                    st.success(f"प्लॉट {plt} अब खाली और उपलब्ध है!")
                     del st.session_state['booking_popup']
                     st.rerun()
 
@@ -229,10 +287,10 @@ if 'booking_popup' in st.session_state:
 
 
 # =========================================================
-# 6. इन्वेंट्री ग्रिड (प्लॉट्स की लिस्ट)
+# 6. प्रोफेशनल इन्वेंट्री ग्रिड (प्लॉट्स का शानदार लेआउट मैप)
 # =========================================================
-st.header(f"प्रोजेक्ट: {selected_project_name}")
-st.subheader("प्लॉट स्थिति")
+st.markdown(f"### 📋 प्रोजेक्ट गैलरी: {selected_project_name}")
+st.write(f"📍 खसरा नं: {project_data.get('khasra','N/A')} | मौजा: {project_data.get('mauza','N/A')} | कुल प्लॉट्स: {project_data.get('total_plots', 0)}")
 
 cols_per_row = 5 
 plot_items = list(plots.items())
@@ -244,15 +302,16 @@ for row in rows:
         with cols[i]:
             status = plot_info.get('status', 'Available')
             
+            # सुंदर 3D कार्ड डिज़ाइन HTML द्वारा
             if status == "Available":
-                st.success(f"**प्लॉट {plot_id}**\n\n✅ उपलब्ध")
-                btn_txt = "📝 बुकिंग फॉर्म"
+                st.markdown(f'<div class="plot-card plot-available">🏠 प्लॉट {plot_id}<br>✅ उपलब्ध</div>', unsafe_allow_html=True)
+                btn_txt = "📝 बुक करें"
             else:
                 cust = plot_info.get('customer_name', 'N/A')
-                st.error(f"**प्लॉट {plot_id}**\n\n❌ बुक\n({cust})")
-                btn_txt = "📄 डिटेल्स देखें"
+                st.markdown(f'<div class="plot-card plot-booked">🛑 प्लॉट {plot_id}<br>❌ बुक ({cust})</div>', unsafe_allow_html=True)
+                btn_txt = "📄 स्टेटमेंट"
             
-            if st.button(btn_txt, key=f"btn_{selected_project_name}_{plot_id}"):
+            if st.button(btn_txt, key=f"btn_{selected_project_name}_{plot_id}", use_container_width=True):
                 st.session_state['booking_popup'] = {
                     'project': selected_project_name,
                     'plot': plot_id,
