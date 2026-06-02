@@ -1,4 +1,4 @@
-import streamlit st
+import streamlit as st
 import database
 import datetime
 import pandas as pd
@@ -77,7 +77,7 @@ div[data-testid="stMetric"] div[data-testid="stMetricValue"] {{
     color: #0f172a !important;
 }}
 
-/* 🌟 जादुई CSS: कतार के 5वें कॉलम (✏️ सुधारें) बटन को कस्टमाइज़ करना */
+/* ✏️ सुधारें (Edit) बटन का स्लीक कलर */
 div[data-testid="stHorizontalBlock"] > div:nth-child(5) button {{
     background: #e0f2fe !important;
     color: #0369a1 !important;
@@ -93,7 +93,7 @@ div[data-testid="stHorizontalBlock"] > div:nth-child(5) button:hover {{
     color: #0c4a6e !important;
 }}
 
-/* 🌟 जादुई CSS: कतार के 6ठें कॉलम (🗑️ हटाएँ) बटन को कस्टमाइज़ करना */
+/* 🗑️ हटाएँ (Delete) बटन का स्लीक कलर */
 div[data-testid="stHorizontalBlock"] > div:nth-child(6) button {{
     background: #fee2e2 !important;
     color: #991b1b !important;
@@ -113,7 +113,7 @@ div[data-testid="stHorizontalBlock"] > div:nth-child(6) button:hover {{
 # ====================================================================
 
 st.markdown("<h1 style='text-align: center; font-size: 28px;'>👑 Executive & Commission Channel Panel</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; font-size: 14px; color: #475569; margin-bottom: 25px;'>कंपनी एसोसिएट्स, मोबाइल लॉगिन, मास्टर ड्यूल कमीशन एवं लाइव स्टेटमेंट इंजन</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; font-size: 14px; color: #475569; margin-bottom: 25px;'>कंपनी एसोसिएट्स, मोबाइल लॉगिन, मास्टर ड्यूल कमीशन एवं live स्टेटमेंट इंजन</p>", unsafe_allow_html=True)
 
 # --- SideBar: रिफ्रेश बटन ---
 if st.sidebar.button("🔄 क्लाउड से सिंक करें (रिफ्रेश)"):
@@ -315,7 +315,7 @@ else:
 
 
 # ====================================================================
-# 📋 एडिट और मौजूदा एंट्रीज (6-Column Ultra Sleek & 100% Fixed Layout)
+# 📋 एडिट और मौजूदा एंट्रीज (6-Column Ultra Sleek Layout)
 # ====================================================================
 st.markdown("<br><hr>", unsafe_allow_html=True)
 st.markdown("<h4 style='margin-bottom:12px; font-size:16px;'>📋 मौजूदा मास्टर पार्टनर्स प्रोफाइल एवं लॉगिन डिटेल्स</h4>", unsafe_allow_html=True)
@@ -343,7 +343,7 @@ else:
             c_m3.metric("Exec ₹ (Fixed)", f"₹ {p_details.get('rupees_exec', 0)}")
             c_m4.metric("Senior ₹ (Fixed)", f"₹ {p_details.get('rupees_senior', 0)}")
             
-            # ✏️ सुधारें (Edit) बटन - कॉलम नंबर 5 में (बिना किसी HTML रैपर के - अब बिल्कुल लाइव दिखेगा)
+            # ✏️ सुधारें (Edit) बटन
             with c_m5:
                 if st.button("✏️ सुधारें", key=f"edit_{ex_name}", use_container_width=True):
                     st.session_state['form_exec_name'] = ex_name
@@ -357,7 +357,7 @@ else:
                     st.session_state['old_edit_name'] = ex_name
                     st.rerun()
             
-            # 🗑️ हटाएँ (Delete) बटन - कॉलम नंबर 6 में (बिना किसी HTML रैपर के - अब बिल्कुल लाइव दिखेगा)
+            # 🗑️ हटाएँ (Delete) बटन
             with c_m6:
                 if st.button("🗑️ हटाएँ", key=f"del_{ex_name}", use_container_width=True):
                     st.session_state.db_projects['executives'].pop(ex_name, None)
