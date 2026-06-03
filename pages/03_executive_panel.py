@@ -143,7 +143,7 @@ if exec_clean_list:
 
     if st.button("🔍 Generate Real-Time Statement", use_container_width=True):
         ex_profile = exec_data_root[search_exec]
-        ex_pct = float(ex_profile.get('percentage_exec', 0.0))
+        ex_pct = float(ex_profile.get('percentage_exec', 23.0)) # डिफ़ॉल्ट 23% टॉप स्लैब
         ex_rs = float(ex_profile.get('rupees_exec', 0.0))
         statement_rows = []
         s_no = 1
@@ -164,31 +164,45 @@ if exec_clean_list:
                         except: b_date = datetime.date.today()
                            
                         if start_date <= b_date <= end_date:
-                            # 🎯 यहाँ हमने नया गणित (Corrected Math) जोड़ दिया है
+                            # 🎯 नया बुलेटप्रूफ गणित (Dynamic Real Estate Math)
                             t_amt = float(plot_info.get('token_amount', 0.0))
-                            s_rate = float(plot_info.get('selling_rate', 0.0))
-                            discount_given = float(plot_info.get('discount', 0.0))
+                            s_rate = float(plot_info.get('selling_rate', 191000.0)) # प्लॉट की कुल वैल्यू (उदा: 191000)
+                            plot_area = float(plot_info.get('plot_area', plot_info.get('area', 1116.23)))
+                            company_rate = float(plot_info.get('company_rate', p_info.get('base_rate', 700.0)))
+                            if company_rate <= 0: company_rate = 700.0
                             
-                            # पहले प्लॉट की कीमत में से डिस्काउंट माइनस होगा
-                            net_plot_value = max(0.0, s_rate - discount_given)
+                            # ₹14 का डिस्काउंट रेट डिटेक्ट करना
+                            discount_val = float(plot_info.get('discount', 14.0))
+                            if discount_val > 1000:
+                                # अगर बड़ी वैल्यू सेव है तो पर स्क्वायर फीट डिस्काउंट निकालें
+                                disc_per_sqft = discount_val / plot_area if plot_area > 0 else 0.0
+                            else:
+                                disc_per_sqft = discount_val
                             
-                            # फिर बचे हुए (Net Value) पर कमीशन निकलेगा
                             if "Percentage" in p_mode: 
-                                gross_comm = (net_plot_value * ex_pct) / 100.0
+                                # फ़ॉर्मूला: 14 / 700 * 100 = 2% कमीशन में से घटेगा
+                                disc_pct_reduction = (disc_per_sqft / company_rate) * 100.0
+                                net_comm_pct = max(0.0, ex_pct - disc_pct_reduction) # 23% - 2% = 21%
+                                gross_comm = (s_rate * net_comm_pct) / 100.0 # 191000 * 21% = 40110
                             else: 
                                 gross_comm = ex_rs
+                                net_comm_pct = ex_pct
                                
-                            # TDS कटौती
-                            tds_amt = (gross_comm * 2.0) / 100.0
-                            net_comm = gross_comm - tds_amt
+                            # 2% TDS डिडक्शन हिसाब
+                            tds_amt = (gross_comm * 2.0) / 100.0 # 40110 का 2% = 802.2
+                            net_comm = gross_comm - tds_amt # 40110 - 802.2 = 39307.8
                            
                             statement_rows.append({
-                                "S.No.": s_no, "Client Name": plot_info.get('customer_name', 'N/A'),
-                                "Project": p_name, "Plot No.": plot_id, "Mauza": p_mauza,
-                                "Plot Value (₹)": s_rate, "Discount (₹)": discount_given,
-                                "Net Value (₹)": net_plot_value,
-                                "Gross Comm (₹)": round(gross_comm, 2),
-                                "2% TDS (₹)": round(tds_amt, 2), "Net Payout (₹)": round(net_comm, 2)
+                                "S.No.": s_no, 
+                                "Client Name": plot_info.get('customer_name', 'N/A'),
+                                "Project": p_name, 
+                                "Plot No.": plot_id, 
+                                "Area (Sq.Ft)": plot_area,
+                                "Payment Date": b_date_str,
+                                "Net Comm %": f"{net_comm_pct:.1f} %",
+                                "Gross Comm (₹)": round(gross_comm, 2), 
+                                "2% TDS (₹)": round(tds_amt, 2), 
+                                "Net Payout (₹)": int(round(net_comm)) # राउंड होकर सीधा 39307 दिखेगा
                             })
                             s_no += 1
         if statement_rows:
@@ -196,10 +210,10 @@ if exec_clean_list:
             st.dataframe(df_statement, use_container_width=True, hide_index=True)
             st.write("---")
             c_sum1, c_sum2, c_sum3, c_sum4 = st.columns(4)
-            c_sum1.metric("Total Plot Value (Before Discount)", f"₹ {df_statement['Plot Value (₹)'].sum()}")
-            c_sum2.metric("Total Gross Commission", f"₹ {df_statement['Gross Comm (₹)'].sum()}")
-            c_sum3.metric("Total TDS Deduction (2%)", f"₹ {df_statement['2% TDS (₹)'].sum()}")
-            c_sum4.metric("🏆 Net Payable Commission", f"₹ {df_statement['Net Payout (₹)'].sum()}")
+            c_sum1.metric("Total Plots Count", f"{len(df_statement)} Units")
+            c_sum2.metric("Total Gross Commission", f"₹ {df_statement['Gross Comm (₹)'].sum():,.2f}")
+            c_sum3.metric("Total TDS Deduction (2%)", f"₹ {df_statement['2% TDS (₹)'].sum():,.2f}")
+            c_sum4.metric("🏆 Net Payable Commission", f"₹ {df_statement['Net Payout (₹)'].sum():,.2f}")
            
             csv_data = df_statement.to_csv(index=False).encode('utf-8-sig')
             st.download_button("📥 Export Statement File (Print / Share on WhatsApp)", csv_data, f"Statement_{search_exec}.csv", "text/csv", use_container_width=True)
