@@ -157,7 +157,7 @@ if exec_clean_list:
         statement_rows = []
         s_no = 1
         
-        # स्मार्ट नाम मैचिंग (ताकि स्पेस की वजह से कोई रिकॉर्ड न छूटे)
+        # स्मार्ट नाम मैचिंग
         search_exec_clean = str(search_exec).strip().lower()
        
         for p_name in project_names:
@@ -170,14 +170,12 @@ if exec_clean_list:
                
             for plot_id, plot_info in p_plots.items():
                 if isinstance(plot_info, dict):
-                    # स्मार्ट स्टेटस और नाम मैचिंग
                     plot_status = str(plot_info.get('status', '')).strip().lower()
                     plot_exec = str(plot_info.get('executive_name', '')).strip().lower()
                     
                     if plot_status == 'booked' and plot_exec == search_exec_clean:
-                        # 📅 स्मार्ट डेट पार्सर (तारीख में एरर होने पर क्रैश से बचाएगा)
                         b_date_str = str(plot_info.get('booking_date', plot_info.get('receipt_date', ''))).strip()
-                        b_date = datetime.date.today() # डिफ़ॉल्ट आज की तारीख
+                        b_date = datetime.date.today() 
                         if b_date_str:
                             try:
                                 b_date = datetime.datetime.strptime(b_date_str, "%Y-%m-%d").date()
@@ -187,18 +185,11 @@ if exec_clean_list:
                                 except: pass
                            
                         if start_date <= b_date <= end_date:
-                            # 🎯 सेफ कैलकुलेशन (यहाँ सेफ_फ्लोट क्रैश होने से रोकेगा)
                             plot_area = safe_float(plot_info.get('plot_area', plot_info.get('area', 1116.23)))
-                            s_rate = safe_float(plot_info.get('selling_rate', 0.0))
-                            
-                            if 0 < s_rate < 10000:
-                                total_plot_value = s_rate * plot_area
-                            else:
-                                total_plot_value = s_rate if s_rate > 0 else safe_float(plot_info.get('total_value', 191000.0))
-
                             company_rate = safe_float(plot_info.get('company_rate', p_info.get('base_rate', 700.0)))
                             if company_rate <= 0: company_rate = 700.0
                             
+                            # 🎯 जमा किया गया पैसा (Paid Amount) जिस पर अब कमीशन निकलेगा
                             paid_amt = safe_float(plot_info.get('token_amount', plot_info.get('received_amount', 0.0)))
                             discount_val = safe_float(plot_info.get('discount', 14.0))
                             
@@ -210,7 +201,10 @@ if exec_clean_list:
                             if "Percentage" in p_mode: 
                                 disc_pct_reduction = (disc_per_sqft / company_rate) * 100.0
                                 net_comm_pct = max(0.0, ex_pct - disc_pct_reduction)
-                                gross_comm = (total_plot_value * net_comm_pct) / 100.0 
+                                
+                                # 🚨 यही थी वो गड़बड़ वाली लाइन! 
+                                # अब यह 'टोटल वैल्यू' पर नहीं, बल्कि जमा हुए 'paid_amt' (जैसे 1,51,000) पर 21% निकालेगा।
+                                gross_comm = (paid_amt * net_comm_pct) / 100.0 
                             else: 
                                 gross_comm = ex_rs
                                 net_comm_pct = ex_pct
@@ -281,4 +275,3 @@ else:
                     st.success(f"Partner Account '{ex_name}' successfully removed!")
                     st.rerun()
             st.markdown("<div style='margin-bottom: 12px; border-bottom: 1px dashed #e2e8f0;'></div>", unsafe_allow_html=True)
-
