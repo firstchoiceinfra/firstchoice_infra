@@ -146,12 +146,24 @@ with col_f1:
                     "remarks": remarks.strip() if remarks.strip() else "Installment Payment"
                 }
                
-                plot_data['partial_payments'].append(new_receipt)
+                # 🚀 FORCE DIRECT INJECTION (ताकि डेटाबेस में पक्का सेव हो जाए)
+                plots_ref = st.session_state.db_projects[selected_project]['plots']
+                if isinstance(plots_ref, list):
+                    plot_idx = int(selected_plot)
+                    if 'partial_payments' not in plots_ref[plot_idx]:
+                        plots_ref[plot_idx]['partial_payments'] = []
+                    plots_ref[plot_idx]['partial_payments'].append(new_receipt)
+                else:
+                    if 'partial_payments' not in plots_ref[selected_plot]:
+                        plots_ref[selected_plot]['partial_payments'] = []
+                    plots_ref[selected_plot]['partial_payments'].append(new_receipt)
+                
+                # सिस्टम को बताने के लिए कि डेटा बदला है
+                st.session_state.db_projects = st.session_state.db_projects
                 
                 with st.spinner("Updating central accounting records..."):
                     if database.save_db_data():
                         st.success(f"🎉 Success! Installment of ₹{paid_amt:,.2f} safely authorized and logged!")
-                        st.invalidate_pages() if hasattr(st, "invalidate_pages") else None
                         st.rerun()
 
 with col_f2:
