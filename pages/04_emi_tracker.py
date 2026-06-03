@@ -4,18 +4,14 @@ import datetime
 import pandas as pd
 
 # --- 1. Page Configuration ---
-st.set_page_config(layout="wide", page_title="FC Infra - Commission Channel")
+st.set_page_config(layout="wide", page_title="FC Infra - EMI Ledger")
 
-# --- 2. Security Check (Strict Admin Lock) ---
+# --- 2. Security Interceptor Check ---
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
-    st.warning("🔒 Please login on the Main Page first.")
+    st.warning("🔒 Please login on the Main Page portal first.")
     st.stop()
 
-if st.session_state.get('user_role', 'admin') != 'admin':
-    st.error("🚨 Security Alert: You do not have permission to access the Commission Panel!")
-    st.stop()
-
-# --- 3. Cloud Database Integration ---
+# --- 3. Database Initialization ---
 database.init_db()
 db_data = st.session_state.db_projects
 
@@ -35,12 +31,11 @@ if '_app_settings' in db_data:
 st.markdown(f"""
 <style>
 .stApp {{ background-image: url("{bg_url}"); background-attachment: fixed; background-size: cover; }}
-.block-container {{ background-color: {c_bg} !important; padding: 1.5rem 2.5rem !important; border-radius: 20px; box-shadow: 0px 10px 30px rgba(0,0,0,0.3); margin-top: 1.5rem; margin-bottom: 1.5rem; }}
+.block-container {{ background-color: {c_bg} !important; padding: 2rem 3rem !important; border-radius: 20px; box-shadow: 0px 10px 30px rgba(0,0,0,0.3); margin-top: 2rem; margin-bottom: 2rem; }}
 h1, h2, h3 {{ color: {p_color} !important; font-weight: 800; }}
-.stButton>button {{ background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%); color: white !important; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }}
-.ledger-box {{ background-color: #ffffff; border-left: 4px solid {p_color}; padding: 6px 12px !important; border-radius: 6px; box-shadow: 0px 1px 3px rgba(0,0,0,0.05); margin-bottom: 4px !important; }}
-div[data-testid="stMetric"] div[data-testid="stMetricLabel"] {{ font-size: 11px !important; font-weight: 600 !important; color: #475569 !important; }}
-div[data-testid="stMetric"] div[data-testid="stMetricValue"] {{ font-size: 14px !important; font-weight: 700 !important; color: #0f172a !important; }}
+.stButton>button {{ background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%); color: white !important; border-radius: 6px; font-weight: bold; }}
+.emi-badge {{ background-color: #f1f5f9; border-left: 4px solid {p_color}; padding: 10px 15px; border-radius: 6px; font-weight: bold; margin-bottom: 15px; }}
+div[data-testid="stForm"] {{ background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 25px; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -53,119 +48,172 @@ def safe_float(val, default=0.0):
     except:
         return float(default)
 
-# --- Dynamic Safe-Edit Callback Engine ---
-def prepare_edit(ex_name, details):
-    st.session_state['form_exec_name'] = ex_name
-    st.session_state['form_senior_name'] = details.get('senior_name', '')
-    st.session_state['form_exec_mobile'] = details.get('mobile', '')
-    st.session_state['ep'] = safe_float(details.get('percentage_exec', 0.0))
-    st.session_state['sp'] = safe_float(details.get('percentage_senior', 0.0))
-    st.session_state['er'] = safe_float(details.get('rupees_exec', 0.0))
-    st.session_state['sr'] = safe_float(details.get('rupees_senior', 0.0))
-    st.session_state['edit_mode_active'] = True
-    st.session_state['old_edit_name'] = ex_name
+st.markdown("<h1 style='text-align: center;'>📈 Customer EMI & Partial Payment Desk</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; font-size: 14px; color: #475569; margin-bottom: 30px;'>Autonomous Collection Tracking, Balance Audits & Automated Reminders</p>", unsafe_allow_html=True)
 
-def clear_edit_fields():
-    for k in ['form_exec_name', 'form_senior_name', 'form_exec_mobile', 'ep', 'sp', 'er', 'sr', 'edit_mode_active', 'old_edit_name']:
-        st.session_state.pop(k, None)
+# Fetching available projects list
+project_names = [name for name, data in db_data.items() if isinstance(data, dict) and 'plots' in data]
 
-st.markdown("<h1 style='text-align: center;'>👑 Executive & Commission Channel Panel</h1>", unsafe_allow_html=True)
+if not project_names:
+    st.warning("⚠️ No active projects found in registry. Initialize blueprints first.")
+    st.stop()
 
-# --- Main Setup Profile Form ---
-is_editing = st.session_state.get('edit_mode_active', False)
-st.subheader("✏️ Edit Partner Profile & Commissions (Update Mode)" if is_editing else "🏗️ Add New Partner Account & Commission Structure")
+# --- Dropdown Selectors ---
+col_s1, col_s2 = st.columns(2)
+selected_project = col_s1.selectbox("🏢 Select Layout Blueprint Project", project_names)
 
-with st.form("commission_form"):
-    st.markdown("#### 👤 Associate Personal Credentials")
-    col_a1, col_a2 = st.columns(2)
-    exec_name = col_a1.text_input("👨‍💼 Executive Full Name (Login ID) *", key="form_exec_name")
-    senior_name = col_a2.text_input("👨‍💼 Senior Chain Head Name", key="form_senior_name")
-    exec_mobile = col_a1.text_input("📱 10-Digit Mobile Number (Account Password) *", max_chars=10, key="form_exec_mobile")
-    st.caption("⚠️ *Note: The Executive Name will serve as their Login User ID, and the Mobile Number will be their Login Password.*")
+project_plots = db_data[selected_project].get('plots', {})
+if isinstance(project_plots, list):
+    project_plots = {str(idx): p for idx, p in enumerate(project_plots) if p is not None}
 
-    st.markdown("#### 💰 Global Master Commission Engine Configuration")
-    st.info("💡 The system will automatically deploy either Percentage or Fixed Cash profiles matching individual project layout settings.")
-    col_c1, col_c2 = st.columns(2)
-    with col_c1:
-        st.markdown("<h5 style='color: #0d9488;'>📈 Channel 1: Percentage-Based Rule (% Master Rate)</h5>", unsafe_allow_html=True)
-        exec_pct = st.number_input("Executive Split (%)", min_value=0.0, max_value=100.0, step=0.1, key="ep")
-        senior_pct = st.number_input("Senior Split (%)", min_value=0.0, max_value=100.0, step=0.1, key="sp")
-    with col_c2:
-        st.markdown("<h5 style='color: #b45309;'>💵 Channel 2: Fixed Cash Rule (Fixed Amount Rate)</h5>", unsafe_allow_html=True)
-        exec_rs = st.number_input("Executive Payout (Fixed ₹)", min_value=0.0, step=500.0, key="er")
-        senior_rs = st.number_input("Senior Payout (Fixed ₹)", min_value=0.0, step=500.0, key="sr")
+# Filtering only Booked plots for installment tracking
+booked_plots_list = [p_id for p_id, p_info in project_plots.items() if isinstance(p_info, dict) and p_info.get('status') == 'Booked']
 
-    st.write("")
-    if is_editing:
-        col_btn1, col_btn2 = st.columns(2)
-        save_comm = col_btn1.form_submit_button("💾 Update Partner Profile", use_container_width=True)
-        if col_btn2.form_submit_button("❌ Cancel / Abort", use_container_width=True):
-            clear_edit_fields()
-            st.rerun()
-    else:
-        save_comm = st.form_submit_button("💾 Register Profile & Activate Credentials", use_container_width=True)
+if not booked_plots_list:
+    st.info("ℹ️ No active booked plot nodes found in this project to map installments.")
+    st.stop()
 
-    if save_comm:
-        if exec_name.strip() == "" or exec_mobile.strip() == "":
-            st.error("🚨 Full Name and Mobile Number are mandatory fields!")
-        elif len(exec_mobile.strip()) < 10:
-            st.error("🚨 Please enter a valid 10-digit mobile number layout!")
-        else:
-            exec_clean = exec_name.strip()
-            if 'executives' not in st.session_state.db_projects:
-                st.session_state.db_projects['executives'] = {}
-            if is_editing and 'old_edit_name' in st.session_state:
-                old_name = st.session_state['old_edit_name']
-                if old_name != exec_clean:
-                    st.session_state.db_projects['executives'].pop(old_name, None)
-           
-            st.session_state.db_projects['executives'][exec_clean] = {
-                "name": exec_clean, "mobile": exec_mobile.strip(),
-                "senior_name": senior_name.strip() if senior_name.strip() else "Direct",
-                "percentage_exec": exec_pct, "percentage_senior": senior_pct,
-                "rupees_exec": exec_rs, "rupees_senior": senior_rs,
-                "last_updated": str(datetime.date.today())
-            }
-            if database.save_db_data():
-                st.success("🎉 Associate registry updated successfully!")
-                clear_edit_fields()
-                st.rerun()
+selected_plot = col_s2.selectbox("🎯 Select Active Booked Plot Number", sorted(booked_plots_list, key=lambda x: int(x) if x.isdigit() else 9999))
 
-# --- Live Statement Ledger Engine ---
-st.markdown("<br><hr>", unsafe_allow_html=True)
-st.subheader("📊 Executive Commission Statement (Live Ledger Dashboard)")
-exec_data_root = db_data.get('executives', {})
-exec_clean_list = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
-project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data or 'total_plots' in data)]
+# Fetch target customer data node safely
+plot_data = project_plots[selected_plot]
+customer_name = plot_data.get('customer_name', 'N/A')
 
-if exec_clean_list:
-    col_s1, col_s2, col_s3 = st.columns(3)
-    search_exec = col_s1.selectbox("🔎 Select Executive", exec_clean_list)
-    start_date = col_s2.date_input("📅 Start Date", datetime.date.today() - datetime.timedelta(days=30))
-    end_date = col_s3.date_input("📅 End Date", datetime.date.today())
+plot_area = safe_float(plot_data.get('plot_area', plot_data.get('area', 1116.23)))
+s_rate = safe_float(plot_data.get('selling_rate', 0.0))
 
-    if st.button("🔍 Generate Real-Time Statement", use_container_width=True):
-        ex_profile = exec_data_root[search_exec]
-        ex_pct = safe_float(ex_profile.get('percentage_exec', 23.0)) 
-        ex_rs = safe_float(ex_profile.get('rupees_exec', 0.0))
-        statement_rows = []
-        s_no = 1
-        
-        search_exec_clean = str(search_exec).strip().lower()
+if 0 < s_rate < 10000:
+    total_cost = s_rate * plot_area
+else:
+    total_cost = s_rate if s_rate > 0 else safe_float(plot_data.get('total_value', 191000.0))
+
+token_paid = safe_float(plot_data.get('token_amount', plot_data.get('received_amount', 0.0)))
+
+if 'partial_payments' not in plot_data:
+    plot_data['partial_payments'] = []
+
+partial_payments_list = plot_data.get('partial_payments', [])
+
+total_partial_paid = sum(safe_float(pmt.get('amount', 0.0)) for pmt in partial_payments_list)
+total_overall_paid = token_paid + total_partial_paid
+net_outstanding_balance = max(0.0, total_cost - total_overall_paid)
+
+# --- Real-Time Customer Account Summary Card ---
+st.markdown("### 👤 Account Profile Summary")
+st.markdown(f"""
+<div class="emi-badge">
+    <span style="font-size: 15px; color:{p_color};">Client Identity: {customer_name} | Plot Reference: P-{selected_plot}</span><br>
+    <span style="font-size: 12px; color:#64748b; font-weight:500;">Project: {selected_project} | Contact String: {plot_data.get('phone','N/A')}</span>
+</div>
+""", unsafe_allow_html=True)
+
+c_m1, c_m2, c_m3, c_m4 = st.columns(4)
+c_m1.metric("Gross Deal Value", f"₹ {total_cost:,.2f}")
+c_m2.metric("Initial Advance Token", f"₹ {token_paid:,.2f}")
+c_m3.metric("Total Installments Paid", f"₹ {total_partial_paid:,.2f}", delta=f"Overall Paid: ₹{total_overall_paid:,.2f}")
+c_m4.metric("🏆 Net Outstanding Due", f"₹ {net_outstanding_balance:,.2f}", delta="Remaining Balance", delta_color="inverse")
+
+# --- Form Section Layout Split ---
+col_f1, col_f2 = st.columns([1.1, 0.9])
+
+with col_f1:
+    st.markdown("### 💳 Log New Installment / Partial Payment")
+    with st.form("partial_payment_form"):
+        col_p1, col_p2 = st.columns(2)
+        paid_amt = col_p1.number_input("Collected Installment Amount (₹) *", min_value=0.0, step=5000.0, key="input_paid_amt")
+        pmt_date = col_p2.date_input("Date of Receipt Collection", key="input_pmt_date")
        
-        for p_name in project_names:
-            p_info = db_data[p_name]
-            p_mode = p_info.get('comm_type', 'Percentage (%)')
-            p_mauza = p_info.get('mauza', 'Unknown')
-            p_plots = p_info.get('plots', {})
-            if isinstance(p_plots, list):
-                p_plots = {str(idx): p for idx, p in enumerate(p_plots) if p is not None}
+        col_p3, col_p4 = st.columns(2)
+        pmt_mode = col_p3.selectbox("Payment Channel Mode", ["Online/UPI", "Cash", "Cheque", "RTGS/NEFT"], key="input_pmt_mode")
+        inst_ref = col_p4.text_input("Transaction ID / Instrument Ref No.", key="input_inst_ref")
+       
+        remarks = st.text_input("Accountant Remarks / Notes", placeholder="e.g., Third Installment Received", key="input_remarks")
+       
+        submit_payment = st.form_submit_button("💾 Save Payment Entry & Adjust Ledger Balance", use_container_width=True)
+       
+        if submit_payment:
+            if paid_amt <= 0:
+                st.error("🚨 Accounting Failure: Collected installment amount must be greater than zero!")
+            elif paid_amt > net_outstanding_balance:
+                st.error(f"🚨 Limit Violation: Entered amount exceeds the remaining net outstanding due of ₹{net_outstanding_balance:,.2f}!")
+            else:
+                new_receipt = {
+                    "receipt_no": f"REC-{selected_project[:3].upper()}-{selected_plot}-{len(partial_payments_list)+1}",
+                    "amount": paid_amt,
+                    "date": str(pmt_date.strftime("%d-%m-%Y")),
+                    "mode": pmt_mode,
+                    "reference": inst_ref.strip() if inst_ref.strip() else "N/A",
+                    "remarks": remarks.strip() if remarks.strip() else "Installment Payment"
+                }
                
-            for plot_id, plot_info in p_plots.items():
-                if isinstance(plot_info, dict):
-                    plot_status = str(plot_info.get('status', '')).strip().lower()
-                    plot_exec = str(plot_info.get('executive_name', '')).strip().lower()
-                    
-                    if plot_status == 'booked' and plot_exec == search_exec_clean:
-                        
-                        # 1️⃣ सबसे पहले नेट कमीशन % निकाल
+                plot_data['partial_payments'].append(new_receipt)
+                
+                with st.spinner("Updating central accounting records..."):
+                    if database.save_db_data():
+                        st.success(f"🎉 Success! Installment of ₹{paid_amt:,.2f} safely authorized and logged!")
+                        st.invalidate_pages() if hasattr(st, "invalidate_pages") else None
+                        st.rerun()
+
+with col_f2:
+    st.markdown("### 🔔 Automated EMI Reminders Engine")
+    st.markdown("<div style='background-color:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:20px;'>", unsafe_allow_html=True)
+   
+    reminder_text = (
+        f"Dear {customer_name},\n\n"
+        f"This is a friendly payment reminder from Firstchoice Infra regarding your plot booking P-{selected_plot} "
+        f"in our project '{selected_project}'.\n\n"
+        f"Summary Details:\n"
+        f"- Total Plot Cost: ₹{total_cost:,.2f}\n"
+        f"- Total Amount Paid: ₹{total_overall_paid:,.2f}\n"
+        f"- Net Outstanding Balance Due: ₹{net_outstanding_balance:,.2f}\n\n"
+        f"Kindly arrange for the installment payment clearance at your earliest convenience. "
+        f"Ignore if already settled. Thank you!\n\n"
+        f"Warm regards,\n"
+        f"Accounts Desk\n"
+        f"Firstchoice Infra, Nagpur"
+    )
+   
+    st.caption("Copy this auto-calculated string directly to send to the client via WhatsApp/SMS notification channels:")
+    st.text_area("Live Notification Template", value=reminder_text, height=220, disabled=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# --- Comprehensive Live Payment Ledger Table ---
+st.markdown("<br><hr>", unsafe_allow_html=True)
+st.markdown("### 📄 Real-Time Payment History Ledger Breakdown")
+
+history_rows = []
+history_rows.append({
+    "Receipt ID": "REC-TOKEN-01",
+    "Payment Category": "Initial Booking Advance",
+    "Collection Date": plot_data.get('receipt_date', plot_data.get('booking_date', 'N/A')),
+    "Payment Mode": plot_data.get('payment_mode', 'N/A'),
+    "Instrument Ref": plot_data.get('transaction_id', 'N/A'),
+    "Amount Deposited (₹)": token_paid,
+    "Account Status": "Cleared"
+})
+
+for pmt in partial_payments_list:
+    history_rows.append({
+        "Receipt ID": pmt.get('receipt_no', 'N/A'),
+        "Payment Category": pmt.get('remarks', 'Installment Payment'),
+        "Collection Date": pmt.get('date', 'N/A'),
+        "Payment Mode": pmt.get('mode', 'N/A'),
+        "Instrument Ref": pmt.get('reference', 'N/A'),
+        "Amount Deposited (₹)": safe_float(pmt.get('amount', 0.0)),
+        "Account Status": "Cleared"
+    })
+
+df_ledger = pd.DataFrame(history_rows)
+st.dataframe(df_ledger, use_container_width=True, hide_index=True)
+
+# --- Printable File Download Operations ---
+st.write("---")
+csv_ledger_data = df_ledger.to_csv(index=False).encode('utf-8-sig')
+
+st.download_button(
+    label="📥 Export & Print Complete Ledger Statement (Share via WhatsApp)",
+    data=csv_ledger_data,
+    file_name=f"Ledger_Statement_{str(customer_name).replace(' ', '_')}_Plot_{selected_plot}.csv",
+    mime="text/csv",
+    use_container_width=True
+)
