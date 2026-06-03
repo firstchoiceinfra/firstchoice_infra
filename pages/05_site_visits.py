@@ -4,13 +4,17 @@ from datetime import datetime
 
 st.set_page_config(page_title="Site Visits", page_icon="🏗️", layout="wide")
 
-# सुरक्षा: केवल एडमिन के लिए
+# 1. सबसे पहले चेक करें कि लॉगिन है या नहीं
 if "logged_in" not in st.session_state or not st.session_state.logged_in:
     st.warning("🔒 कृपया पहले मुख्य पेज (Main Page) से लॉगिन करें!")
     st.stop()
 
-if st.session_state.get("role") != "admin":
-    st.error("🔒 यह पेज केवल एडमिन के लिए है!")
+# 2. सबसे अहम लाइन: यह कैपिटल/स्मॉल लेटर का झंझट खत्म कर देगी
+user_role = str(st.session_state.get("role", "")).lower()
+
+# 3. एडमिन और एग्जीक्यूटिव दोनों को एंट्री दें
+if user_role not in ["admin", "executive"]:
+    st.error("🔒 यह पेज केवल एडमिन और एग्जीक्यूटिव के लिए है!")
     st.stop()
 
 # डेटा स्टोरेज
@@ -18,9 +22,9 @@ if 'site_visits' not in st.session_state:
     st.session_state.site_visits = []
 
 st.title("🏗️ Site Visits Dashboard")
-st.write("Logged in as: **ADMIN**")
+st.write(f"Logged in as: **{user_role.upper()}**")
 
-with st.expander("➕ Add New Site Visit", expanded=True):
+with st.expander("➕ Add New Site Visit (फील्ड डेटा डालें)", expanded=True):
     with st.form("visit_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -54,4 +58,4 @@ st.subheader("📋 Recent Site Visits")
 if st.session_state.site_visits:
     st.dataframe(pd.DataFrame(st.session_state.site_visits), use_container_width=True)
 else:
-    st.info("No records found.")
+    st.info("अभी तक कोई रिकॉर्ड नहीं है।")
