@@ -50,15 +50,24 @@ div[data-testid="stHorizontalBlock"] > div:nth-child(6) button:hover {{ backgrou
 </style>
 """, unsafe_allow_html=True)
 
+# 🛠️ Safe Float Function (यह खाली बॉक्स होने पर सिस्टम को क्रैश होने से बचाएगा)
+def safe_float(val, default=0.0):
+    try:
+        if val is None or str(val).strip() == "":
+            return float(default)
+        return float(val)
+    except:
+        return float(default)
+
 # --- Dynamic Safe-Edit Callback Engine ---
 def prepare_edit(ex_name, details):
     st.session_state['form_exec_name'] = ex_name
     st.session_state['form_senior_name'] = details.get('senior_name', '')
     st.session_state['form_exec_mobile'] = details.get('mobile', '')
-    st.session_state['ep'] = float(details.get('percentage_exec', 0.0))
-    st.session_state['sp'] = float(details.get('percentage_senior', 0.0))
-    st.session_state['er'] = float(details.get('rupees_exec', 0.0))
-    st.session_state['sr'] = float(details.get('rupees_senior', 0.0))
+    st.session_state['ep'] = safe_float(details.get('percentage_exec', 0.0))
+    st.session_state['sp'] = safe_float(details.get('percentage_senior', 0.0))
+    st.session_state['er'] = safe_float(details.get('rupees_exec', 0.0))
+    st.session_state['sr'] = safe_float(details.get('rupees_senior', 0.0))
     st.session_state['edit_mode_active'] = True
     st.session_state['old_edit_name'] = ex_name
 
@@ -143,4 +152,133 @@ if exec_clean_list:
 
     if st.button("🔍 Generate Real-Time Statement", use_container_width=True):
         ex_profile = exec_data_root[search_exec]
-        ex_pct = float(ex_profile.get('percentage_exec', 23.0)) # डिफ़ॉल्ट टॉप स्लैब
+        ex_pct = safe_float(ex_profile.get('percentage_exec', 23.0)) 
+        ex_rs = safe_float(ex_profile.get('rupees_exec', 0.0))
+        statement_rows = []
+        s_no = 1
+        
+        # स्मार्ट नाम मैचिंग (ताकि स्पेस की वजह से कोई रिकॉर्ड न छूटे)
+        search_exec_clean = str(search_exec).strip().lower()
+       
+        for p_name in project_names:
+            p_info = db_data[p_name]
+            p_mode = p_info.get('comm_type', 'Percentage (%)')
+            p_mauza = p_info.get('mauza', 'Unknown')
+            p_plots = p_info.get('plots', {})
+            if isinstance(p_plots, list):
+                p_plots = {str(idx): p for idx, p in enumerate(p_plots) if p is not None}
+               
+            for plot_id, plot_info in p_plots.items():
+                if isinstance(plot_info, dict):
+                    # स्मार्ट स्टेटस और नाम मैचिंग
+                    plot_status = str(plot_info.get('status', '')).strip().lower()
+                    plot_exec = str(plot_info.get('executive_name', '')).strip().lower()
+                    
+                    if plot_status == 'booked' and plot_exec == search_exec_clean:
+                        # 📅 स्मार्ट डेट पार्सर (तारीख में एरर होने पर क्रैश से बचाएगा)
+                        b_date_str = str(plot_info.get('booking_date', plot_info.get('receipt_date', ''))).strip()
+                        b_date = datetime.date.today() # डिफ़ॉल्ट आज की तारीख
+                        if b_date_str:
+                            try:
+                                b_date = datetime.datetime.strptime(b_date_str, "%Y-%m-%d").date()
+                            except:
+                                try:
+                                    b_date = datetime.datetime.strptime(b_date_str, "%d-%m-%Y").date()
+                                except: pass
+                           
+                        if start_date <= b_date <= end_date:
+                            # 🎯 सेफ कैलकुलेशन (यहाँ सेफ_फ्लोट क्रैश होने से रोकेगा)
+                            plot_area = safe_float(plot_info.get('plot_area', plot_info.get('area', 1116.23)))
+                            s_rate = safe_float(plot_info.get('selling_rate', 0.0))
+                            
+                            if 0 < s_rate < 10000:
+                                total_plot_value = s_rate * plot_area
+                            else:
+                                total_plot_value = s_rate if s_rate > 0 else safe_float(plot_info.get('total_value', 191000.0))
+
+                            company_rate = safe_float(plot_info.get('company_rate', p_info.get('base_rate', 700.0)))
+                            if company_rate <= 0: company_rate = 700.0
+                            
+                            paid_amt = safe_float(plot_info.get('token_amount', plot_info.get('received_amount', 0.0)))
+                            discount_val = safe_float(plot_info.get('discount', 14.0))
+                            
+                            if discount_val > 1000:
+                                disc_per_sqft = discount_val / plot_area if plot_area > 0 else 0.0
+                            else:
+                                disc_per_sqft = discount_val
+                            
+                            if "Percentage" in p_mode: 
+                                disc_pct_reduction = (disc_per_sqft / company_rate) * 100.0
+                                net_comm_pct = max(0.0, ex_pct - disc_pct_reduction)
+                                gross_comm = (total_plot_value * net_comm_pct) / 100.0 
+                            else: 
+                                gross_comm = ex_rs
+                                net_comm_pct = ex_pct
+                               
+                            tds_amt = (gross_comm * 2.0) / 100.0
+                            net_comm = gross_comm - tds_amt
+                           
+                            statement_rows.append({
+                                "S.No.": s_no, 
+                                "Client Name": str(plot_info.get('customer_name', 'N/A')).title(),
+                                "Project (Location)": f"{p_name} ({p_mauza})",
+                                "Plot No.": plot_id, 
+                                "Area (Sq.Ft)": round(plot_area, 2),
+                                "Paid Amt (₹)": f"{paid_amt:,.0f}",
+                                "Payment Date": b_date.strftime("%d-%m-%Y"),
+                                "Net Comm %": f"{net_comm_pct:.1f} %",
+                                "Gross Comm (₹)": round(gross_comm, 2), 
+                                "2% TDS (₹)": round(tds_amt, 2), 
+                                "Net Payout (₹)": int(round(net_comm))
+                            })
+                            s_no += 1
+        
+        if statement_rows:
+            df_statement = pd.DataFrame(statement_rows)
+            st.dataframe(df_statement, use_container_width=True, hide_index=True)
+            st.write("---")
+            c_sum1, c_sum2, c_sum3, c_sum4 = st.columns(4)
+            c_sum1.metric("Total Plots Count", f"{len(df_statement)} Units")
+            c_sum2.metric("Total Gross Commission", f"₹ {df_statement['Gross Comm (₹)'].sum():,.2f}")
+            c_sum3.metric("Total TDS Deduction (2%)", f"₹ {df_statement['2% TDS (₹)'].sum():,.2f}")
+            c_sum4.metric("🏆 Net Payable Commission", f"₹ {df_statement['Net Payout (₹)'].sum():,.2f}")
+           
+            csv_data = df_statement.to_csv(index=False).encode('utf-8-sig')
+            st.download_button("📥 Export Statement File (Print / Share on WhatsApp)", csv_data, f"Statement_{search_exec}.csv", "text/csv", use_container_width=True)
+        else:
+            st.info(f"🔍 '{search_exec}' के लिए {start_date.strftime('%d-%m-%Y')} से {end_date.strftime('%d-%m-%Y')} के बीच कोई बुकिंग रिकॉर्ड नहीं मिला। (कृपया तारीख चेक करें)")
+
+# --- Active Partner Registry (6-Column Grid Layout) ---
+st.markdown("<br><hr>", unsafe_allow_html=True)
+st.markdown("<h4 style='font-size:16px;'>📋 Current Active Partners & Login Credentials</h4>", unsafe_allow_html=True)
+exec_clean_list_view = {k: v for k, v in exec_data_root.items() if isinstance(v, dict) and 'name' in v}
+
+if not exec_clean_list_view:
+    st.caption("No registered partners available.")
+else:
+    for ex_name, p_details in exec_clean_list_view.items():
+        with st.container():
+            st.markdown(f"""
+            <div class="ledger-box">
+                <span style="font-size: 13px; font-weight: bold; color: {p_color};">👨‍💼 Partner ID: {ex_name}</span>
+                <span style="float: right; background-color: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size:11px; color: #475569; font-weight: 600;">🔑 Password (Mob): {p_details.get('mobile','N/A')}</span>
+                <br><span style="font-size: 11px; color: #64748b;">👴 <b>Senior Chain Head:</b> {p_details.get('senior_name','N/A')} | 📅 Updated: {p_details.get('last_updated','N/A')}</span>
+            </div>
+            """, unsafe_allow_html=True)
+           
+            c_m1, c_m2, c_m3, c_m4, c_m5, c_m6 = st.columns([1.0, 1.0, 1.1, 1.1, 0.7, 0.7])
+            c_m1.metric("Exec %", f"{p_details.get('percentage_exec', 0)} %")
+            c_m2.metric("Senior %", f"{p_details.get('percentage_senior', 0)} %")
+            c_m3.metric("Exec ₹ (Fixed)", f"₹ {p_details.get('rupees_exec', 0)}")
+            c_m4.metric("Senior ₹ (Fixed)", f"₹ {p_details.get('rupees_senior', 0)}")
+           
+            with c_m5:
+                st.button("✏️ Edit", key=f"edit_{ex_name}", use_container_width=True, on_click=prepare_edit, args=(ex_name, p_details))
+            with c_m6:
+                if st.button("🗑️ Delete", key=f"del_{ex_name}", use_container_width=True):
+                    st.session_state.db_projects['executives'].pop(ex_name, None)
+                    database.save_db_data()
+                    st.success(f"Partner Account '{ex_name}' successfully removed!")
+                    st.rerun()
+            st.markdown("<div style='margin-bottom: 12px; border-bottom: 1px dashed #e2e8f0;'></div>", unsafe_allow_html=True)
+
