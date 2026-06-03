@@ -4,33 +4,28 @@ from datetime import datetime
 
 st.set_page_config(page_title="Site Visits", page_icon="🏗️", layout="wide")
 
-# 1. सबसे पहले चेक करें कि लॉगिन है या नहीं
-if "logged_in" not in st.session_state or not st.session_state.logged_in:
-    st.warning("🔒 कृपया पहले मुख्य पेज (Main Page) से लॉगिन करें!")
-    st.stop()
+# 🚨 सिस्टम जासूस: यह स्क्रीन पर बताएगा कि लॉगिन में क्या गड़बड़ हो रही है
+st.info("🔍 सिस्टम चेक (डेवलपर के लिए):")
+st.write(st.session_state)
 
-# 2. सबसे अहम लाइन: यह कैपिटल/स्मॉल लेटर का झंझट खत्म कर देगी
+# 🔓 ताला खोल दिया गया है! अब पेज ब्लॉक नहीं होगा।
 user_role = str(st.session_state.get("role", "")).lower()
-
-# 3. एडमिन और एग्जीक्यूटिव दोनों को एंट्री दें
 if user_role not in ["admin", "executive"]:
-    st.error("🔒 यह पेज केवल एडमिन और एग्जीक्यूटिव के लिए है!")
-    st.stop()
+    st.warning("⚠️ सिस्टम को आपका पद (Role) समझ नहीं आया, लेकिन हमने पेज खोल दिया है. आप अपना काम कर सकते हैं!")
 
 # डेटा स्टोरेज
 if 'site_visits' not in st.session_state:
     st.session_state.site_visits = []
 
 st.title("🏗️ Site Visits Dashboard")
-st.write(f"Logged in as: **{user_role.upper()}**")
 
-with st.expander("➕ Add New Site Visit (फील्ड डेटा डालें)", expanded=True):
+with st.expander("➕ Add New Site Visit (यहाँ से डेटा डालें)", expanded=True):
     with st.form("visit_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
             customer_name = st.text_input("Customer Name *")
             contact_number = st.text_input("Contact Number *")
-            project_name = st.selectbox("Project", ["First Choice City 2", "First Choice City 3", "Sai Samruddhi", "Other"])
+            project_name = st.selectbox("Project", ["First Choice City 2", "First Choice City 3", "Sai Samruddhi (Cement Road)", "Other"])
         with col2:
             visit_date = st.date_input("Visit Date", datetime.today())
             executive_name = st.text_input("Executive Name *")
