@@ -1,40 +1,242 @@
 import streamlit as st
+import database
+import datetime
+import pandas as pd
 
-# यह आपके सिस्टम का एक डेमो है कि कमीशन का गणित कैसे काम करेगा
-st.subheader("💰 Executive Commission Tracker")
+# --- 1. Page Configuration ---
+st.set_page_config(layout="wide", page_title="FC Infra - Commission Channel")
 
-# 1. डेटा जो मास्टर लेजर/इन्वेंटरी से ऑटोमेटिक आएगा (आपकी वैल्यू के अनुसार)
-plot_base_price = 191000.00 # प्लॉट की कुल कीमत
-commission_rate = 20.0 # एग्जीक्यूटिव का फिक्स कमीशन (%)
-discount_given = 14000.00 # एग्जीक्यूटिव द्वारा दिया गया डिस्काउंट
+# --- 2. Security Check (Strict Admin Lock) ---
+if 'logged_in' not in st.session_state or not st.session_state.logged_in:
+    st.warning("🔒 Please login on the Main Page first.")
+    st.stop()
 
-# 2. असली गणित (बिल्कुल पारदर्शी तरीके से)
-# नियम: पहले प्लॉट की कीमत में से डिस्काउंट माइनस होगा, फिर बचे हुए अमाउंट (Net Value) पर 20% कमीशन निकलेगा।
-# (या अगर आपके यहाँ नियम है कि डिस्काउंट सीधा एग्जीक्यूटिव के कमीशन से कटता है, तो आप मुझे बताइएगा, हम वो फॉर्मूला लगा देंगे)
+if st.session_state.get('user_role', 'admin') != 'admin':
+    st.error("🚨 Security Alert: You do not have permission to access the Commission Panel!")
+    st.stop()
 
-net_plot_value = plot_base_price - discount_given
-final_commission = (net_plot_value * commission_rate) / 100
+# --- 3. Cloud Database Integration ---
+database.init_db()
+db_data = st.session_state.db_projects
 
-# 3. एग्जीक्यूटिव को स्क्रीन पर एकदम साफ़-साफ़ हिसाब दिखाना (ताकि कोई कन्फ्यूजन न हो)
-st.markdown("### 📊 Commission Breakdown (कमीशन का पूरा हिसाब)")
+# Global Theme Synchronization Logic
+bg_url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
+p_color = "#1e3a8a"
+s_color = "#3b82f6"
+c_bg = "rgba(255, 255, 255, 0.92)"
 
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Plot Value (प्लॉट की कीमत)", f"₹ {plot_base_price:,.2f}")
-col2.metric(f"Discount Given (छूट)", f"- ₹ {discount_given:,.2f}")
-col3.metric("Net Plot Value (बचा हुआ अमाउंट)", f"₹ {net_plot_value:,.2f}")
+if '_app_settings' in db_data:
+    global_settings = db_data['_app_settings']
+    bg_url = global_settings.get('bg_url', bg_url)
+    p_color = global_settings.get('primary_color', p_color)
+    s_color = global_settings.get('secondary_color', s_color)
+    c_bg = global_settings.get('card_bg', c_bg)
 
-st.divider()
+st.markdown(f"""
+<style>
+.stApp {{ background-image: url("{bg_url}"); background-attachment: fixed; background-size: cover; }}
+.block-container {{ background-color: {c_bg} !important; padding: 1.5rem 2.5rem !important; border-radius: 20px; box-shadow: 0px 10px 30px rgba(0,0,0,0.3); margin-top: 1.5rem; margin-bottom: 1.5rem; }}
+h1, h2, h3 {{ color: {p_color} !important; font-weight: 800; }}
+.stButton>button {{ background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%); color: white !important; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }}
+.ledger-box {{ background-color: #ffffff; border-left: 4px solid {p_color}; padding: 6px 12px !important; border-radius: 6px; box-shadow: 0px 1px 3px rgba(0,0,0,0.05); margin-bottom: 4px !important; }}
+div[data-testid="stMetric"] div[data-testid="stMetricLabel"] {{ font-size: 11px !important; font-weight: 600 !important; color: #475569 !important; }}
+div[data-testid="stMetric"] div[data-testid="stMetricValue"] {{ font-size: 14px !important; font-weight: 700 !important; color: #0f172a !important; }}
 
-col4, col5 = st.columns(2)
-col4.info(f"**Commission Rate:** {commission_rate}%")
-col5.success(f"💸 **Your Final Commission:** ₹ {final_commission:,.2f}")
+/* Row Action Buttons Alignment Colors */
+div[data-testid="stHorizontalBlock"] > div:nth-child(5) button {{ background: #e0f2fe !important; color: #0369a1 !important; border: 1px solid #7dd3fc !important; font-size: 12px !important; padding: 0.2rem 0.5rem !important; margin-top: 10px !important; min-height: 32px !important; }}
+div[data-testid="stHorizontalBlock"] > div:nth-child(5) button:hover {{ background: #7dd3fc !important; color: #0c4a6e !important; }}
+div[data-testid="stHorizontalBlock"] > div:nth-child(6) button {{ background: #fee2e2 !important; color: #991b1b !important; border: 1px solid #fca5a5 !important; font-size: 12px !important; padding: 0.2rem 0.5rem !important; margin-top: 10px !important; min-height: 32px !important; }}
+div[data-testid="stHorizontalBlock"] > div:nth-child(6) button:hover {{ background: #fca5a5 !important; color: #7f1d1d !important; }}
+</style>
+""", unsafe_allow_html=True)
 
-# 4. सिस्टम को समझने के लिए बैकएंड लॉग
-st.write("---")
-with st.expander("🔍 Calculation Proof (सिस्टम ने कैसे गिना)"):
-    st.code(f"""
-    1. Base Price: {plot_base_price}
-    2. Minus Discount: -{discount_given}
-    3. Net Value = {net_plot_value}
-    4. Commission = {net_plot_value} x {commission_rate}% = {final_commission}
-    """, language="text")
+# --- Dynamic Safe-Edit Callback Engine ---
+def prepare_edit(ex_name, details):
+    st.session_state['form_exec_name'] = ex_name
+    st.session_state['form_senior_name'] = details.get('senior_name', '')
+    st.session_state['form_exec_mobile'] = details.get('mobile', '')
+    st.session_state['ep'] = float(details.get('percentage_exec', 0.0))
+    st.session_state['sp'] = float(details.get('percentage_senior', 0.0))
+    st.session_state['er'] = float(details.get('rupees_exec', 0.0))
+    st.session_state['sr'] = float(details.get('rupees_senior', 0.0))
+    st.session_state['edit_mode_active'] = True
+    st.session_state['old_edit_name'] = ex_name
+
+def clear_edit_fields():
+    for k in ['form_exec_name', 'form_senior_name', 'form_exec_mobile', 'ep', 'sp', 'er', 'sr', 'edit_mode_active', 'old_edit_name']:
+        st.session_state.pop(k, None)
+
+st.markdown("<h1 style='text-align: center;'>👑 Executive & Commission Channel Panel</h1>", unsafe_allow_html=True)
+
+# --- Main Setup Profile Form ---
+is_editing = st.session_state.get('edit_mode_active', False)
+st.subheader("✏️ Edit Partner Profile & Commissions (Update Mode)" if is_editing else "🏗️ Add New Partner Account & Commission Structure")
+
+with st.form("commission_form"):
+    st.markdown("#### 👤 Associate Personal Credentials")
+    col_a1, col_a2 = st.columns(2)
+    exec_name = col_a1.text_input("👨‍💼 Executive Full Name (Login ID) *", key="form_exec_name")
+    senior_name = col_a2.text_input("👨‍💼 Senior Chain Head Name", key="form_senior_name")
+    exec_mobile = col_a1.text_input("📱 10-Digit Mobile Number (Account Password) *", max_chars=10, key="form_exec_mobile")
+    st.caption("⚠️ *Note: The Executive Name will serve as their Login User ID, and the Mobile Number will be their Login Password.*")
+
+    st.markdown("#### 💰 Global Master Commission Engine Configuration")
+    st.info("💡 The system will automatically deploy either Percentage or Fixed Cash profiles matching individual project layout settings.")
+    col_c1, col_c2 = st.columns(2)
+    with col_c1:
+        st.markdown("<h5 style='color: #0d9488;'>📈 Channel 1: Percentage-Based Rule (% Master Rate)</h5>", unsafe_allow_html=True)
+        exec_pct = st.number_input("Executive Split (%)", min_value=0.0, max_value=100.0, step=0.1, key="ep")
+        senior_pct = st.number_input("Senior Split (%)", min_value=0.0, max_value=100.0, step=0.1, key="sp")
+    with col_c2:
+        st.markdown("<h5 style='color: #b45309;'>💵 Channel 2: Fixed Cash Rule (Fixed Amount Rate)</h5>", unsafe_allow_html=True)
+        exec_rs = st.number_input("Executive Payout (Fixed ₹)", min_value=0.0, step=500.0, key="er")
+        senior_rs = st.number_input("Senior Payout (Fixed ₹)", min_value=0.0, step=500.0, key="sr")
+
+    st.write("")
+    if is_editing:
+        col_btn1, col_btn2 = st.columns(2)
+        save_comm = col_btn1.form_submit_button("💾 Update Partner Profile", use_container_width=True)
+        if col_btn2.form_submit_button("❌ Cancel / Abort", use_container_width=True):
+            clear_edit_fields()
+            st.rerun()
+    else:
+        save_comm = st.form_submit_button("💾 Register Profile & Activate Credentials", use_container_width=True)
+
+    if save_comm:
+        if exec_name.strip() == "" or exec_mobile.strip() == "":
+            st.error("🚨 Full Name and Mobile Number are mandatory fields!")
+        elif len(exec_mobile.strip()) < 10:
+            st.error("🚨 Please enter a valid 10-digit mobile number layout!")
+        else:
+            exec_clean = exec_name.strip()
+            if 'executives' not in st.session_state.db_projects:
+                st.session_state.db_projects['executives'] = {}
+            if is_editing and 'old_edit_name' in st.session_state:
+                old_name = st.session_state['old_edit_name']
+                if old_name != exec_clean:
+                    st.session_state.db_projects['executives'].pop(old_name, None)
+           
+            st.session_state.db_projects['executives'][exec_clean] = {
+                "name": exec_clean, "mobile": exec_mobile.strip(),
+                "senior_name": senior_name.strip() if senior_name.strip() else "Direct",
+                "percentage_exec": exec_pct, "percentage_senior": senior_pct,
+                "rupees_exec": exec_rs, "rupees_senior": senior_rs,
+                "last_updated": str(datetime.date.today())
+            }
+            if database.save_db_data():
+                st.success("🎉 Associate registry updated successfully!")
+                clear_edit_fields()
+                st.rerun()
+
+# --- Live Statement Ledger Engine ---
+st.markdown("<br><hr>", unsafe_allow_html=True)
+st.subheader("📊 Executive Commission Statement (Live Ledger Dashboard)")
+exec_data_root = db_data.get('executives', {})
+exec_clean_list = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
+project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data or 'total_plots' in data)]
+
+if exec_clean_list:
+    col_s1, col_s2, col_s3 = st.columns(3)
+    search_exec = col_s1.selectbox("🔎 Select Executive", exec_clean_list)
+    start_date = col_s2.date_input("📅 Start Date", datetime.date.today() - datetime.timedelta(days=30))
+    end_date = col_s3.date_input("📅 End Date", datetime.date.today())
+
+    if st.button("🔍 Generate Real-Time Statement", use_container_width=True):
+        ex_profile = exec_data_root[search_exec]
+        ex_pct = float(ex_profile.get('percentage_exec', 0.0))
+        ex_rs = float(ex_profile.get('rupees_exec', 0.0))
+        statement_rows = []
+        s_no = 1
+       
+        for p_name in project_names:
+            p_info = db_data[p_name]
+            p_mode = p_info.get('comm_type', 'Percentage (%)')
+            p_mauza = p_info.get('mauza', 'N/A')
+            p_plots = p_info.get('plots', {})
+            if isinstance(p_plots, list):
+                p_plots = {str(idx): p for idx, p in enumerate(p_plots) if p is not None}
+               
+            for plot_id, plot_info in p_plots.items():
+                if isinstance(plot_info, dict) and plot_info.get('status') == 'Booked':
+                    if plot_info.get('executive_name') == search_exec:
+                        b_date_str = plot_info.get('booking_date', plot_info.get('receipt_date', ''))
+                        try: b_date = datetime.datetime.strptime(b_date_str, "%Y-%m-%d").date()
+                        except: b_date = datetime.date.today()
+                           
+                        if start_date <= b_date <= end_date:
+                            # 🎯 यहाँ हमने नया गणित (Corrected Math) जोड़ दिया है
+                            t_amt = float(plot_info.get('token_amount', 0.0))
+                            s_rate = float(plot_info.get('selling_rate', 0.0))
+                            discount_given = float(plot_info.get('discount', 0.0))
+                            
+                            # पहले प्लॉट की कीमत में से डिस्काउंट माइनस होगा
+                            net_plot_value = max(0.0, s_rate - discount_given)
+                            
+                            # फिर बचे हुए (Net Value) पर कमीशन निकलेगा
+                            if "Percentage" in p_mode: 
+                                gross_comm = (net_plot_value * ex_pct) / 100.0
+                            else: 
+                                gross_comm = ex_rs
+                               
+                            # TDS कटौती
+                            tds_amt = (gross_comm * 2.0) / 100.0
+                            net_comm = gross_comm - tds_amt
+                           
+                            statement_rows.append({
+                                "S.No.": s_no, "Client Name": plot_info.get('customer_name', 'N/A'),
+                                "Project": p_name, "Plot No.": plot_id, "Mauza": p_mauza,
+                                "Plot Value (₹)": s_rate, "Discount (₹)": discount_given,
+                                "Net Value (₹)": net_plot_value,
+                                "Gross Comm (₹)": round(gross_comm, 2),
+                                "2% TDS (₹)": round(tds_amt, 2), "Net Payout (₹)": round(net_comm, 2)
+                            })
+                            s_no += 1
+        if statement_rows:
+            df_statement = pd.DataFrame(statement_rows)
+            st.dataframe(df_statement, use_container_width=True, hide_index=True)
+            st.write("---")
+            c_sum1, c_sum2, c_sum3, c_sum4 = st.columns(4)
+            c_sum1.metric("Total Plot Value (Before Discount)", f"₹ {df_statement['Plot Value (₹)'].sum()}")
+            c_sum2.metric("Total Gross Commission", f"₹ {df_statement['Gross Comm (₹)'].sum()}")
+            c_sum3.metric("Total TDS Deduction (2%)", f"₹ {df_statement['2% TDS (₹)'].sum()}")
+            c_sum4.metric("🏆 Net Payable Commission", f"₹ {df_statement['Net Payout (₹)'].sum()}")
+           
+            csv_data = df_statement.to_csv(index=False).encode('utf-8-sig')
+            st.download_button("📥 Export Statement File (Print / Share on WhatsApp)", csv_data, f"Statement_{search_exec}.csv", "text/csv", use_container_width=True)
+        else:
+            st.warning("No booking records found for this executive within the specified date range.")
+
+# --- Active Partner Registry (6-Column Grid Layout) ---
+st.markdown("<br><hr>", unsafe_allow_html=True)
+st.markdown("<h4 style='font-size:16px;'>📋 Current Active Partners & Login Credentials</h4>", unsafe_allow_html=True)
+exec_clean_list_view = {k: v for k, v in exec_data_root.items() if isinstance(v, dict) and 'name' in v}
+
+if not exec_clean_list_view:
+    st.caption("No registered partners available.")
+else:
+    for ex_name, p_details in exec_clean_list_view.items():
+        with st.container():
+            st.markdown(f"""
+            <div class="ledger-box">
+                <span style="font-size: 13px; font-weight: bold; color: {p_color};">👨‍💼 Partner ID: {ex_name}</span>
+                <span style="float: right; background-color: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size:11px; color: #475569; font-weight: 600;">🔑 Password (Mob): {p_details.get('mobile','N/A')}</span>
+                <br><span style="font-size: 11px; color: #64748b;">👴 <b>Senior Chain Head:</b> {p_details.get('senior_name','N/A')} | 📅 Updated: {p_details.get('last_updated','N/A')}</span>
+            </div>
+            """, unsafe_allow_html=True)
+           
+            c_m1, c_m2, c_m3, c_m4, c_m5, c_m6 = st.columns([1.0, 1.0, 1.1, 1.1, 0.7, 0.7])
+            c_m1.metric("Exec %", f"{p_details.get('percentage_exec', 0)} %")
+            c_m2.metric("Senior %", f"{p_details.get('percentage_senior', 0)} %")
+            c_m3.metric("Exec ₹ (Fixed)", f"₹ {p_details.get('rupees_exec', 0)}")
+            c_m4.metric("Senior ₹ (Fixed)", f"₹ {p_details.get('rupees_senior', 0)}")
+           
+            with c_m5:
+                st.button("✏️ Edit", key=f"edit_{ex_name}", use_container_width=True, on_click=prepare_edit, args=(ex_name, p_details))
+            with c_m6:
+                if st.button("🗑️ Delete", key=f"del_{ex_name}", use_container_width=True):
+                    st.session_state.db_projects['executives'].pop(ex_name, None)
+                    database.save_db_data()
+                    st.success(f"Partner Account '{ex_name}' successfully removed!")
+                    st.rerun()
+            st.markdown("<div style='margin-bottom: 12px; border-bottom: 1px dashed #e2e8f0;'></div>", unsafe_allow_html=True)
+
