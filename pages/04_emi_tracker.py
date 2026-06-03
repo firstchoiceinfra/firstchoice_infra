@@ -39,6 +39,15 @@ div[data-testid="stForm"] {{ background-color: #ffffff; border: 1px solid #e2e8f
 </style>
 """, unsafe_allow_html=True)
 
+# 🛠️ Safe Float Function (ताकि खाली बॉक्स होने पर ऐप क्रैश न हो)
+def safe_float(val, default=0.0):
+    try:
+        if val is None or str(val).strip() == "":
+            return float(default)
+        return float(val)
+    except:
+        return float(default)
+
 st.markdown("<h1 style='text-align: center;'>📈 Customer EMI & Partial Payment Desk</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; font-size: 14px; color: #475569; margin-bottom: 30px;'>Autonomous Collection Tracking, Balance Audits & Automated Reminders</p>", unsafe_allow_html=True)
 
@@ -69,18 +78,18 @@ selected_plot = col_s2.selectbox("🎯 Select Active Booked Plot Number", sorted
 # Fetch target customer data node safely
 plot_data = project_plots[selected_plot]
 customer_name = plot_data.get('customer_name', 'N/A')
-total_cost = float(plot_data.get('selling_rate', 0.0))
-token_paid = float(plot_data.get('token_amount', 0.0))
+total_cost = safe_float(plot_data.get('selling_rate', 0.0))
+token_paid = safe_float(plot_data.get('token_amount', plot_data.get('received_amount', 0.0)))
 
 # Initialize partial payment registry array if not present inside the dataset
 if 'partial_payments' not in plot_data:
-    st.session_state.db_projects[selected_project]['plots'][selected_plot]['partial_payments'] = []
+    # सीधा डिक्शनरी रेफरेंस इस्तेमाल कर रहे हैं ताकि TypeError न आए
     plot_data['partial_payments'] = []
 
 partial_payments_list = plot_data.get('partial_payments', [])
 
 # Dynamic accounting calculators
-total_partial_paid = sum(float(pmt.get('amount', 0.0)) for pmt in partial_payments_list)
+total_partial_paid = sum(safe_float(pmt.get('amount', 0.0)) for pmt in partial_payments_list)
 total_overall_paid = token_paid + total_partial_paid
 net_outstanding_balance = max(0.0, total_cost - total_overall_paid)
 
@@ -108,15 +117,15 @@ with col_f1:
         col_p1, col_p2 = st.columns(2)
         paid_amt = col_p1.number_input("Collected Installment Amount (₹) *", min_value=0.0, step=5000.0, key="input_paid_amt")
         pmt_date = col_p2.date_input("Date of Receipt Collection", key="input_pmt_date")
-        
+       
         col_p3, col_p4 = st.columns(2)
         pmt_mode = col_p3.selectbox("Payment Channel Mode", ["Online/UPI", "Cash", "Cheque", "RTGS/NEFT"], key="input_pmt_mode")
         inst_ref = col_p4.text_input("Transaction ID / Instrument Ref No.", key="input_inst_ref")
-        
+       
         remarks = st.text_input("Accountant Remarks / Notes", placeholder="e.g., Third Installment Received", key="input_remarks")
-        
+       
         submit_payment = st.form_submit_button("💾 Save Payment Entry & Adjust Ledger Balance", use_container_width=True)
-        
+       
         if submit_payment:
             if paid_amt <= 0:
                 st.error("🚨 Accounting Failure: Collected installment amount must be greater than zero!")
@@ -126,13 +135,15 @@ with col_f1:
                 new_receipt = {
                     "receipt_no": f"REC-{selected_project[:3].upper()}-{selected_plot}-{len(partial_payments_list)+1}",
                     "amount": paid_amt,
-                    "date": str(pmt_date),
+                    "date": str(pmt_date.strftime("%d-%m-%Y")),
                     "mode": pmt_mode,
                     "reference": inst_ref.strip() if inst_ref.strip() else "N/A",
                     "remarks": remarks.strip() if remarks.strip() else "Installment Payment"
                 }
+               
+                # एरर से बचने के लिए सीधा plot_data में अपेंड किया
+                plot_data['partial_payments'].append(new_receipt)
                 
-                st.session_state.db_projects[selected_project]['plots'][selected_plot]['partial_payments'].append(new_receipt)
                 with st.spinner("Updating central accounting records..."):
                     if database.save_db_data():
                         st.success(f"🎉 Success! Installment of ₹{paid_amt:,.2f} safely authorized and logged!")
@@ -142,7 +153,7 @@ with col_f1:
 with col_f2:
     st.markdown("### 🔔 Automated EMI Reminders Engine")
     st.markdown("<div style='background-color:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:20px;'>", unsafe_allow_html=True)
-    
+   
     # Formulate localized dynamic message strings for communication channels
     reminder_text = (
         f"Dear {customer_name},\n\n"
@@ -158,7 +169,7 @@ with col_f2:
         f"Accounts Desk\n"
         f"Firstchoice Infra, Nagpur"
     )
-    
+   
     st.caption("Copy this auto-calculated string directly to send to the client via WhatsApp/SMS notification channels:")
     st.text_area("Live Notification Template", value=reminder_text, height=220, disabled=True)
     st.markdown("</div>", unsafe_allow_html=True)
@@ -187,7 +198,7 @@ for pmt in partial_payments_list:
         "Collection Date": pmt.get('date', 'N/A'),
         "Payment Mode": pmt.get('mode', 'N/A'),
         "Instrument Ref": pmt.get('reference', 'N/A'),
-        "Amount Deposited (₹)": float(pmt.get('amount', 0.0)),
+        "Amount Deposited (₹)": safe_float(pmt.get('amount', 0.0)),
         "Account Status": "Cleared"
     })
 
@@ -205,3 +216,4 @@ st.download_button(
     mime="text/csv",
     use_container_width=True
 )
+
