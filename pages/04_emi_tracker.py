@@ -39,7 +39,7 @@ div[data-testid="stForm"] {{ background-color: #ffffff; border: 1px solid #e2e8f
 </style>
 """, unsafe_allow_html=True)
 
-# 🛠️ Safe Float Function (ताकि खाली बॉक्स होने पर ऐप क्रैश न हो)
+# 🛠️ Safe Float Function
 def safe_float(val, default=0.0):
     try:
         if val is None or str(val).strip() == "":
@@ -78,12 +78,20 @@ selected_plot = col_s2.selectbox("🎯 Select Active Booked Plot Number", sorted
 # Fetch target customer data node safely
 plot_data = project_plots[selected_plot]
 customer_name = plot_data.get('customer_name', 'N/A')
-total_cost = safe_float(plot_data.get('selling_rate', 0.0))
+
+# 🎯 गड़बड़ी यहाँ ठीक की है: Total Plot Value सही से निकालना (Area x Rate)
+plot_area = safe_float(plot_data.get('plot_area', plot_data.get('area', 1116.23)))
+s_rate = safe_float(plot_data.get('selling_rate', 0.0))
+
+if 0 < s_rate < 10000: # मतलब यह पर-स्क्वायर-फीट का रेट है (जैसे 686)
+    total_cost = s_rate * plot_area
+else:
+    total_cost = s_rate if s_rate > 0 else safe_float(plot_data.get('total_value', 191000.0))
+
 token_paid = safe_float(plot_data.get('token_amount', plot_data.get('received_amount', 0.0)))
 
 # Initialize partial payment registry array if not present inside the dataset
 if 'partial_payments' not in plot_data:
-    # सीधा डिक्शनरी रेफरेंस इस्तेमाल कर रहे हैं ताकि TypeError न आए
     plot_data['partial_payments'] = []
 
 partial_payments_list = plot_data.get('partial_payments', [])
@@ -141,7 +149,6 @@ with col_f1:
                     "remarks": remarks.strip() if remarks.strip() else "Installment Payment"
                 }
                
-                # एरर से बचने के लिए सीधा plot_data में अपेंड किया
                 plot_data['partial_payments'].append(new_receipt)
                 
                 with st.spinner("Updating central accounting records..."):
@@ -154,7 +161,7 @@ with col_f2:
     st.markdown("### 🔔 Automated EMI Reminders Engine")
     st.markdown("<div style='background-color:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:20px;'>", unsafe_allow_html=True)
    
-    # Formulate localized dynamic message strings for communication channels
+    # Formulate localized dynamic message strings
     reminder_text = (
         f"Dear {customer_name},\n\n"
         f"This is a friendly payment reminder from Firstchoice Infra regarding your plot booking P-{selected_plot} "
@@ -179,7 +186,6 @@ st.markdown("<br><hr>", unsafe_allow_html=True)
 st.markdown("### 📄 Real-Time Payment History Ledger Breakdown")
 
 history_rows = []
-# 1. Base Entry: Add Initial Token Deposit
 history_rows.append({
     "Receipt ID": "REC-TOKEN-01",
     "Payment Category": "Initial Booking Advance",
@@ -190,7 +196,6 @@ history_rows.append({
     "Account Status": "Cleared"
 })
 
-# 2. Sequential entries: Add subsequent logged payments
 for pmt in partial_payments_list:
     history_rows.append({
         "Receipt ID": pmt.get('receipt_no', 'N/A'),
@@ -212,7 +217,7 @@ csv_ledger_data = df_ledger.to_csv(index=False).encode('utf-8-sig')
 st.download_button(
     label="📥 Export & Print Complete Ledger Statement (Share via WhatsApp)",
     data=csv_ledger_data,
-    file_name=f"Ledger_Statement_{customer_name.replace(' ', '_')}_Plot_{selected_plot}.csv",
+    file_name=f"Ledger_Statement_{str(customer_name).replace(' ', '_')}_Plot_{selected_plot}.csv",
     mime="text/csv",
     use_container_width=True
 )
