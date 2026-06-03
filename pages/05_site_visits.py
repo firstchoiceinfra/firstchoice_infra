@@ -6,22 +6,22 @@ import io
 
 st.set_page_config(page_title="Site Visits", page_icon="🏗️", layout="wide")
 
-# 🚨 सिस्टम जासूस: यह स्क्रीन पर दिखाएगा कि 'मेन पेज' से यहाँ क्या डेटा आ रहा है
-st.info("🔍 सिस्टम चेक (ताकि हम बीमारी पकड़ सकें):")
-st.write(st.session_state)
+# 1. सिक्योरिटी चेक (अब यह बिल्कुल सही 'user_role' पकड़ेगा)
+current_role = str(st.session_state.get("user_role", "")).lower()
 
-# 🔓 हमने यहाँ से st.stop() यानी 'ताला' हटा दिया है! अब पेज 100% खुलेगा।
-user_role = str(st.session_state.get("role", "unknown")).lower()
-current_username = str(st.session_state.get("username", "Unknown"))
+if not current_role:
+    st.warning("🔒 कृपया पहले मुख्य पेज (Main Page) से लॉगिन करें!")
+    st.stop()
 
-if user_role not in ["admin", "executive"]:
-    st.warning("⚠️ सिस्टम को आपका पद समझ नहीं आ रहा है, लेकिन हमने पेज खोल दिया है. आप अपना काम कर सकते हैं!")
+if current_role not in ["admin", "executive"]:
+    st.error("🔒 यह पेज केवल एडमिन और एग्जीक्यूटिव के लिए है!")
+    st.stop()
 
 # डेटा स्टोरेज
 if 'site_visits' not in st.session_state:
     st.session_state.site_visits = []
 
-# फोटो कंप्रेसर (स्पेस बचाने के लिए)
+# 2. फोटो कंप्रेसर (ताकि सर्वर का स्पेस न भरे)
 def compress_image(image_file):
     if image_file is None:
         return "No Photo ❌"
@@ -37,6 +37,7 @@ def compress_image(image_file):
         return "Error ❌"
 
 st.title("🏗️ Site Visits Dashboard")
+st.write(f"👤 Logged in as: **{current_role.upper()}**")
 
 with st.expander("➕ Add New Site Visit (यहाँ से डेटा डालें)", expanded=True):
     with st.form("visit_form", clear_on_submit=True):
@@ -65,7 +66,7 @@ with st.expander("➕ Add New Site Visit (यहाँ से डेटा ड�
                     "Customer": customer_name,
                     "Project": project_name,
                     "Executive": executive_name,
-                    "Uploaded_By": current_username,
+                    "Uploaded_By_Role": current_role, # यह फ़िल्टर करने के काम आएगा
                     "Photo": photo_status
                 })
                 st.success("✅ Record and Photo Saved Successfully!")
@@ -75,20 +76,20 @@ with st.expander("➕ Add New Site Visit (यहाँ से डेटा ड�
 st.divider()
 st.subheader("📋 Records")
 
+# 3. स्मार्ट फ़िल्टर (एडमिन सब देखेगा, एग्जीक्यूटिव सिर्फ अपना)
 if st.session_state.site_visits:
     df = pd.DataFrame(st.session_state.site_visits)
     
-    if user_role == "admin":
+    if current_role == "admin":
         st.write("👀 **Admin View:** आप सभी एग्जीक्यूटिव की विजिट देख रहे हैं।")
-        st.dataframe(df.drop(columns=["Uploaded_By"]), use_container_width=True)
+        st.dataframe(df.drop(columns=["Uploaded_By_Role"]), use_container_width=True)
     else:
-        st.write(f"👀 **Executive View:** आप सिर्फ अपनी टीम की विजिट देख रहे हैं।")
-        filtered_df = df[df["Uploaded_By"] == current_username]
+        st.write("👀 **Executive View:** आप सिर्फ एग्जीक्यूटिव टीम की विजिट देख रहे हैं।")
+        filtered_df = df[df["Uploaded_By_Role"] == "executive"]
         
         if not filtered_df.empty:
-            st.dataframe(filtered_df.drop(columns=["Uploaded_By"]), use_container_width=True)
+            st.dataframe(filtered_df.drop(columns=["Uploaded_By_Role"]), use_container_width=True)
         else:
             st.info("आपकी अभी तक कोई साइट विजिट दर्ज नहीं है।")
-            st.dataframe(df.drop(columns=["Uploaded_By"]), use_container_width=True) # अगर रोल न मिले तो भी सब दिखे
 else:
     st.info("अभी तक कोई रिकॉर्ड नहीं है।")
