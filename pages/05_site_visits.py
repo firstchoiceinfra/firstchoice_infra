@@ -64,12 +64,19 @@ with col_form:
         v_proj = c2.selectbox("🏢 Project Visited", project_names)
         
         c3, c4 = st.columns(2)
-        exec_name = c3.text_input("👨‍💼 Assigned Executive Name *")
+        
+        # Auto-fill Executive Name if logged in as executive
+        logged_in_name = st.session_state.get('current_user_name', '')
+        if st.session_state.get('user_role', 'executive') == 'executive':
+            exec_name = c3.text_input("👨‍💼 Assigned Executive Name *", value=logged_in_name, disabled=True)
+        else:
+            exec_name = c3.text_input("👨‍💼 Assigned Executive Name *", value=logged_in_name)
+            
         interest = c4.selectbox("📊 Client Interest Level", ["High (Hot)", "Medium (Warm)", "Low (Cold)", "Not Interested"])
         
         remarks = st.text_area("📝 Executive Remarks / Feedback")
         
-        st.markdown("📸 **Upload Site Visit Photo (Auto-Compress to save space)**")
+        st.markdown("📸 **Upload Site Visit Photo (Auto-Compress)**")
         uploaded_photo = st.file_uploader("Choose a photo (JPG, PNG)", type=['jpg', 'jpeg', 'png'])
         
         submit_btn = st.form_submit_button("💾 Save Visit Record Permanently", use_container_width=True)
@@ -81,64 +88,27 @@ with col_form:
                 photo_b64 = ""
                 if uploaded_photo is not None:
                     try:
-                        # 🚀 SMART COMPRESSION ENGINE (Save 98% Space)
+                        # 🚀 SMART COMPRESSION ENGINE
                         img = Image.open(uploaded_photo)
-                        
-                        # Convert to RGB (in case of PNG with transparent background)
                         if img.mode != 'RGB':
                             img = img.convert('RGB')
-                        
-                        # Resize the image to max 800x800 pixels
                         img.thumbnail((800, 800))
                         
-                        # Compress and save to memory buffer
                         buffered = io.BytesIO()
-                        img.save(buffered, format="JPEG", optimize=True, quality=60) # 60% quality reduces file size massively
+                        img.save(buffered, format="JPEG", optimize=True, quality=60)
                         
-                        # Convert to Base64 String
-                        photo_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-                    except Exception as e:
-                        st.error(f"Error processing image: {e}")
+        # 🔒 STRICT ADMIN LOCK FOR EXCEL DOWNLOAD
+        if st.session_state.get('user_role', 'executive') == 'admin':
+            df_export = pd.DataFrame(visits)
+            if 'photo_data' in df_export.columns:
+                df_export['photo_data'] = df_export['photo_data'].apply(lambda x: "Photo Attached in System" if x else "No Photo")
+                df_export.rename(columns={"photo_data": "Photo Status"}, inplace=True)
                 
-                visit_record = {
-                    "date_logged": str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-                    "client_name": c_name.strip(),
-                    "phone": c_phone.strip(),
-                    "visit_date": str(v_date),
-                    "project": v_proj,
-                    "executive": exec_name.strip(),
-                    "interest": interest,
-                    "remarks": remarks.strip(),
-                    "photo_data": photo_b64
-                }
-                
-                db_data['site_visits_log'].append(visit_record)
-                if database.save_db_data():
-                    st.success("🎉 Site Visit Successfully Logged!")
-                    st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with col_history:
-    st.markdown('<div class="history-box">', unsafe_allow_html=True)
-    st.markdown("### 📋 Recent Site Visits & Photos")
-    
-    visits = db_data.get('site_visits_log', [])
-    
-    if not visits:
-        st.info("ℹ️ No site visits have been logged yet.")
-    else:
-        # Download Excel Button
-        df_export = pd.DataFrame(visits)
-        if 'photo_data' in df_export.columns:
-            df_export['photo_data'] = df_export['photo_data'].apply(lambda x: "Photo Attached in System" if x else "No Photo")
-            df_export.rename(columns={"photo_data": "Photo Status"}, inplace=True)
-            
-        csv_data = df_export.to_csv(index=False).encode('utf-8-sig')
-        st.download_button("🖨️ Download Excel (CSV) Report", data=csv_data, file_name=f"Site_Visits_{datetime.date.today()}.csv", mime="text/csv", use_container_width=True)
+            csv_data = df_export.to_csv(index=False).encode('utf-8-sig')
+            st.download_button("🖨️ Download Excel (CSV) Report (Admin Only)", data=csv_data, file_name=f"Site_Visits_{datetime.date.today()}.csv", mime="text/csv", use_container_width=True)
+            st.write("---")
         
-        st.write("---")
-        
-        # Display Interactive History
+        # 🟢 DISPLAY HISTORY TO EVERYONE (Admin + Executive)
         for i, v in enumerate(reversed(visits)):
             icon = "🔥" if "High" in v['interest'] else "⭐" if "Medium" in v['interest'] else "❄️"
             
@@ -156,11 +126,10 @@ with col_history:
                     if v.get('photo_data'):
                         try:
                             img_bytes = base64.b64decode(v['photo_data'])
-                            st.image(img_bytes, caption="📸 Compressed Site Photo", use_column_width=True)
+                            st.image(img_bytes, caption="📸 Site Photo", use_column_width=True)
                         except:
                             st.error("Image broken")
                     else:
                         st.warning("🚫 No Photo Attached")
                         
     st.markdown('</div>', unsafe_allow_html=True)
-
