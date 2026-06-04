@@ -97,6 +97,37 @@ with col_form:
                         buffered = io.BytesIO()
                         img.save(buffered, format="JPEG", optimize=True, quality=60)
                         
+                        photo_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+                    except Exception as e:
+                        st.error(f"Error processing image: {e}")
+                
+                visit_record = {
+                    "date_logged": str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                    "client_name": c_name.strip(),
+                    "phone": c_phone.strip(),
+                    "visit_date": str(v_date),
+                    "project": v_proj,
+                    "executive": exec_name.strip(),
+                    "interest": interest,
+                    "remarks": remarks.strip(),
+                    "photo_data": photo_b64
+                }
+                
+                db_data['site_visits_log'].append(visit_record)
+                if database.save_db_data():
+                    st.success("🎉 Site Visit Successfully Logged!")
+                    st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col_history:
+    st.markdown('<div class="history-box">', unsafe_allow_html=True)
+    st.markdown("### 📋 Recent Site Visits & Photos")
+    
+    visits = db_data.get('site_visits_log', [])
+    
+    if not visits:
+        st.info("ℹ️ No site visits have been logged yet.")
+    else:
         # 🔒 STRICT ADMIN LOCK FOR EXCEL DOWNLOAD
         if st.session_state.get('user_role', 'executive') == 'admin':
             df_export = pd.DataFrame(visits)
