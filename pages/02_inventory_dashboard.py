@@ -278,7 +278,7 @@ if 'booking_popup' in st.session_state:
             col_s3.write(f"📅 **Advance Receipt Date:** {p_data.get('receipt_date', 'N/A')}")
             
             # =======================================================
-            # 🚀 NEW: LIVE EMI & PAYMENT SYNC ENGINE
+            # 🚀 LIVE EMI & PAYMENT SYNC ENGINE
             # =======================================================
             st.markdown("#### 🔄 Live Payment & EMI Sync (Auto-Fetched from EMI Tracker)")
             
@@ -308,22 +308,38 @@ if 'booking_popup' in st.session_state:
             c_emi2.metric("Total Collection (Token + EMI)", f"₹ {total_overall_paid:,.2f}")
             c_emi3.metric("Net Outstanding Balance", f"₹ {net_outstanding:,.2f}")
             
-            with st.expander("📜 View Complete Payment History Ledger (Token + All EMIs)", expanded=False):
-                history_rows = []
+            history_rows = []
+            history_rows.append({
+                "Date": p_data.get('receipt_date', p_data.get('booking_date', 'N/A')),
+                "Type": "Booking Advance (Token)",
+                "Mode": p_data.get('payment_mode', 'N/A'),
+                "Amount (₹)": token_amt_val
+            })
+            for pmt in partial_payments:
                 history_rows.append({
-                    "Date": p_data.get('receipt_date', p_data.get('booking_date', 'N/A')),
-                    "Type": "Booking Advance (Token)",
-                    "Mode": p_data.get('payment_mode', 'N/A'),
-                    "Amount (₹)": f"{token_amt_val:,.2f}"
+                    "Date": pmt.get('date', 'N/A'),
+                    "Type": pmt.get('remarks', 'Installment Payment'),
+                    "Mode": pmt.get('mode', 'N/A'),
+                    "Amount (₹)": sf(pmt.get('amount', 0.0))
                 })
-                for pmt in partial_payments:
-                    history_rows.append({
-                        "Date": pmt.get('date', 'N/A'),
-                        "Type": pmt.get('remarks', 'Installment Payment'),
-                        "Mode": pmt.get('mode', 'N/A'),
-                        "Amount (₹)": f"{sf(pmt.get('amount', 0.0)):,.2f}"
-                    })
-                st.dataframe(pd.DataFrame(history_rows), use_container_width=True, hide_index=True)
+            
+            with st.expander("📜 View Complete Payment History Ledger (Token + All EMIs)", expanded=False):
+                # Format for display
+                df_display = pd.DataFrame(history_rows)
+                df_display['Amount (₹)'] = df_display['Amount (₹)'].apply(lambda x: f"₹ {x:,.2f}")
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+            
+            # 🚀 NAYA BUTTON: DOWNLOAD / WHATSAPP SHARE
+            st.write("---")
+            csv_statement = pd.DataFrame(history_rows).to_csv(index=False).encode('utf-8-sig')
+            
+            st.download_button(
+                label="🖨️ Export & Print Complete Statement (Share via WhatsApp)",
+                data=csv_statement,
+                file_name=f"Plot_{plt}_Statement_{p_data.get('customer_name', 'Client').replace(' ', '_')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
             # =======================================================
            
         if st.session_state.get('user_role', 'admin') == 'admin':
