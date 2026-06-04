@@ -1,160 +1,166 @@
 import streamlit as st
 import database
-import datetime
 import pandas as pd
+import datetime
+import base64
 from PIL import Image
 import io
-import base64
 
 # --- 1. Page Configuration ---
 st.set_page_config(layout="wide", page_title="FC Infra - Site Visits Tracker")
 
-# --- 2. Security Check (Strict Admin Lock) ---
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.warning("🔒 Please login on the Main Page first.")
     st.stop()
 
-# --- 3. Cloud Database Integration ---
 database.init_db()
 db_data = st.session_state.db_projects
 
-# Global Theme Synchronization Logic
-bg_url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
-p_color = "#1e3a8a"
-s_color = "#3b82f6"
-c_bg = "rgba(255, 255, 255, 0.92)"
+# Initialize site visits database array if it doesn't exist
+if 'site_visits_log' not in db_data:
+    db_data['site_visits_log'] = []
 
+# ==========================================
+# 🎨 CLEAN CSS THEME
+# ==========================================
+bg_url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
 if '_app_settings' in db_data:
-    global_settings = db_data['_app_settings']
-    bg_url = global_settings.get('bg_url', bg_url)
-    p_color = global_settings.get('primary_color', p_color)
-    s_color = global_settings.get('secondary_color', s_color)
-    c_bg = global_settings.get('card_bg', c_bg)
+    bg_url = db_data['_app_settings'].get('bg_url', bg_url)
 
 st.markdown(f"""
 <style>
 .stApp {{ background-image: url("{bg_url}"); background-attachment: fixed; background-size: cover; }}
-.block-container {{ background-color: {c_bg} !important; padding: 2rem 3rem !important; border-radius: 20px; box-shadow: 0px 10px 30px rgba(0,0,0,0.3); margin-top: 2rem; margin-bottom: 2rem; }}
-h1, h2, h3 {{ color: {p_color} !important; font-weight: 800; }}
-.stButton>button {{ background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%); color: white !important; border-radius: 6px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }}
-div[data-testid="stForm"] {{ background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 25px; }}
+.block-container {{ background-color: rgba(255, 255, 255, 0.0) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; padding: 2rem !important; }}
+.form-box {{ background-color: #ffffff; padding: 30px; border-radius: 15px; box-shadow: 0px 10px 25px rgba(0,0,0,0.1); border-top: 5px solid #1e3a8a; }}
+.history-box {{ background-color: #ffffff; padding: 20px; border-radius: 15px; box-shadow: 0px 10px 25px rgba(0,0,0,0.1); border-top: 5px solid #3b82f6; }}
+h2, h3 {{ color: #1e3a8a !important; font-weight: 800; }}
+.stButton>button {{ background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%); color: white !important; font-weight: bold; border-radius: 8px; transition: all 0.3s; }}
+.stButton>button:hover {{ transform: scale(1.02); }}
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: center;'>🚗 Site Visits Tracker Dashboard</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #475569;'>Log, Monitor, and Track Client Site Visits Permanently</p>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center; background-color: white; padding: 10px; border-radius: 10px;'>📍 Log, Monitor, and Track Client Site Visits</h2><br>", unsafe_allow_html=True)
 
-# 🛠️ Database Setup for Site Visits
-if 'site_visits' not in db_data:
-    db_data['site_visits'] = []
-
-# Fetch active projects and executives for dropdowns
-project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data or 'total_plots' in data)]
-exec_data_root = db_data.get('executives', {})
-exec_list = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
-
+# Fetch active projects
+project_names = [name for name, data in db_data.items() if isinstance(data, dict) and 'plots' in data]
 if not project_names:
     project_names = ["No Projects Available"]
-if not exec_list:
-    exec_list = ["Direct Sale"]
 
-# --- Layout: Split into Form (Left) and Data Table (Right) ---
-col1, col2 = st.columns([1, 1.2])
+# ==========================================
+# 📱 SPLIT LAYOUT: FORM (Left) & HISTORY (Right)
+# ==========================================
+col_form, col_history = st.columns([1, 1.2])
 
-with col1:
+with col_form:
+    st.markdown('<div class="form-box">', unsafe_allow_html=True)
     st.markdown("### 📝 Add New Site Visit")
-    with st.form("site_visit_form"):
+    
+    with st.form("site_visit_form", clear_on_submit=True):
         c_name = st.text_input("👤 Client Full Name *")
-        c_mobile = st.text_input("📱 Client Mobile Number *", max_chars=10)
+        c_phone = st.text_input("📱 Client Mobile Number *")
         
-        c_p1, c_p2 = st.columns(2)
-        v_date = c_p1.date_input("📅 Date of Visit")
-        v_project = c_p2.selectbox("🏢 Project Visited", project_names)
+        c1, c2 = st.columns(2)
+        v_date = c1.date_input("📆 Date of Visit", datetime.date.today())
+        v_proj = c2.selectbox("🏢 Project Visited", project_names)
         
-        c_e1, c_e2 = st.columns(2)
-        v_exec = c_e1.selectbox("👨‍💼 Assigned Executive", exec_list)
-        v_status = c_e2.selectbox("📊 Client Interest Level", ["High (Hot)", "Medium (Warm)", "Low (Cold)", "Not Interested", "Booked"])
+        c3, c4 = st.columns(2)
+        exec_name = c3.text_input("👨‍💼 Assigned Executive Name *")
+        interest = c4.selectbox("📊 Client Interest Level", ["High (Hot)", "Medium (Warm)", "Low (Cold)", "Not Interested"])
         
-        # 🚀 नया फोटो अपलोडर
-        v_photo = st.file_uploader("📸 Upload Site Visit Photo (Auto-Compress)", type=["jpg", "jpeg", "png"])
+        remarks = st.text_area("📝 Executive Remarks / Feedback")
         
-        v_remarks = st.text_input("📝 Executive Remarks / Feedback")
+        st.markdown("📸 **Upload Site Visit Photo (Auto-Compress to save space)**")
+        uploaded_photo = st.file_uploader("Choose a photo (JPG, PNG)", type=['jpg', 'jpeg', 'png'])
         
-        submit_visit = st.form_submit_button("💾 Save Visit Record Permanently", use_container_width=True)
+        submit_btn = st.form_submit_button("💾 Save Visit Record Permanently", use_container_width=True)
         
-        if submit_visit:
-            if c_name.strip() == "" or c_mobile.strip() == "":
-                st.error("🚨 Client Name and Mobile Number are mandatory fields!")
+        if submit_btn:
+            if not c_name.strip() or not c_phone.strip() or not exec_name.strip():
+                st.error("🚨 Please fill Client Name, Mobile Number, and Executive Name!")
             else:
                 photo_b64 = ""
-                # 🚀 Auto-Compression Engine
-                if v_photo is not None:
+                if uploaded_photo is not None:
                     try:
-                        img = Image.open(v_photo)
+                        # 🚀 SMART COMPRESSION ENGINE (Save 98% Space)
+                        img = Image.open(uploaded_photo)
+                        
+                        # Convert to RGB (in case of PNG with transparent background)
                         if img.mode != 'RGB':
                             img = img.convert('RGB')
-                        img.thumbnail((800, 800)) # इमेज का साइज छोटा करना
-                        buf = io.BytesIO()
-                        img.save(buf, format="JPEG", quality=50, optimize=True) # 50% क्वालिटी कंप्रेस करना
-                        photo_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+                        
+                        # Resize the image to max 800x800 pixels
+                        img.thumbnail((800, 800))
+                        
+                        # Compress and save to memory buffer
+                        buffered = io.BytesIO()
+                        img.save(buffered, format="JPEG", optimize=True, quality=60) # 60% quality reduces file size massively
+                        
+                        # Convert to Base64 String
+                        photo_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
                     except Exception as e:
-                        st.warning("⚠️ Photo upload failed, but saving the visit record.")
-
-                new_visit = {
-                    "Date": str(v_date.strftime("%d-%m-%Y")),
-                    "Client Name": c_name.strip().title(),
-                    "Mobile Number": c_mobile.strip(),
-                    "Project": v_project,
-                    "Executive": v_exec,
-                    "Status": v_status,
-                    "Photo": photo_b64, # कंप्रेस की हुई फोटो का कोड यहाँ सेव होगा
-                    "Remarks": v_remarks.strip() if v_remarks.strip() else "N/A",
-                    "Timestamp": str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                        st.error(f"Error processing image: {e}")
+                
+                visit_record = {
+                    "date_logged": str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                    "client_name": c_name.strip(),
+                    "phone": c_phone.strip(),
+                    "visit_date": str(v_date),
+                    "project": v_proj,
+                    "executive": exec_name.strip(),
+                    "interest": interest,
+                    "remarks": remarks.strip(),
+                    "photo_data": photo_b64
                 }
                 
-                # Appending to Database
-                db_data['site_visits'].insert(0, new_visit)
-                
-                with st.spinner("Compressing Photo & Locking data into cloud..."):
-                    if database.save_db_data():
-                        st.success(f"🎉 Success! Site visit for {c_name} has been permanently saved with compressed photo.")
-                        st.rerun()
+                db_data['site_visits_log'].append(visit_record)
+                if database.save_db_data():
+                    st.success("🎉 Site Visit Successfully Logged!")
+                    st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
-with col2:
-    st.markdown("### 📋 Recent Site Visits History")
+with col_history:
+    st.markdown('<div class="history-box">', unsafe_allow_html=True)
+    st.markdown("### 📋 Recent Site Visits & Photos")
     
-    visits_list = db_data.get('site_visits', [])
+    visits = db_data.get('site_visits_log', [])
     
-    if not visits_list:
+    if not visits:
         st.info("ℹ️ No site visits have been logged yet.")
     else:
-        # टेबल को शानदार दिखाने के लिए डेटा सेट करना
-        history_rows = []
-        for v in visits_list:
-            photo_status = "📸 Attached" if len(v.get('Photo', '')) > 50 else "❌ No"
-            history_rows.append({
-                "Date": v.get("Date", ""),
-                "Client Name": v.get("Client Name", ""),
-                "Mobile No.": v.get("Mobile Number", ""),
-                "Project": v.get("Project", ""),
-                "Exec.": v.get("Executive", ""),
-                "Status": v.get("Status", ""),
-                "Photo": photo_status,
-                "Remarks": v.get("Remarks", "")
-            })
+        # Download Excel Button
+        df_export = pd.DataFrame(visits)
+        if 'photo_data' in df_export.columns:
+            df_export['photo_data'] = df_export['photo_data'].apply(lambda x: "Photo Attached in System" if x else "No Photo")
+            df_export.rename(columns={"photo_data": "Photo Status"}, inplace=True)
             
-        df_visits = pd.DataFrame(history_rows)
-        
-        # Display DataFrame
-        st.dataframe(df_visits, use_container_width=True, hide_index=True)
+        csv_data = df_export.to_csv(index=False).encode('utf-8-sig')
+        st.download_button("🖨️ Download Excel (CSV) Report", data=csv_data, file_name=f"Site_Visits_{datetime.date.today()}.csv", mime="text/csv", use_container_width=True)
         
         st.write("---")
-        # Download Button
-        csv_data = df_visits.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            label="📥 Export Site Visits Data (Excel/CSV)",
-            data=csv_data,
-            file_name=f"Site_Visits_Report_{datetime.date.today()}.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
+        
+        # Display Interactive History
+        for i, v in enumerate(reversed(visits)):
+            icon = "🔥" if "High" in v['interest'] else "⭐" if "Medium" in v['interest'] else "❄️"
+            
+            with st.expander(f"{icon} {v['visit_date']} | {v['client_name']} ({v['project']})"):
+                sc1, sc2 = st.columns([1.5, 1])
+                
+                with sc1:
+                    st.write(f"**📱 Mobile:** {v['phone']}")
+                    st.write(f"**👨‍💼 Executive:** {v['executive']}")
+                    st.write(f"**📊 Interest:** {v['interest']}")
+                    st.write(f"**📝 Remarks:** {v['remarks']}")
+                    st.caption(f"Logged on: {v.get('date_logged', 'N/A')}")
+                
+                with sc2:
+                    if v.get('photo_data'):
+                        try:
+                            img_bytes = base64.b64decode(v['photo_data'])
+                            st.image(img_bytes, caption="📸 Compressed Site Photo", use_column_width=True)
+                        except:
+                            st.error("Image broken")
+                    else:
+                        st.warning("🚫 No Photo Attached")
+                        
+    st.markdown('</div>', unsafe_allow_html=True)
+
