@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 # --- 1. Page Configuration ---
-st.set_page_config(layout="wide", page_title="FC Infra - Spacer View Dashboard")
+st.set_page_config(layout="wide", page_title="FC Infra - Satellite Spacer View")
 
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.warning("🔒 Please login on the Main Page first.")
@@ -20,12 +20,11 @@ st.markdown("""
 <style>
 .block-container { padding: 1.5rem 3rem !important; background-color: #f8fafc; }
 .search-box { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px; border-left: 5px solid #1e3a8a; }
-.crm-card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border-top: 5px solid #3b82f6; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🌍 Interactive Layout & CRM (Spacer View)")
-st.markdown("Firstchoice City 2 Real Layout Matrix | Zoom & Pan | Hover for Details")
+st.title("🌍 Live Satellite Layout & CRM (Spacer View)")
+st.markdown("Firstchoice City 2 | Google Satellite Engine | Interactive GPS Overlay")
 
 # --- Fetch Projects ---
 project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data)]
@@ -46,9 +45,8 @@ if isinstance(plots, list):
     plots = {str(i): p for i, p in enumerate(plots) if p is not None}
 
 # ==========================================
-# 🗺️ REAL MAP DATA INJECTION (FIRSTCHOICE CITY 2)
+# 🛰️ REAL SATELLITE MAP DATA INJECTION
 # ==========================================
-# आपके नक्शे के हिसाब से हर प्लॉट का असली Sq.Ft एरिया:
 real_plot_areas = {
     1: 2254.63, 2: 2245.16, 3: 2382.61, 4: 2514.47, 5: 1086.63,
     6: 1116.23, 7: 1116.23, 8: 1116.23, 9: 1210.20, 10: 1162.83,
@@ -61,109 +59,91 @@ real_plot_areas = {
     41: 1200.00, 42: 2755.15
 }
 
-st.markdown("### 🗺️ Master Layout Plan (Drag to Pan, Scroll to Zoom)")
+# 🚀 YOUR EXACT SITE GPS COORDINATES
+lat_base = 21.056517
+lon_base = 79.217038
+scale = 0.000015 # GPS Scale multiplier 
 
 fig = go.Figure()
 
-# Filter Plots for Search
 filtered_plots = {}
-# Forcing 42 plots structure for display
 for pid in range(1, 43):
     str_pid = str(pid)
     pinfo = plots.get(str_pid, {"status": "Available"})
     cname = str(pinfo.get('customer_name', '')).lower()
-    
     if search_q and (search_q.lower() not in str_pid and search_q.lower() not in cname):
         continue
     filtered_plots[str_pid] = pinfo
 
-# Drawing the Plots resembling physical blocks
+# Drawing GPS Polygons on Satellite Map
 for str_pid, pinfo in filtered_plots.items():
     pid = int(str_pid)
     status = pinfo.get('status', 'Available')
     
-    # Colors: Spacer style (Green = Available, Red = Booked)
-    fill_color = "rgba(16, 185, 129, 0.75)" if status == "Available" else "rgba(239, 68, 68, 0.75)"
+    fill_color = "rgba(16, 185, 129, 0.6)" if status == "Available" else "rgba(239, 68, 68, 0.6)"
     border_color = "#059669" if status == "Available" else "#b91c1c"
     
-    # 📐 Custom Grid Placement (Mimicking your layout structure)
     x0, y0 = 0, 0
-    w, h = 18, 25 # Default width and height
+    w, h = 18, 25 
     
-    # Block A (Bottom Row: 31 to 41)
-    if 31 <= pid <= 41:
-        x0 = (pid - 31) * 20
-        y0 = 0
-    # Block B (Middle Bottom: 26 to 30)
-    elif 26 <= pid <= 30:
-        x0 = (pid - 26) * 20
-        y0 = 40 # Road Gap
-    # Block C (Middle Bottom Right: 15 to 19)
-    elif 15 <= pid <= 19:
-        x0 = 110 + (pid - 15) * 20
-        y0 = 40
-    # Block D (Middle Top: 20 to 25)
-    elif 20 <= pid <= 25:
-        x0 = (pid - 20) * 20
-        y0 = 70
-    # Block E (Middle Top Right: 10 to 14)
-    elif 10 <= pid <= 14:
-        x0 = 130 + (pid - 10) * 20
-        y0 = 70
-    # Block F (Top Right: 5 to 9)
-    elif 5 <= pid <= 9:
-        x0 = 130 + (pid - 5) * 20
-        y0 = 100
-    # Block G (Far Right Irregular: 1 to 4, 42)
+    if 31 <= pid <= 41: x0, y0 = (pid - 31) * 20, 0
+    elif 26 <= pid <= 30: x0, y0 = (pid - 26) * 20, 40
+    elif 15 <= pid <= 19: x0, y0 = 110 + (pid - 15) * 20, 40
+    elif 20 <= pid <= 25: x0, y0 = (pid - 20) * 20, 70
+    elif 10 <= pid <= 14: x0, y0 = 130 + (pid - 10) * 20, 70
+    elif 5 <= pid <= 9: x0, y0 = 130 + (pid - 5) * 20, 100
     elif pid in [1, 2, 3, 4, 42]:
-        x0 = 240
-        y0 = (pid - 1) * 30
+        x0, y0 = 240, (pid - 1) * 30
         w, h = 25, 28
         if pid == 42: y0 = 120
     
-    x1 = x0 + w
-    y1 = y0 + h
+    x1, y1 = x0 + w, y0 + h
     
-    # Fetch real area from dictionary
-    actual_area = real_plot_areas.get(pid, 1116)
+    # Mapping to Real Earth Coordinates
+    lons = [lon_base + x0*scale, lon_base + x1*scale, lon_base + x1*scale, lon_base + x0*scale, lon_base + x0*scale]
+    lats = [lat_base + y0*scale, lat_base + y0*scale, lat_base + y1*scale, lat_base + y1*scale, lat_base + y0*scale]
     
-    # 📌 Hover Text Details (CRM Mini-Card)
-    hover_text = f"<b>Plot P-{pid}</b><br>Status: {status}<br>Actual Area: {actual_area} Sq.Ft"
+    hover_text = f"<b>Plot P-{pid}</b><br>Status: {status}<br>Area: {real_plot_areas.get(pid, 1116)} Sq.Ft"
     if status != "Available":
-        hover_text += f"<br><br><b>Client:</b> {pinfo.get('customer_name', 'N/A')}"
-        hover_text += f"<br><b>Mobile:</b> {pinfo.get('phone', 'N/A')}"
-        hover_text += f"<br><b>Executive:</b> {pinfo.get('executive_name', 'Direct')}"
+        hover_text += f"<br>Client: {pinfo.get('customer_name', 'N/A')}<br>Mob: {pinfo.get('phone', 'N/A')}"
 
-    # Draw Plot Box
-    fig.add_shape(
-        type="rect", x0=x0, y0=y0, x1=x1, y1=y1,
-        fillcolor=fill_color, line=dict(color=border_color, width=2)
-    )
+    # Draw Transparent Colored Boxes
+    fig.add_trace(go.Scattermapbox(
+        lon=lons, lat=lats, mode='lines', fill='toself',
+        fillcolor=fill_color, line=dict(color=border_color, width=2),
+        hoverinfo='text', hovertext=hover_text, name=f"P-{pid}", showlegend=False
+    ))
     
-    # Add Plot Number
-    fig.add_annotation(
-        x=(x0+x1)/2, y=(y0+y1)/2,
-        text=f"<b>P-{pid}</b>", showarrow=False,
-        font=dict(color="white", size=14)
-    )
-    
-    # Add Invisible Hover Tracker
-    fig.add_trace(go.Scatter(
-        x=[(x0+x1)/2], y=[(y0+y1)/2],
-        mode="markers", marker=dict(size=40, color="rgba(0,0,0,0)"),
-        hoverinfo="text", hovertext=hover_text, showlegend=False
+    # Add Plot Numbers
+    fig.add_trace(go.Scattermapbox(
+        lon=[lon_base + (x0+x1)/2 * scale],
+        lat=[lat_base + (y0+y1)/2 * scale],
+        mode='text', text=[f"P-{pid}"],
+        textfont=dict(color="white", size=12, family="Arial Black"),
+        hoverinfo='none', showlegend=False
     ))
 
-# Render Map Background (Light Grey for layout feel)
+# 🚀 INJECTING GOOGLE SATELLITE ENGINE
 fig.update_layout(
-    xaxis=dict(visible=False, showgrid=False, zeroline=False),
-    yaxis=dict(visible=False, showgrid=False, zeroline=False),
-    plot_bgcolor="#e2e8f0", paper_bgcolor="#f8fafc",
-    margin=dict(l=10, r=10, t=10, b=10), height=650,
-    hovermode="closest", dragmode="pan"
+    mapbox=dict(
+        style="white-bg",
+        layers=[
+            dict(
+                sourcetype="raster",
+                source=["https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"],
+                below="traces"
+            )
+        ],
+        # Centering map EXACTLY on your site
+        center=dict(lat=lat_base + 0.001, lon=lon_base + 0.002), 
+        zoom=17, # Zooming in perfectly on the site
+        pitch=0 
+    ),
+    margin={"r":0,"t":0,"l":0,"b":0},
+    height=700
 )
 
-st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
+st.plotly_chart(fig, use_container_width=True)
 
 # --- CRM Detailed Section ---
 st.write("---")
