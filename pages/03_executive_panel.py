@@ -41,16 +41,10 @@ h1, h2, h3 {{ color: {p_color} !important; font-weight: 800; }}
 .ledger-box {{ background-color: #ffffff; border-left: 4px solid {p_color}; padding: 6px 12px !important; border-radius: 6px; box-shadow: 0px 1px 3px rgba(0,0,0,0.05); margin-bottom: 4px !important; }}
 div[data-testid="stMetric"] div[data-testid="stMetricLabel"] {{ font-size: 11px !important; font-weight: 600 !important; color: #475569 !important; }}
 div[data-testid="stMetric"] div[data-testid="stMetricValue"] {{ font-size: 14px !important; font-weight: 700 !important; color: #0f172a !important; }}
-
-/* Row Action Buttons Alignment Colors */
-div[data-testid="stHorizontalBlock"] > div:nth-child(5) button {{ background: #e0f2fe !important; color: #0369a1 !important; border: 1px solid #7dd3fc !important; font-size: 12px !important; padding: 0.2rem 0.5rem !important; margin-top: 10px !important; min-height: 32px !important; }}
-div[data-testid="stHorizontalBlock"] > div:nth-child(5) button:hover {{ background: #7dd3fc !important; color: #0c4a6e !important; }}
-div[data-testid="stHorizontalBlock"] > div:nth-child(6) button {{ background: #fee2e2 !important; color: #991b1b !important; border: 1px solid #fca5a5 !important; font-size: 12px !important; padding: 0.2rem 0.5rem !important; margin-top: 10px !important; min-height: 32px !important; }}
-div[data-testid="stHorizontalBlock"] > div:nth-child(6) button:hover {{ background: #fca5a5 !important; color: #7f1d1d !important; }}
 </style>
 """, unsafe_allow_html=True)
 
-# 🛠️ Safe Float Function (यह खाली बॉक्स होने पर सिस्टम को क्रैश होने से बचाएगा)
+# 🛠️ Safe Float Function
 def safe_float(val, default=0.0):
     try:
         if val is None or str(val).strip() == "":
@@ -157,7 +151,6 @@ if exec_clean_list:
         statement_rows = []
         s_no = 1
         
-        # स्मार्ट नाम मैचिंग
         search_exec_clean = str(search_exec).strip().lower()
        
         for p_name in project_names:
@@ -174,65 +167,104 @@ if exec_clean_list:
                     plot_exec = str(plot_info.get('executive_name', '')).strip().lower()
                     
                     if plot_status == 'booked' and plot_exec == search_exec_clean:
+                        
+                        # 1️⃣ नेट कमीशन % निकालें 
+                        plot_area = safe_float(plot_info.get('plot_area', plot_info.get('area', 1116.23)))
+                        company_rate = safe_float(plot_info.get('company_rate', p_info.get('base_rate', 700.0)))
+                        if company_rate <= 0: company_rate = 700.0
+                        
+                        discount_val = safe_float(plot_info.get('discount', 14.0))
+                        if discount_val > 1000:
+                            disc_per_sqft = discount_val / plot_area if plot_area > 0 else 0.0
+                        else:
+                            disc_per_sqft = discount_val
+                        
+                        if "Percentage" in p_mode: 
+                            disc_pct_reduction = (disc_per_sqft / company_rate) * 100.0
+                            net_comm_pct = max(0.0, ex_pct - disc_pct_reduction)
+                        else:
+                            net_comm_pct = ex_pct
+
+                        # 2️⃣ एडवांस टोकन की एंट्री स्कैन करें
                         b_date_str = str(plot_info.get('booking_date', plot_info.get('receipt_date', ''))).strip()
-                        b_date = datetime.date.today() 
+                        b_date = datetime.date.today()
                         if b_date_str:
-                            try:
-                                b_date = datetime.datetime.strptime(b_date_str, "%Y-%m-%d").date()
+                            try: b_date = datetime.datetime.strptime(b_date_str, "%Y-%m-%d").date()
                             except:
-                                try:
-                                    b_date = datetime.datetime.strptime(b_date_str, "%d-%m-%Y").date()
+                                try: b_date = datetime.datetime.strptime(b_date_str, "%d-%m-%Y").date()
                                 except: pass
                            
                         if start_date <= b_date <= end_date:
-                            plot_area = safe_float(plot_info.get('plot_area', plot_info.get('area', 1116.23)))
-                            company_rate = safe_float(plot_info.get('company_rate', p_info.get('base_rate', 700.0)))
-                            if company_rate <= 0: company_rate = 700.0
-                            
-                            # 🎯 जमा किया गया पैसा (Paid Amount) जिस पर अब कमीशन निकलेगा
-                            paid_amt = safe_float(plot_info.get('token_amount', plot_info.get('received_amount', 0.0)))
-                            discount_val = safe_float(plot_info.get('discount', 14.0))
-                            
-                            if discount_val > 1000:
-                                disc_per_sqft = discount_val / plot_area if plot_area > 0 else 0.0
-                            else:
-                                disc_per_sqft = discount_val
-                            
-                            if "Percentage" in p_mode: 
-                                disc_pct_reduction = (disc_per_sqft / company_rate) * 100.0
-                                net_comm_pct = max(0.0, ex_pct - disc_pct_reduction)
-                                
-                                # 🚨 यही थी वो गड़बड़ वाली लाइन! 
-                                # अब यह 'टोटल वैल्यू' पर नहीं, बल्कि जमा हुए 'paid_amt' (जैसे 1,51,000) पर 21% निकालेगा।
-                                gross_comm = (paid_amt * net_comm_pct) / 100.0 
-                            else: 
-                                gross_comm = ex_rs
-                                net_comm_pct = ex_pct
+                            token_amt = safe_float(plot_info.get('token_amount', plot_info.get('received_amount', 0.0)))
+                            if token_amt > 0:
+                                if "Percentage" in p_mode: 
+                                    gross_comm = (token_amt * net_comm_pct) / 100.0 
+                                else: 
+                                    gross_comm = ex_rs
+                                   
+                                tds_amt = (gross_comm * 2.0) / 100.0
+                                net_comm = gross_comm - tds_amt
                                
-                            tds_amt = (gross_comm * 2.0) / 100.0
-                            net_comm = gross_comm - tds_amt
-                           
-                            statement_rows.append({
-                                "S.No.": s_no, 
-                                "Client Name": str(plot_info.get('customer_name', 'N/A')).title(),
-                                "Project (Location)": f"{p_name} ({p_mauza})",
-                                "Plot No.": plot_id, 
-                                "Area (Sq.Ft)": round(plot_area, 2),
-                                "Paid Amt (₹)": f"{paid_amt:,.0f}",
-                                "Payment Date": b_date.strftime("%d-%m-%Y"),
-                                "Net Comm %": f"{net_comm_pct:.1f} %",
-                                "Gross Comm (₹)": round(gross_comm, 2), 
-                                "2% TDS (₹)": round(tds_amt, 2), 
-                                "Net Payout (₹)": int(round(net_comm))
-                            })
-                            s_no += 1
+                                statement_rows.append({
+                                    "S.No.": s_no, 
+                                    "Client Name": str(plot_info.get('customer_name', 'N/A')).title(),
+                                    "Project (Location)": f"{p_name} ({p_mauza})",
+                                    "Plot No.": plot_id,
+                                    "Payment Type": "Booking Token", 
+                                    "Area (Sq.Ft)": round(plot_area, 2),
+                                    "Paid Amt (₹)": f"{token_amt:,.0f}",
+                                    "Payment Date": b_date.strftime("%d-%m-%Y"),
+                                    "Net Comm %": f"{net_comm_pct:.1f} %",
+                                    "Gross Comm (₹)": round(gross_comm, 2), 
+                                    "2% TDS (₹)": round(tds_amt, 2), 
+                                    "Net Payout (₹)": int(round(net_comm))
+                                })
+                                s_no += 1
+                        
+                        # 3️⃣ 🎯 EMI (Partial Payments) की एंट्री स्कैन करें
+                        partial_payments = plot_info.get('partial_payments', [])
+                        for pmt in partial_payments:
+                            pmt_date_str = str(pmt.get('date', '')).strip()
+                            pmt_date_obj = datetime.date.today()
+                            if pmt_date_str:
+                                try: pmt_date_obj = datetime.datetime.strptime(pmt_date_str, "%Y-%m-%d").date()
+                                except:
+                                    try: pmt_date_obj = datetime.datetime.strptime(pmt_date_str, "%d-%m-%Y").date()
+                                    except: pass
+                            
+                            if start_date <= pmt_date_obj <= end_date:
+                                emi_amt = safe_float(pmt.get('amount', 0.0))
+                                if emi_amt > 0:
+                                    if "Percentage" in p_mode: 
+                                        gross_comm = (emi_amt * net_comm_pct) / 100.0 
+                                    else: 
+                                        gross_comm = 0 
+                                       
+                                    tds_amt = (gross_comm * 2.0) / 100.0
+                                    net_comm = gross_comm - tds_amt
+                                   
+                                    statement_rows.append({
+                                        "S.No.": s_no, 
+                                        "Client Name": str(plot_info.get('customer_name', 'N/A')).title(),
+                                        "Project (Location)": f"{p_name} ({p_mauza})",
+                                        "Plot No.": plot_id,
+                                        "Payment Type": str(pmt.get('remarks', 'Installment Payment')), 
+                                        "Area (Sq.Ft)": round(plot_area, 2),
+                                        "Paid Amt (₹)": f"{emi_amt:,.0f}", 
+                                        "Payment Date": pmt_date_obj.strftime("%d-%m-%Y"),
+                                        "Net Comm %": f"{net_comm_pct:.1f} %",
+                                        "Gross Comm (₹)": round(gross_comm, 2), 
+                                        "2% TDS (₹)": round(tds_amt, 2), 
+                                        "Net Payout (₹)": int(round(net_comm))
+                                    })
+                                    s_no += 1
         
         if statement_rows:
             df_statement = pd.DataFrame(statement_rows)
             st.dataframe(df_statement, use_container_width=True, hide_index=True)
             st.write("---")
             c_sum1, c_sum2, c_sum3, c_sum4 = st.columns(4)
-            c_sum1.metric("Total Plots Count", f"{len(df_statement)} Units")
+            c_sum1.metric("Total Transactions", f"{len(df_statement)} Entries")
             c_sum2.metric("Total Gross Commission", f"₹ {df_statement['Gross Comm (₹)'].sum():,.2f}")
             c_sum3.metric("Total TDS Deduction (2%)", f"₹ {df_statement['2% TDS (₹)'].sum():,.2f}")
             c_sum4.metric("🏆 Net Payable Commission", f"₹ {df_statement['Net Payout (₹)'].sum():,.2f}")
@@ -240,7 +272,7 @@ if exec_clean_list:
             csv_data = df_statement.to_csv(index=False).encode('utf-8-sig')
             st.download_button("📥 Export Statement File (Print / Share on WhatsApp)", csv_data, f"Statement_{search_exec}.csv", "text/csv", use_container_width=True)
         else:
-            st.info(f"🔍 '{search_exec}' के लिए {start_date.strftime('%d-%m-%Y')} से {end_date.strftime('%d-%m-%Y')} के बीच कोई बुकिंग रिकॉर्ड नहीं मिला। (कृपया तारीख चेक करें)")
+            st.info(f"🔍 '{search_exec}' के लिए {start_date.strftime('%d-%m-%Y')} से {end_date.strftime('%d-%m-%Y')} के बीच कोई बुकिंग या EMI रिकॉर्ड नहीं मिला।")
 
 # --- Active Partner Registry (6-Column Grid Layout) ---
 st.markdown("<br><hr>", unsafe_allow_html=True)
