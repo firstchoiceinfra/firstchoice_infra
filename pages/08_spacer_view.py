@@ -1,8 +1,7 @@
 import streamlit as st
 import database
 import pandas as pd
-import folium
-import streamlit.components.v1 as components
+import plotly.graph_objects as go
 
 # --- 1. Page Configuration ---
 st.set_page_config(layout="wide", page_title="FC Infra - Spacer View Dashboard")
@@ -15,21 +14,18 @@ database.init_db()
 db_data = st.session_state.db_projects
 
 # ==========================================
-# 🎨 PREMIUM CSS (Spacer Style)
+# 🎨 PREMIUM CSS
 # ==========================================
 st.markdown("""
 <style>
 .block-container { padding: 1.5rem 3rem !important; background-color: #f8fafc; }
 .search-box { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px; border-left: 5px solid #1e3a8a; }
 .crm-card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border-top: 5px solid #3b82f6; }
-.stat-box { text-align: center; padding: 15px; background: white; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-.status-avail { color: #10b981; font-weight: bold; background: #d1fae5; padding: 5px 10px; border-radius: 8px; }
-.status-booked { color: #ef4444; font-weight: bold; background: #fee2e2; padding: 5px 10px; border-radius: 8px; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🌍 Dynamic Layout & CRM (Spacer View)")
-st.markdown("Interactive Satellite Map | Global Plot Search | Live CRM")
+st.title("🌍 Interactive Layout & CRM (Spacer View)")
+st.markdown("Dynamic Plot Viewer | Zoom & Pan | Hover for Details")
 
 # --- Fetch Projects ---
 project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data)]
@@ -39,10 +35,9 @@ if not project_names:
 
 # --- TOP BAR: SEARCH & FILTERS ---
 st.markdown('<div class="search-box">', unsafe_allow_html=True)
-col_f1, col_f2, col_f3 = st.columns([1, 1, 1.5])
-sel_proj = col_f1.selectbox("🏢 Select Project", project_names)
-status_filter = col_f2.selectbox("📊 Filter Status", ["All Plots", "Available", "Booked"])
-search_q = col_f3.text_input("🔍 Smart Search (Enter Plot No. or Client Name)")
+col_f1, col_f2 = st.columns([1, 2])
+sel_proj = col_f1.selectbox("🏢 Select Project Blueprint", project_names)
+search_q = col_f2.text_input("🔍 Smart Search (Find Plot No. or Client Name)")
 st.markdown('</div>', unsafe_allow_html=True)
 
 project_data = db_data[sel_proj]
@@ -50,104 +45,94 @@ plots = project_data.get('plots', {})
 if isinstance(plots, list):
     plots = {str(i): p for i, p in enumerate(plots) if p is not None}
 
-# --- MIDDLE SECTION: SATELLITE MAP & CRM ---
-col_map, col_crm = st.columns([2, 1.2])
+# ==========================================
+# 🗺️ PLOTLY INTERACTIVE LAYOUT ENGINE
+# ==========================================
+st.markdown("### 🗺️ Master Layout Plan (Drag to Pan, Scroll to Zoom)")
 
-with col_map:
-    st.markdown("### 🛰️ Live Satellite Layout View")
-    # (नागपुर मोहड़ी/उमरेड रोड का डिफ़ॉल्ट लोकेशन)
-    m = folium.Map(location=[20.9320, 79.3140], zoom_start=15, tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google Satellite')
-    
-    # Adding Dummy Plot Markers on Map for demonstration
-    for plot_id, p_info in plots.items():
-        status = p_info.get('status', 'Available')
-        color = 'green' if status == 'Available' else 'red'
-        
-        # Adding some random offset just to show pins on map
-        import random
-        lat_offset = random.uniform(-0.005, 0.005)
-        lon_offset = random.uniform(-0.005, 0.005)
-        
-        folium.Marker(
-            [20.9320 + lat_offset, 79.3140 + lon_offset],
-            popup=f"Plot: {plot_id} | Status: {status}",
-            tooltip=f"P-{plot_id}",
-            icon=folium.Icon(color=color, icon='home')
-        ).add_to(m)
+fig = go.Figure()
 
-    # 🚀 FIXED: डायरेक्ट HTML रेंडरिंग (अब यह लूप में नहीं फँसेगा!)
-    components.html(m._repr_html_(), height=500)
-
-with col_crm:
-    st.markdown("### 👤 Dynamic Plot Details (CRM)")
-    
-    # Filtering logic based on search
-    selected_plot_id = None
-    for pid, pinfo in plots.items():
-        c_name = str(pinfo.get('customer_name', '')).lower()
-        if search_q:
-            if search_q.lower() in pid.lower() or search_q.lower() in c_name:
-                selected_plot_id = pid
-                break
-    
-    if not selected_plot_id and plots:
-        selected_plot_id = list(plots.keys())[0] # Default to first plot
-        
-    if selected_plot_id:
-        p_data = plots[selected_plot_id]
-        status = p_data.get('status', 'Available')
-        
-        st.markdown('<div class="crm-card">', unsafe_allow_html=True)
-        st.subheader(f"🏠 Plot No: P-{selected_plot_id}")
-        
-        if status == "Available":
-            st.markdown('<span class="status-avail">✅ AVAILABLE INVENTORY</span>', unsafe_allow_html=True)
-            st.write("---")
-            st.write(f"📐 **Area:** {p_data.get('plot_area', p_data.get('area', '1116'))} Sq.Ft")
-            st.write(f"🏢 **Base Rate:** ₹ {p_data.get('company_rate', p_data.get('base_rate', '700'))}/-")
-            st.button("📝 Go to Inventory Dashboard to Book", type="primary", use_container_width=True)
-            
-        else:
-            st.markdown('<span class="status-booked">🛑 BOOKED / SOLD</span>', unsafe_allow_html=True)
-            st.write("---")
-            st.write(f"👤 **Client Name:** {p_data.get('customer_name', 'N/A')}")
-            st.write(f"📱 **Mobile No:** {p_data.get('phone', 'N/A')}")
-            st.write(f"👨‍💼 **Executive:** {p_data.get('executive_name', 'N/A')}")
-            
-            # Money details
-            total_val = float(p_data.get('selling_rate', 0)) * float(p_data.get('plot_area', 1116))
-            if total_val == 0: total_val = float(p_data.get('total_value', 191000))
-            
-            t_paid = float(p_data.get('token_amount', 0)) + sum(float(pmt.get('amount', 0)) for pmt in p_data.get('partial_payments', []))
-            
-            st.write("---")
-            st.write(f"💰 **Total Value:** ₹ {total_val:,.2f}")
-            st.write(f"✅ **Total Paid:** ₹ {t_paid:,.2f}")
-            st.error(f"⚠️ **Pending Due:** ₹ {max(0, total_val - t_paid):,.2f}")
-            
-        st.markdown('</div>', unsafe_allow_html=True)
-
-# --- BOTTOM SECTION: PLOT GALLERY ---
-st.write("---")
-st.markdown("### 🖼️ Project Plot Gallery")
-
-# Filter plots
+# Filter Plots for Search
 filtered_plots = {}
 for pid, pinfo in plots.items():
-    stat = pinfo.get('status', 'Available')
     cname = str(pinfo.get('customer_name', '')).lower()
-    
-    if status_filter != "All Plots" and stat != status_filter: continue
-    if search_q and (search_q.lower() not in pid.lower() and search_q.lower() not in cname): continue
+    if search_q and (search_q.lower() not in pid.lower() and search_q.lower() not in cname):
+        continue
     filtered_plots[pid] = pinfo
 
-cols = st.columns(6)
+# Drawing the Plots on a 2D Digital Canvas
 for i, (pid, pinfo) in enumerate(filtered_plots.items()):
-    with cols[i % 6]:
+    status = pinfo.get('status', 'Available')
+    
+    # Colors: Green for Available, Red for Booked
+    fill_color = "rgba(16, 185, 129, 0.7)" if status == "Available" else "rgba(239, 68, 68, 0.7)"
+    border_color = "#059669" if status == "Available" else "#b91c1c"
+    
+    # Mathematical Grid Logic (10 Plots per row, with Street Gaps)
+    row = i // 10
+    col = i % 10
+    
+    # Coordinates for Rectangle Box
+    x0 = col * 20
+    x1 = x0 + 16 # Plot Width
+    y0 = row * 25
+    
+    # Adding a "Street / Road" gap after every 2 rows
+    if row >= 2: y0 += 20
+    if row >= 4: y0 += 20
+    if row >= 6: y0 += 20
+        
+    y1 = y0 + 18 # Plot Length
+    
+    # 📌 Hover Text Details (CRM Mini-Card)
+    hover_text = f"<b>Plot P-{pid}</b><br>Status: {status}<br>Area: {pinfo.get('plot_area', 1116)} Sq.Ft<br>Base Rate: ₹{pinfo.get('company_rate', 700)}"
+    if status != "Available":
+        hover_text += f"<br><br><b>Client:</b> {pinfo.get('customer_name', 'N/A')}"
+        hover_text += f"<br><b>Mobile:</b> {pinfo.get('phone', 'N/A')}"
+        hover_text += f"<br><b>Executive:</b> {pinfo.get('executive_name', 'Direct')}"
+
+    # 1. Draw Plot Box (Shape)
+    fig.add_shape(
+        type="rect", x0=x0, y0=y0, x1=x1, y1=y1,
+        fillcolor=fill_color, line=dict(color=border_color, width=2)
+    )
+    
+    # 2. Add Plot Number Text
+    fig.add_annotation(
+        x=(x0+x1)/2, y=(y0+y1)/2,
+        text=f"<b>P-{pid}</b>", showarrow=False,
+        font=dict(color="white", size=13)
+    )
+    
+    # 3. Add Invisible Hover Tracker (For CRM Details)
+    fig.add_trace(go.Scatter(
+        x=[(x0+x1)/2], y=[(y0+y1)/2],
+        mode="markers", marker=dict(size=40, color="rgba(0,0,0,0)"),
+        hoverinfo="text", hovertext=hover_text, showlegend=False
+    ))
+
+# Map UI Styling
+fig.update_layout(
+    xaxis=dict(visible=False, showgrid=False, zeroline=False),
+    yaxis=dict(visible=False, showgrid=False, zeroline=False, autorange="reversed"),
+    plot_bgcolor="#e2e8f0", paper_bgcolor="#f8fafc",
+    margin=dict(l=10, r=10, t=10, b=10), height=600,
+    hovermode="closest", dragmode="pan" # Pan allows moving the map like Google Earth
+)
+
+# Render Map
+st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
+
+# --- CRM Detailed Section ---
+st.write("---")
+st.markdown("### 📊 Live Plot Inventory Data")
+
+cols = st.columns(5)
+for i, (pid, pinfo) in enumerate(filtered_plots.items()):
+    with cols[i % 5]:
         stat = pinfo.get('status', 'Available')
         if stat == 'Available':
-            st.markdown(f"<div class='stat-box' style='border-bottom: 4px solid #10b981;'><b>P-{pid}</b><br><span style='font-size:12px; color:#10b981;'>Available</span></div><br>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align:center; padding:10px; border:2px solid #10b981; border-radius:8px; margin-bottom:10px; background:#d1fae5;'><b>P-{pid}</b><br><span style='font-size:12px; color:#065f46;'>Available</span></div>", unsafe_allow_html=True)
         else:
             c_name = pinfo.get('customer_name', '').split(" ")[0]
-            st.markdown(f"<div class='stat-box' style='border-bottom: 4px solid #ef4444;'><b>P-{pid}</b><br><span style='font-size:12px; color:#ef4444;'>{c_name}</span></div><br>", unsafe_allow_html=True)
-
+            st.markdown(f"<div style='text-align:center; padding:10px; border:2px solid #ef4444; border-radius:8px; margin-bottom:10px; background:#fee2e2;'><b>P-{pid}</b><br><span style='font-size:12px; color:#991b1b;'>{c_name}</span></div>", unsafe_allow_html=True)
