@@ -2,7 +2,7 @@ import streamlit as st
 import database
 import pandas as pd
 import folium
-from streamlit_folium import st_folium
+import streamlit.components.v1 as components
 
 # --- 1. Page Configuration ---
 st.set_page_config(layout="wide", page_title="FC Infra - Spacer View Dashboard")
@@ -59,7 +59,6 @@ with col_map:
     m = folium.Map(location=[20.9320, 79.3140], zoom_start=15, tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google Satellite')
     
     # Adding Dummy Plot Markers on Map for demonstration
-    # (भविष्य में हम इसे असली KML या GPS से जोड़ सकते हैं)
     for plot_id, p_info in plots.items():
         status = p_info.get('status', 'Available')
         color = 'green' if status == 'Available' else 'red'
@@ -76,7 +75,8 @@ with col_map:
             icon=folium.Icon(color=color, icon='home')
         ).add_to(m)
 
-    st_folium(m, width=700, height=500)
+    # 🚀 FIXED: डायरेक्ट HTML रेंडरिंग (अब यह लूप में नहीं फँसेगा!)
+    components.html(m._repr_html_(), height=500)
 
 with col_crm:
     st.markdown("### 👤 Dynamic Plot Details (CRM)")
@@ -105,7 +105,7 @@ with col_crm:
             st.write("---")
             st.write(f"📐 **Area:** {p_data.get('plot_area', p_data.get('area', '1116'))} Sq.Ft")
             st.write(f"🏢 **Base Rate:** ₹ {p_data.get('company_rate', p_data.get('base_rate', '700'))}/-")
-            st.button("📝 Book This Plot Now", type="primary", use_container_width=True)
+            st.button("📝 Go to Inventory Dashboard to Book", type="primary", use_container_width=True)
             
         else:
             st.markdown('<span class="status-booked">🛑 BOOKED / SOLD</span>', unsafe_allow_html=True)
@@ -124,8 +124,6 @@ with col_crm:
             st.write(f"💰 **Total Value:** ₹ {total_val:,.2f}")
             st.write(f"✅ **Total Paid:** ₹ {t_paid:,.2f}")
             st.error(f"⚠️ **Pending Due:** ₹ {max(0, total_val - t_paid):,.2f}")
-            
-            st.button("💬 Send WhatsApp Reminder", type="primary", use_container_width=True)
             
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -152,3 +150,4 @@ for i, (pid, pinfo) in enumerate(filtered_plots.items()):
         else:
             c_name = pinfo.get('customer_name', '').split(" ")[0]
             st.markdown(f"<div class='stat-box' style='border-bottom: 4px solid #ef4444;'><b>P-{pid}</b><br><span style='font-size:12px; color:#ef4444;'>{c_name}</span></div><br>", unsafe_allow_html=True)
+
