@@ -1,134 +1,166 @@
 import streamlit as st
-import pandas as pd
+import database
 import datetime
+import pandas as pd
 
-if not st.session_state.get('logged_in'): st.stop()
+# --- 1. Page Configuration ---
+st.set_page_config(layout="wide", page_title="FC Infra - Master Ledger")
 
-# डेटाबेस इनिशियलाइज़ेशन
-if 'projects' not in st.session_state: st.session_state.projects = {}
-if 'bookings' not in st.session_state: st.session_state.bookings = {}
+# --- 2. Security Check (Strict Admin Lock) ---
+if 'logged_in' not in st.session_state or not st.session_state.logged_in:
+    st.warning("🔒 Please login on the Main Page first.")
+    st.stop()
 
-st.markdown("## 📚 Master Ledger & EMI Management")
+if st.session_state.get('user_role', 'admin') != 'admin':
+    st.error("🚨 Security Alert: You do not have permission to access the Master Ledger Panel!")
+    st.stop()
 
-# -------------------------------------------------------------
-# डेटाबेस माइग्रेशन (पुराने डेटा को नए EMI सिस्टम में ढालना)
-# -------------------------------------------------------------
-for b_key, b_val in st.session_state.bookings.items():
-    if "payment_history" not in b_val:
-        # अगर पुरानी बुकिंग है, तो पहले पेमेंट को हिस्ट्री का हिस्सा बना देंगे
-        b_val["payment_history"] = [{
-            "amount": float(b_val.get("received_amt", 0)),
-            "date": b_val.get("recv_date", datetime.date.today()),
-            "mode": b_val.get("pay_mode", "N/A"),
-            "tx_id": b_val.get("tx_id", "N/A")
-        }]
+# --- 3. Cloud Database Integration ---
+database.init_db()
+db_data = st.session_state.db_projects
 
-if not st.session_state.projects:
-    st.error("🚨 कोई प्रोजेक्ट नहीं मिला। कृपया Admin Panel से प्रोजेक्ट जोड़ें।")
-else:
-    # -------------------------------------------------------------
-    # सेक्शन 1: प्रोजेक्ट सिलेक्शन
-    # -------------------------------------------------------------
-    proj_list = list(st.session_state.projects.keys())
-    current_proj = st.selectbox("📌 Select Project to View Ledger", proj_list)
+# Global Theme Synchronization Logic
+bg_url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
+p_color = "#1e3a8a"
+s_color = "#3b82f6"
+c_bg = "rgba(255, 255, 255, 0.92)"
+
+if '_app_settings' in db_data:
+    global_settings = db_data['_app_settings']
+    bg_url = global_settings.get('bg_url', bg_url)
+    p_color = global_settings.get('primary_color', p_color)
+    s_color = global_settings.get('secondary_color', s_color)
+    c_bg = global_settings.get('card_bg', c_bg)
+
+st.markdown(f"""
+<style>
+.stApp {{ background-image: url("{bg_url}"); background-attachment: fixed; background-size: cover; }}
+.block-container {{ background-color: {c_bg} !important; padding: 2rem 3rem !important; border-radius: 20px; box-shadow: 0px 10px 30px rgba(0,0,0,0.3); margin-top: 2rem; margin-bottom: 2rem; }}
+h1, h2, h3 {{ color: {p_color} !important; font-weight: 800; }}
+.stButton>button {{ background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%); color: white !important; border-radius: 6px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }}
+div[data-testid="stMetric"] div[data-testid="stMetricLabel"] {{ font-size: 13px !important; font-weight: 600 !important; color: #475569 !important; }}
+div[data-testid="stMetric"] div[data-testid="stMetricValue"] {{ font-size: 18px !important; font-weight: 700 !important; color: #0f172a !important; }}
+</style>
+""", unsafe_allow_html=True)
+
+# 🛠️ Safe Float Function
+def safe_float(val, default=0.0):
+    try:
+        if val is None or str(val).strip() == "": return float(default)
+        return float(val)
+    except: return float(default)
+
+st.markdown("<h1 style='text-align: center;'>🏦 Central Master Ledger (Live Cashflow)</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #475569;'>Real-time Audit of all Booking Advances & EMI Collections across all Projects</p>", unsafe_allow_html=True)
+
+# --- Ledger Filter Engine ---
+st.markdown("### 🔍 Generate Collection Report")
+col_d1, col_d2 = st.columns(2)
+start_date = col_d1.date_input("📅 Start Date", datetime.date.today() - datetime.timedelta(days=30))
+end_date = col_d2.date_input("📅 End Date", datetime.date.today())
+
+if st.button("📊 Fetch Master Collection Records", use_container_width=True):
+    ledger_rows = []
     
-    data = st.session_state.projects[current_proj]
+    project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data or 'total_plots' in data)]
     
-    st.info(f"**🏢 Project:** {current_proj} | **Mauza:** {data.get('mauza', 'N/A')} | **KH:** {data.get('khasra', 'N/A')} | **PH:** {data.get('ph_no', 'N/A')} | **Total Plots:** {data.get('total_plots', 0)}")
-    
-    st.write("---")
-
-    # -------------------------------------------------------------
-    # सेक्शन 2: लेजर टेबल जनरेट करना
-    # -------------------------------------------------------------
-    st.subheader(f"📊 Ledger Statement - {current_proj}", divider="green")
-    
-    ledger_data = []
-    booked_plots_in_proj = []
-    sr_no = 1
-    total_project_collection = 0
-
-    for b_key, b_val in st.session_state.bookings.items():
-        if "_" in b_key:
-            proj_name, plot_no = b_key.rsplit("_", 1)
+    with st.spinner("Scanning entire database for tokens and EMIs..."):
+        for p_name in project_names:
+            p_info = db_data[p_name]
+            p_plots = p_info.get('plots', {})
             
-            if proj_name == current_proj:
-                booked_plots_in_proj.append(plot_no) # बाद में EMI ऐड करने के लिए लिस्ट बना रहे हैं
+            # Dictionary List Check Bypass
+            if isinstance(p_plots, list):
+                p_plots = {str(idx): p for idx, p in enumerate(p_plots) if p is not None}
                 
-                # पूरी पेमेंट हिस्ट्री का जोड़ (Total) और हिस्ट्री टेक्स्ट बनाना
-                total_received = 0
-                history_text = ""
-                
-                for payment in b_val.get("payment_history", []):
-                    amt = float(payment.get("amount", 0))
-                    total_received += amt
-                    # डेट और अमाउंट को एक लाइन में जोड़ना
-                    p_date = payment.get('date')
-                    date_str = p_date.strftime('%d-%m-%Y') if isinstance(p_date, datetime.date) else p_date
-                    history_text += f"₹{amt} ({date_str}) | "
-
-                total_project_collection += total_received
-                
-                sell_rate = b_val.get("sell_rate", "N/A") 
-                
-                ledger_data.append({
-                    "Sr.": sr_no,
-                    "Plot No": plot_no,
-                    "Client Name": b_val.get("c_name", "N/A"),
-                    "Area (Sqft)": b_val.get("area", 0),
-                    "Selling Rate": f"₹{sell_rate}" if sell_rate != "N/A" else "N/A",
-                    "Payment History (Date Wise)": history_text.strip(" | "), # सारी पेमेंट्स एक ही कॉलम में दिखेंगी
-                    "Total Received": f"₹{total_received}"
-                })
-                sr_no += 1
-
-    # लेजर टेबल दिखाना
-    if ledger_data:
-        df_ledger = pd.DataFrame(ledger_data)
-        st.dataframe(df_ledger, use_container_width=True, hide_index=True)
-        st.success(f"### 💰 Total Collection from {current_proj}: ₹{total_project_collection}")
+            for plot_id, plot_info in p_plots.items():
+                if isinstance(plot_info, dict) and str(plot_info.get('status', '')).strip().lower() == 'booked':
+                    cust_name = str(plot_info.get('customer_name', 'N/A')).title()
+                    exec_name = str(plot_info.get('executive_name', 'Direct')).title()
+                    
+                    # 1️⃣ SCAN TOKEN AMOUNT (बुकिंग का पैसा)
+                    b_date_str = str(plot_info.get('booking_date', plot_info.get('receipt_date', ''))).strip()
+                    b_date_obj = datetime.date.today()
+                    if b_date_str:
+                        try: b_date_obj = datetime.datetime.strptime(b_date_str, "%Y-%m-%d").date()
+                        except:
+                            try: b_date_obj = datetime.datetime.strptime(b_date_str, "%d-%m-%Y").date()
+                            except: pass
+                    
+                    if start_date <= b_date_obj <= end_date:
+                        token_amt = safe_float(plot_info.get('token_amount', plot_info.get('received_amount', 0.0)))
+                        if token_amt > 0:
+                            ledger_rows.append({
+                                "Date": b_date_obj.strftime("%d-%m-%Y"),
+                                "Project": p_name,
+                                "Plot No.": plot_id,
+                                "Client Name": cust_name,
+                                "Payment Type": "Booking Advance (Token)",
+                                "Payment Mode": plot_info.get('payment_mode', 'N/A'),
+                                "Executive": exec_name,
+                                "Amount (₹)": token_amt
+                            })
+                            
+                    # 2️⃣ SCAN EMI / PARTIAL PAYMENTS (बाद की किश्तें)
+                    partial_payments = plot_info.get('partial_payments', [])
+                    for pmt in partial_payments:
+                        pmt_date_str = str(pmt.get('date', '')).strip()
+                        pmt_date_obj = datetime.date.today()
+                        if pmt_date_str:
+                            try: pmt_date_obj = datetime.datetime.strptime(pmt_date_str, "%Y-%m-%d").date()
+                            except:
+                                try: pmt_date_obj = datetime.datetime.strptime(pmt_date_str, "%d-%m-%Y").date()
+                                except: pass
+                        
+                        if start_date <= pmt_date_obj <= end_date:
+                            emi_amt = safe_float(pmt.get('amount', 0.0))
+                            if emi_amt > 0:
+                                ledger_rows.append({
+                                    "Date": pmt_date_obj.strftime("%d-%m-%Y"),
+                                    "Project": p_name,
+                                    "Plot No.": plot_id,
+                                    "Client Name": cust_name,
+                                    "Payment Type": str(pmt.get('remarks', 'Installment Payment')),
+                                    "Payment Mode": str(pmt.get('mode', 'N/A')),
+                                    "Executive": exec_name,
+                                    "Amount (₹)": emi_amt
+                                })
+                                
+    # --- Report Generation & Dashboard UI ---
+    if ledger_rows:
+        df_ledger = pd.DataFrame(ledger_rows)
         
-        c1, c2, c3 = st.columns([1, 1, 2])
-        csv = df_ledger.to_csv(index=False).encode('utf-8')
-        c1.download_button("📥 Download Excel", data=csv, file_name=f"{current_proj}_Ledger.csv", mime="text/csv", use_container_width=True)
-        if c2.button("🖨️ Print Ledger", use_container_width=True): st.info("प्रिंट कमांड भेजी जा रही है...")
-
+        # Calculate totals dynamically
+        total_revenue = df_ledger['Amount (₹)'].sum()
+        total_token_revenue = df_ledger[df_ledger['Payment Type'] == 'Booking Advance (Token)']['Amount (₹)'].sum()
+        total_emi_revenue = df_ledger[df_ledger['Payment Type'] != 'Booking Advance (Token)']['Amount (₹)'].sum()
+        
+        # Formatting for beautiful display
+        df_display = df_ledger.copy()
+        df_display['Amount (₹)'] = df_display['Amount (₹)'].apply(lambda x: f"₹ {x:,.2f}")
+        
+        st.write("---")
+        # Top Metrics Row
+        c_m1, c_m2, c_m3, c_m4 = st.columns(4)
+        c_m1.metric("Total Transactions", f"{len(df_ledger)} Entries")
+        c_m2.metric("Total Booking Tokens", f"₹ {total_token_revenue:,.2f}")
+        c_m3.metric("Total EMI Collections", f"₹ {total_emi_revenue:,.2f}")
+        c_m4.metric("🏆 Grand Total Revenue", f"₹ {total_revenue:,.2f}")
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # The Master Data Table
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
+        
+        # WhatsApp/Excel Export
+        csv_data = df_ledger.to_csv(index=False).encode('utf-8-sig')
+        st.write("---")
+        st.download_button(
+            label="📥 Export Complete Master Ledger (Print / Excel)", 
+            data=csv_data, 
+            file_name=f"FC_Infra_Master_Ledger_{datetime.date.today()}.csv", 
+            mime="text/csv", 
+            use_container_width=True
+        )
     else:
-        st.warning(f"ℹ️ {current_proj} में अभी तक कोई प्लॉट नहीं बिका है।")
-
-    # -------------------------------------------------------------
-    # सेक्शन 3: EMI / नया पेमेंट ऐड करना (बिना नई रो बनाए)
-    # -------------------------------------------------------------
-    st.write("---")
-    st.subheader("➕ Add EMI / Installment for Sold Plot", divider="orange")
-    st.caption("यहाँ से जोड़ी गई किश्त सीधे ऊपर वाले टेबल में उसी प्लॉट के खाते में डेट के साथ जुड़ जाएगी।")
-    
-    if booked_plots_in_proj:
-        with st.form("add_emi_form"):
-            c4, c5 = st.columns(2)
-            selected_plot = c4.selectbox("Select Sold Plot No.", booked_plots_in_proj)
-            emi_amt = c5.number_input("Installment / EMI Amount (₹)", min_value=1.0)
-            
-            c6, c7, c8 = st.columns(3)
-            emi_date = c6.date_input("Payment Date")
-            emi_mode = c7.selectbox("Payment Mode", ["Cash", "Cheque", "Online", "NEFT/RTGS"])
-            emi_txid = c8.text_input("Transaction ID / Cheque No.")
-            
-            if st.form_submit_button("✅ Save Installment"):
-                key = f"{current_proj}_{selected_plot}"
-                
-                # नई पेमेंट को हिस्ट्री लिस्ट में जोड़ना
-                st.session_state.bookings[key]["payment_history"].append({
-                    "amount": emi_amt,
-                    "date": emi_date,
-                    "mode": emi_mode,
-                    "tx_id": emi_txid
-                })
-                
-                # टोटल अमाउंट को भी अपडेट कर देना
-                st.session_state.bookings[key]["received_amt"] = float(st.session_state.bookings[key].get("received_amt", 0)) + emi_amt
-                
-                st.success(f"🎉 Plot {selected_plot} के लिए ₹{emi_amt} की किश्त सफलतापूर्वक जुड़ गई!")
-                st.rerun()
-    else:
-        st.info("किश्त जोड़ने के लिए पहले इन्वेंट्री से कोई प्लॉट बुक करें।")
+        st.info("🔍 No cash collection records found for the selected date range. Try expanding the dates.")
