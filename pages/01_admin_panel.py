@@ -3,10 +3,12 @@ import database
 import datetime
 import base64
 
+
 # --- 1. Page Configuration ---
 st.set_page_config(layout="wide", page_title="FC Infra - Admin Panel")
 
 # --- 2. Security Check (Strict Admin Lock) ---
+
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.warning("🔒 Please login on the Main Page first.")
     st.stop()
@@ -19,26 +21,27 @@ if st.session_state.get('user_role', 'admin') != 'admin':
 database.init_db()
 db_data = st.session_state.db_projects
 
-# Set default theme settings if not present
+# Set default theme settings if not present (Default card_bg is now fully transparent 0.0)
 if '_app_settings' not in st.session_state.db_projects:
     st.session_state.db_projects['_app_settings'] = {
         "bg_url": "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop",
         "primary_color": "#1e3a8a",
         "secondary_color": "#3b82f6",
-        "card_bg": "rgba(255, 255, 255, 0.92)"
+        "card_bg": "rgba(255, 255, 255, 0.0)"
     }
 
 settings = st.session_state.db_projects['_app_settings']
 bg_url = settings.get('bg_url', '')
 p_color = settings.get('primary_color', '#1e3a8a')
 s_color = settings.get('secondary_color', '#3b82f6')
-c_bg = settings.get('card_bg', 'rgba(255, 255, 255, 0.92)')
+c_bg = settings.get('card_bg', 'rgba(255, 255, 255, 0.0)')
 
 # --- CSS Styling (Global Theme Integration) ---
+# Added backdrop-filter: none !important; to completely remove blur
 st.markdown(f"""
 <style>
 .stApp {{ background-image: url("{bg_url}"); background-attachment: fixed; background-size: cover; }}
-.block-container {{ background-color: {c_bg} !important; padding: 1.5rem 2.5rem !important; border-radius: 20px; box-shadow: 0px 10px 30px rgba(0,0,0,0.3); margin-top: 1.5rem; margin-bottom: 1.5rem; }}
+.block-container {{ background-color: {c_bg} !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; padding: 1.5rem 2.5rem !important; border-radius: 20px; box-shadow: 0px 10px 30px rgba(0,0,0,0.3); margin-top: 1.5rem; margin-bottom: 1.5rem; }}
 h1, h2, h3 {{ color: {p_color} !important; font-weight: 800; }}
 .stButton>button {{ background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%); color: white !important; border-radius: 8px; font-weight: bold; }}
 div[data-testid="stForm"] {{ background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; }}
@@ -54,15 +57,18 @@ with st.expander("🎨 Change App Appearance & Background Photo (Theme Settings)
     col_t1, col_t2 = st.columns(2)
     new_primary = col_t1.color_picker("🎨 Primary Headings & Buttons Color", value=p_color)
     new_secondary = col_t2.color_picker("✨ Secondary Gradient Accent Color", value=s_color)
-    new_transparency = st.select_slider("⬜ Card Box Opacity / Transparency", options=["rgba(255, 255, 255, 0.7)", "rgba(255, 255, 255, 0.85)", "rgba(255, 255, 255, 0.92)", "rgba(255, 255, 255, 1.0)"], value=c_bg)
     
+    # Updated slider to allow full 0.0 transparency and set default to 0.0
+    opacity_val = st.slider("⬜ Card Box Opacity / Transparency", min_value=0.0, max_value=1.0, value=0.0)
+    new_transparency = f"rgba(255, 255, 255, {opacity_val})"
+   
     if st.button("💾 Apply New Theme Layout"):
         if uploaded_file is not None:
             encoded_img = base64.b64encode(uploaded_file.read()).decode("utf-8")
             bg_data_url = f"data:{uploaded_file.type};base64,{encoded_img}"
         else:
             bg_data_url = bg_url
-            
+           
         st.session_state.db_projects['_app_settings'] = {"bg_url": bg_data_url, "primary_color": new_primary, "secondary_color": new_secondary, "card_bg": new_transparency}
         if database.save_db_data():
             st.success("🎉 New theme layout successfully applied across the app!")
@@ -94,7 +100,7 @@ with st.form("add_project_form"):
             plots_dict = {str(i): {"status": "Available"} for i in range(1, int(total_plots) + 1)}
             st.session_state.db_projects[proj_name] = {
                 "khasra": khasra, "ph_no": ph_no, "mauza": mauza, "tahsil": tahsil, "district": dist,
-                "total_plots": total_plots, "comm_type": comm_type, "max_commission": max_comm, "plots": plots_dict 
+                "total_plots": total_plots, "comm_type": comm_type, "max_commission": max_comm, "plots": plots_dict
             }
             if database.save_db_data():
                 st.success(f"🎉 Project '{proj_name}' successfully created with plot matrix!")
