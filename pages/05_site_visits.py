@@ -96,7 +96,6 @@ with col_form:
                     except Exception as e:
                         st.error(f"Error processing image: {e}")
                 
-                # Saving standard keys to avoid future errors
                 visit_record = {
                     "visit_date": str(v_date),
                     "client_name": c_name.strip(),
@@ -123,7 +122,7 @@ with col_history:
     if not visits:
         st.info("ℹ️ No site visits have been logged yet.")
     else:
-        # 🚀 1. AUTO-DATA NORMALIZER (Fixes Old Data & New Data Conflicts)
+        # 🚀 AUTO-DATA NORMALIZER
         normalized_visits = []
         for v in reversed(visits):
             nv = {}
@@ -146,5 +145,52 @@ with col_history:
         # 🛡️ PHONE MASKING LOGIC FOR SCREEN DISPLAY
         if not is_admin:
             df_display['Contact Number'] = df_display['Contact Number'].apply(
-                lambda x: "******" + str(x)[-4:] if len(str(x)) >= 6
+                lambda x: "******" + str(x)[-4:] if len(str(x)) >= 6 else "🔒 Hidden"
+            )
+            
+        display_cols = ['Date', 'Client Name', 'Contact Number', 'Project', 'Executive', 'Interest', 'Remarks']
+        df_display = df_display[[c for c in display_cols if c in df_display.columns]]
+        
+        # 📊 RENDER TABLE
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
+        
+        # 🖨️ ADMIN ONLY EXCEL DOWNLOAD
+        if is_admin:
+            st.write("---")
+            df_export = df_visits.copy()
+            
+            df_export['Contact Number'] = df_export['Contact Number'].apply(lambda x: f" {x}")
+            
+            if 'photo_data' in df_export.columns:
+                df_export['Photo Status'] = df_export['photo_data'].apply(lambda x: "Attached in System" if x else "No Photo")
+                df_export = df_export.drop(columns=['photo_data'])
+            
+            export_cols = ['Date', 'Client Name', 'Contact Number', 'Project', 'Executive', 'Interest', 'Remarks', 'Photo Status', 'System_Entry']
+            df_export = df_export[[c for c in export_cols if c in df_export.columns]]
+            
+            csv_data = df_export.to_csv(index=False).encode('utf-8-sig')
+            
+            c_btn1, c_btn2 = st.columns([1, 2])
+            with c_btn1:
+                st.download_button("🖨️ Download Clean Excel Sheet", data=csv_data, file_name=f"Site_Visits_{datetime.date.today()}.csv", mime="text/csv", use_container_width=True)
+                st.caption("*(Only Admin can see this button and real numbers)*")
 
+        # 📸 PHOTO GALLERY
+        st.write("")
+        with st.expander("📸 View Attached Site Photos"):
+            photos_found = False
+            p_cols = st.columns(3)
+            p_idx = 0
+            for nv in normalized_visits:
+                if nv.get('photo_data'):
+                    photos_found = True
+                    with p_cols[p_idx % 3]:
+                        try:
+                            img_bytes = base64.b64decode(nv['photo_data'])
+                            st.image(img_bytes, caption=f"{nv['Client Name']} ({nv['Date']})", use_column_width=True)
+                        except: pass
+                    p_idx += 1
+            if not photos_found:
+                st.info("No photos have been attached to any visits yet.")
+                
+    st.markdown('</div>', unsafe_allow_html=True)
