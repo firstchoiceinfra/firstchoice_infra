@@ -57,7 +57,9 @@ with col_form:
     
     with st.form("site_visit_form", clear_on_submit=True):
         c_name = st.text_input("👤 Client Full Name *")
-        c_phone = st.text_input("📱 Client Mobile Number *")
+        
+        # 🔒 Executive will enter the full number here
+        c_phone = st.text_input("📱 Client Mobile Number * (Hidden after save)")
         
         c1, c2 = st.columns(2)
         v_date = c1.date_input("📆 Date of Visit", datetime.date.today())
@@ -65,7 +67,7 @@ with col_form:
         
         c3, c4 = st.columns(2)
         
-        # Auto-fill Executive Name if logged in as executive
+        # Auto-fill Executive Name
         logged_in_name = st.session_state.get('current_user_name', '')
         if st.session_state.get('user_role', 'executive') == 'executive':
             exec_name = c3.text_input("👨‍💼 Assigned Executive Name *", value=logged_in_name, disabled=True)
@@ -101,10 +103,11 @@ with col_form:
                     except Exception as e:
                         st.error(f"Error processing image: {e}")
                 
+                # Saving the REAL phone number in database
                 visit_record = {
                     "date_logged": str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
                     "client_name": c_name.strip(),
-                    "phone": c_phone.strip(),
+                    "phone": c_phone.strip(), 
                     "visit_date": str(v_date),
                     "project": v_proj,
                     "executive": exec_name.strip(),
@@ -115,7 +118,7 @@ with col_form:
                 
                 db_data['site_visits_log'].append(visit_record)
                 if database.save_db_data():
-                    st.success("🎉 Site Visit Successfully Logged!")
+                    st.success("🎉 Site Visit Successfully Logged! Data is secured.")
                     st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -128,7 +131,7 @@ with col_history:
     if not visits:
         st.info("ℹ️ No site visits have been logged yet.")
     else:
-        # 🔒 STRICT ADMIN LOCK FOR EXCEL DOWNLOAD
+        # 🔒 STRICT ADMIN LOCK FOR EXCEL DOWNLOAD (With Real Phone Numbers)
         if st.session_state.get('user_role', 'executive') == 'admin':
             df_export = pd.DataFrame(visits)
             if 'photo_data' in df_export.columns:
@@ -139,15 +142,23 @@ with col_history:
             st.download_button("🖨️ Download Excel (CSV) Report (Admin Only)", data=csv_data, file_name=f"Site_Visits_{datetime.date.today()}.csv", mime="text/csv", use_container_width=True)
             st.write("---")
         
-        # 🟢 DISPLAY HISTORY TO EVERYONE (Admin + Executive)
+        # 🟢 DISPLAY HISTORY TO EVERYONE (With MASKED Phone Numbers)
         for i, v in enumerate(reversed(visits)):
             icon = "🔥" if "High" in v['interest'] else "⭐" if "Medium" in v['interest'] else "❄️"
             
+            # 🛡️ PHONE NUMBER MASKING LOGIC
+            raw_phone = str(v.get('phone', ''))
+            if len(raw_phone) >= 6:
+                masked_phone = "******" + raw_phone[-4:] # Shows only last 4 digits (e.g. ******9876)
+            else:
+                masked_phone = "🔒 Hidden"
+
             with st.expander(f"{icon} {v['visit_date']} | {v['client_name']} ({v['project']})"):
                 sc1, sc2 = st.columns([1.5, 1])
                 
                 with sc1:
-                    st.write(f"**📱 Mobile:** {v['phone']}")
+                    # Showing Masked Phone Number on Screen
+                    st.write(f"**📱 Mobile:** `{masked_phone}`")
                     st.write(f"**👨‍💼 Executive:** {v['executive']}")
                     st.write(f"**📊 Interest:** {v['interest']}")
                     st.write(f"**📝 Remarks:** {v['remarks']}")
@@ -164,3 +175,4 @@ with col_history:
                         st.warning("🚫 No Photo Attached")
                         
     st.markdown('</div>', unsafe_allow_html=True)
+
