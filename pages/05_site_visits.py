@@ -36,7 +36,6 @@ st.markdown(f"""
 h2, h3 {{ color: #1e3a8a !important; font-weight: 800; }}
 .stButton>button {{ background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%); color: white !important; font-weight: bold; border-radius: 8px; transition: all 0.3s; border: none; }}
 .stButton>button:hover {{ transform: translateY(-2px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4); }}
-/* Table Styling Fix */
 div[data-testid="stDataFrame"] {{ border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }}
 </style>
 """, unsafe_allow_html=True)
@@ -51,7 +50,7 @@ if not project_names:
 # ==========================================
 # 📱 SPLIT LAYOUT: FORM (Left) & HISTORY TABLE (Right)
 # ==========================================
-col_form, col_history = st.columns([1, 1.8]) # Right side made wider for the table
+col_form, col_history = st.columns([1, 1.8])
 
 with col_form:
     st.markdown('<div class="form-box">', unsafe_allow_html=True)
@@ -65,7 +64,6 @@ with col_form:
         v_date = c1.date_input("📆 Date of Visit", datetime.date.today())
         v_proj = c2.selectbox("🏢 Project Visited", project_names)
         
-        # Auto-fill Executive Name
         logged_in_name = st.session_state.get('current_user_name', '')
         is_admin = st.session_state.get('user_role', 'executive') == 'admin'
         
@@ -98,15 +96,16 @@ with col_form:
                     except Exception as e:
                         st.error(f"Error processing image: {e}")
                 
+                # Saving standard keys to avoid future errors
                 visit_record = {
-                    "Date": str(v_date),
-                    "Client Name": c_name.strip(),
-                    "Contact Number": c_phone.strip(), 
-                    "Project": v_proj,
-                    "Executive": exec_name.strip(),
-                    "Interest": interest,
-                    "Remarks": remarks.strip(),
-                    "System_Entry": str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                    "visit_date": str(v_date),
+                    "client_name": c_name.strip(),
+                    "phone": c_phone.strip(), 
+                    "project": v_proj,
+                    "executive": exec_name.strip(),
+                    "interest": interest,
+                    "remarks": remarks.strip(),
+                    "date_logged": str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
                     "photo_data": photo_b64
                 }
                 db_data['site_visits_log'].append(visit_record)
@@ -124,67 +123,28 @@ with col_history:
     if not visits:
         st.info("ℹ️ No site visits have been logged yet.")
     else:
-        # 1. PREPARE THE CLEAN DATAFRAME
-        df_visits = pd.DataFrame(reversed(visits)) # Reverse to show newest first
+        # 🚀 1. AUTO-DATA NORMALIZER (Fixes Old Data & New Data Conflicts)
+        normalized_visits = []
+        for v in reversed(visits):
+            nv = {}
+            nv['Date'] = v.get('visit_date', v.get('Date', ''))
+            nv['Client Name'] = v.get('client_name', v.get('Client Name', ''))
+            nv['Contact Number'] = str(v.get('phone', v.get('Contact Number', '')))
+            nv['Project'] = v.get('project', v.get('Project', ''))
+            nv['Executive'] = v.get('executive', v.get('Executive', ''))
+            nv['Interest'] = v.get('interest', v.get('Interest', ''))
+            nv['Remarks'] = v.get('remarks', v.get('Remarks', ''))
+            nv['System_Entry'] = v.get('date_logged', v.get('System_Entry', ''))
+            nv['photo_data'] = v.get('photo_data', '')
+            normalized_visits.append(nv)
+            
+        df_visits = pd.DataFrame(normalized_visits)
         is_admin = st.session_state.get('user_role', 'executive') == 'admin'
         
-        # We create a copy for display
         df_display = df_visits.copy()
         
-        # 🛡️ PHONE MASKING LOGIC FOR DISPLAY
+        # 🛡️ PHONE MASKING LOGIC FOR SCREEN DISPLAY
         if not is_admin:
-            # Mask number for executives
             df_display['Contact Number'] = df_display['Contact Number'].apply(
-                lambda x: "******" + str(x)[-4:] if len(str(x)) >= 6 else "🔒 Hidden"
-            )
-            
-        # Clean up columns for the screen table
-        display_cols = ['Date', 'Client Name', 'Contact Number', 'Project', 'Executive', 'Interest', 'Remarks']
-        df_display = df_display[[c for c in display_cols if c in df_display.columns]]
-        
-        # 📊 RENDER MASTER LEDGER STYLE TABLE
-        st.dataframe(df_display, use_container_width=True, hide_index=True)
-        
-        # 🖨️ ADMIN ONLY EXCEL DOWNLOAD
-        if is_admin:
-            st.write("---")
-            df_export = df_visits.copy()
-            
-            # 🚀 THE MAGIC FIX FOR EXCEL 9.58E+09 ISSUE: Add a space before the number!
-            df_export['Contact Number'] = df_export['Contact Number'].apply(lambda x: f" {x}")
-            
-            # Clean photo column for Excel
-            if 'photo_data' in df_export.columns:
-                df_export['Photo Status'] = df_export['photo_data'].apply(lambda x: "Attached in System" if x else "No Photo")
-                df_export = df_export.drop(columns=['photo_data'])
-            
-            # Export Columns Ordering
-            export_cols = ['Date', 'Client Name', 'Contact Number', 'Project', 'Executive', 'Interest', 'Remarks', 'Photo Status', 'System_Entry']
-            df_export = df_export[[c for c in export_cols if c in df_export.columns]]
-            
-            csv_data = df_export.to_csv(index=False).encode('utf-8-sig')
-            
-            c_btn1, c_btn2 = st.columns([1, 2])
-            with c_btn1:
-                st.download_button("🖨️ Download Clean Excel Sheet", data=csv_data, file_name=f"Site_Visits_{datetime.date.today()}.csv", mime="text/csv", use_container_width=True)
-                st.caption("*(Only Admin can see this button and real numbers)*")
+                lambda x: "******" + str(x)[-4:] if len(str(x)) >= 6
 
-        # 📸 PHOTO GALLERY (Collapsed by default so table looks clean)
-        st.write("")
-        with st.expander("📸 View Attached Site Photos"):
-            photos_found = False
-            p_cols = st.columns(3)
-            p_idx = 0
-            for v in reversed(visits):
-                if v.get('photo_data'):
-                    photos_found = True
-                    with p_cols[p_idx % 3]:
-                        try:
-                            img_bytes = base64.b64decode(v['photo_data'])
-                            st.image(img_bytes, caption=f"{v['Client Name']} ({v['Date']})", use_column_width=True)
-                        except: pass
-                    p_idx += 1
-            if not photos_found:
-                st.info("No photos have been attached to any visits yet.")
-                
-    st.markdown('</div>', unsafe_allow_html=True)
