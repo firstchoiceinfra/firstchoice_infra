@@ -105,14 +105,14 @@ with col_form:
                 
                 # Saving the REAL phone number in database
                 visit_record = {
-                    "date_logged": str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                    "visit_date": str(v_date),
                     "client_name": c_name.strip(),
                     "phone": c_phone.strip(), 
-                    "visit_date": str(v_date),
                     "project": v_proj,
                     "executive": exec_name.strip(),
                     "interest": interest,
                     "remarks": remarks.strip(),
+                    "date_logged": str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
                     "photo_data": photo_b64
                 }
                 
@@ -131,22 +131,41 @@ with col_history:
     if not visits:
         st.info("ℹ️ No site visits have been logged yet.")
     else:
-        # 🔒 STRICT ADMIN LOCK FOR EXCEL DOWNLOAD (With Real Phone Numbers)
+        # 🔒 STRICT ADMIN LOCK FOR EXCEL DOWNLOAD (With Clean Format)
         if st.session_state.get('user_role', 'executive') == 'admin':
             df_export = pd.DataFrame(visits)
+            
+            # Cleaning up the photo_data column so Excel doesn't break
             if 'photo_data' in df_export.columns:
-                df_export['photo_data'] = df_export['photo_data'].apply(lambda x: "Photo Attached in System" if x else "No Photo")
-                df_export.rename(columns={"photo_data": "Photo Status"}, inplace=True)
+                df_export['photo_data'] = df_export['photo_data'].apply(lambda x: "Yes (View in System)" if x else "No Photo")
+            
+            # Renaming columns for a clean, professional Excel Sheet
+            df_export = df_export.rename(columns={
+                'visit_date': 'Visit Date',
+                'client_name': 'Client Name',
+                'phone': 'Contact Number',
+                'project': 'Project Visited',
+                'executive': 'Assigned Executive',
+                'interest': 'Interest Level',
+                'remarks': 'Feedback / Remarks',
+                'photo_data': 'Photo Attached?',
+                'date_logged': 'System Entry Time'
+            })
+            
+            # Reordering columns so Contact Number and Name come first
+            cols_order = ['Visit Date', 'Client Name', 'Contact Number', 'Project Visited', 'Assigned Executive', 'Interest Level', 'Feedback / Remarks', 'Photo Attached?', 'System Entry Time']
+            existing_cols = [col for col in cols_order if col in df_export.columns]
+            df_export = df_export[existing_cols]
                 
             csv_data = df_export.to_csv(index=False).encode('utf-8-sig')
-            st.download_button("🖨️ Download Excel (CSV) Report (Admin Only)", data=csv_data, file_name=f"Site_Visits_{datetime.date.today()}.csv", mime="text/csv", use_container_width=True)
+            st.download_button("🖨️ Download Clean Excel Report (Admin Only)", data=csv_data, file_name=f"FC_Infra_Site_Visits_{datetime.date.today()}.csv", mime="text/csv", use_container_width=True)
             st.write("---")
         
         # 🟢 DISPLAY HISTORY TO EVERYONE (With MASKED Phone Numbers)
         for i, v in enumerate(reversed(visits)):
             icon = "🔥" if "High" in v['interest'] else "⭐" if "Medium" in v['interest'] else "❄️"
             
-            # 🛡️ PHONE NUMBER MASKING LOGIC
+            # 🛡️ PHONE NUMBER MASKING LOGIC FOR DISPLAY
             raw_phone = str(v.get('phone', ''))
             if len(raw_phone) >= 6:
                 masked_phone = "******" + raw_phone[-4:] # Shows only last 4 digits (e.g. ******9876)
