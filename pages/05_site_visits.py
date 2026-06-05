@@ -188,4 +188,3 @@ with col_history:
                 st.info("No photos have been attached to any visits yet.")
                 
     st.markdown('</div>', unsafe_allow_html=True)
-
