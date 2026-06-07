@@ -6,14 +6,14 @@ import pandas as pd
 # --- 1. Page Configuration ---
 st.set_page_config(layout="wide", page_title="FC Infra - Commission Channel")
 
-# --- 2. Security Check (Strict Admin Lock) ---
+# --- 2. Security Check (Login Check ONLY, Role check applied below) ---
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.warning("🔒 Please login on the Main Page first.")
     st.stop()
 
-if st.session_state.get('user_role', 'admin') != 'admin':
-    st.error("🚨 Security Alert: You do not have permission to access the Commission Panel!")
-    st.stop()
+# Get Current User Info
+curr_user = st.session_state.get('current_user_name', '')
+user_role = st.session_state.get('user_role', 'executive')
 
 # --- 3. Cloud Database Integration ---
 database.init_db()
@@ -41,6 +41,8 @@ h1, h2, h3 {{ color: {p_color} !important; font-weight: 800; }}
 .ledger-box {{ background-color: #ffffff; border-left: 4px solid {p_color}; padding: 10px 15px !important; border-radius: 8px; box-shadow: 0px 2px 5px rgba(0,0,0,0.05); margin-bottom: 8px !important; }}
 div[data-testid="stMetric"] div[data-testid="stMetricLabel"] {{ font-size: 11px !important; font-weight: 600 !important; color: #475569 !important; }}
 div[data-testid="stMetric"] div[data-testid="stMetricValue"] {{ font-size: 14px !important; font-weight: 700 !important; color: #0f172a !important; }}
+/* Radio button styling */
+div.row-widget.stRadio > div {{ flex-direction:row; background-color: #f1f5f9; padding: 10px; border-radius: 10px; justify-content: center; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -57,7 +59,6 @@ if 'executives' not in db_data:
 
 exec_data_root = db_data['executives']
 
-# Helper 1: Get all downlines (Direct & Indirect)
 def get_all_downlines(manager_name):
     manager_clean = str(manager_name).strip().lower()
     downlines = []
@@ -67,19 +68,12 @@ def get_all_downlines(manager_name):
             downlines.extend(get_all_downlines(ex_name))
     return list(set(downlines))
 
-# Helper 2: Find Direct Child in the chain for Difference Commission
 def get_diff_deduction(sale_maker_key, senior_key):
-    """
-    Traces up from sale_maker to senior.
-    Returns the % and ₹ of the DIRECT child of the senior in this specific chain.
-    """
     curr = sale_maker_key
     child_of_senior = curr
     
-    # Trace up the tree
     while curr and curr.lower() != senior_key.lower():
         child_of_senior = curr
-        # Find who is the senior of 'curr'
         curr_key_actual = next((k for k in exec_data_root.keys() if k.lower() == curr.lower()), None)
         if not curr_key_actual: break
         
@@ -90,7 +84,6 @@ def get_diff_deduction(sale_maker_key, senior_key):
             break
 
     if curr and curr.lower() == senior_key.lower():
-        # Found the link! child_of_senior is the direct branch under the senior.
         child_actual = next((k for k in exec_data_root.keys() if k.lower() == child_of_senior.lower()), None)
         if child_actual:
             child_profile = exec_data_root.get(child_actual, {})
@@ -100,8 +93,6 @@ def get_diff_deduction(sale_maker_key, senior_key):
             
     return 0.0, 0.0, None
 
-
-# --- Dynamic Safe-Edit Callback Engine ---
 def prepare_edit(ex_name, details):
     st.session_state['form_exec_name'] = ex_name
     st.session_state['form_senior_name'] = details.get('senior_name', '')
@@ -117,63 +108,74 @@ def clear_edit_fields():
 
 st.markdown("<h1 style='text-align: center;'>👑 Executive & Master Commission Panel</h1>", unsafe_allow_html=True)
 
-# --- Main Setup Profile Form ---
-is_editing = st.session_state.get('edit_mode_active', False)
-st.subheader("✏️ Edit Partner Profile" if is_editing else "🏗️ Add New Partner Account & Assign Slab")
+# =========================================================
+# 🔒 ADMIN ONLY: SETUP & EDIT PARTNER PROFILE
+# =========================================================
+if user_role == 'admin':
+    is_editing = st.session_state.get('edit_mode_active', False)
+    st.subheader("✏️ Edit Partner Profile" if is_editing else "🏗️ Add New Partner Account & Assign Slab")
 
-with st.form("commission_form"):
-    st.markdown("#### 👤 Associate Credentials & Hierarchy")
-    col_a1, col_a2 = st.columns(2)
-    exec_name = col_a1.text_input("👨‍💼 Executive Full Name (Login ID) *", key="form_exec_name")
-    senior_name = col_a2.text_input("👴 Immediate Senior / Upline Name", key="form_senior_name")
-    exec_mobile = col_a1.text_input("📱 10-Digit Mobile Number (Account Password) *", max_chars=10, key="form_exec_mobile")
-    st.caption("⚠️ *System Auto-calculates Difference Commission based on the Senior's slab minus the Junior's slab.*")
+    with st.form("commission_form"):
+        st.markdown("#### 👤 Associate Credentials & Hierarchy")
+        col_a1, col_a2 = st.columns(2)
+        exec_name = col_a1.text_input("👨‍💼 Executive Full Name (Login ID) *", key="form_exec_name")
+        senior_name = col_a2.text_input("👴 Immediate Senior / Upline Name", key="form_senior_name")
+        exec_mobile = col_a1.text_input("📱 10-Digit Mobile Number (Account Password) *", max_chars=10, key="form_exec_mobile")
+        st.caption("⚠️ *System Auto-calculates Difference Commission based on the Senior's slab minus the Junior's slab.*")
 
-    st.markdown("#### 💰 Executive Master Slab (Self Business Target)")
-    col_c1, col_c2 = st.columns(2)
-    with col_c1:
-        exec_pct = st.number_input("📈 Percentage Slab (%)", min_value=0.0, max_value=100.0, step=0.1, key="ep")
-    with col_c2:
-        exec_rs = st.number_input("💵 Fixed Payout Slab (₹)", min_value=0.0, step=500.0, key="er")
+        st.markdown("#### 💰 Executive Master Slab (Self Business Target)")
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            exec_pct = st.number_input("📈 Percentage Slab (%)", min_value=0.0, max_value=100.0, step=0.1, key="ep")
+        with col_c2:
+            exec_rs = st.number_input("💵 Fixed Payout Slab (₹)", min_value=0.0, step=500.0, key="er")
 
-    st.write("")
-    if is_editing:
-        col_btn1, col_btn2 = st.columns(2)
-        save_comm = col_btn1.form_submit_button("💾 Update Partner Profile", use_container_width=True)
-        if col_btn2.form_submit_button("❌ Cancel / Abort", use_container_width=True):
-            clear_edit_fields()
-            st.rerun()
-    else:
-        save_comm = st.form_submit_button("💾 Register Profile & Set Slab", use_container_width=True)
-
-    if save_comm:
-        if exec_name.strip() == "" or exec_mobile.strip() == "":
-            st.error("🚨 Full Name and Mobile Number are mandatory fields!")
-        elif len(exec_mobile.strip()) < 10:
-            st.error("🚨 Please enter a valid 10-digit mobile number layout!")
-        else:
-            exec_clean = exec_name.strip()
-            if is_editing and 'old_edit_name' in st.session_state:
-                old_name = st.session_state['old_edit_name']
-                if old_name != exec_clean:
-                    st.session_state.db_projects['executives'].pop(old_name, None)
-           
-            st.session_state.db_projects['executives'][exec_clean] = {
-                "name": exec_clean, "mobile": exec_mobile.strip(),
-                "senior_name": senior_name.strip() if senior_name.strip() else "Direct",
-                "percentage_exec": exec_pct, 
-                "rupees_exec": exec_rs,
-                "last_updated": str(datetime.date.today())
-            }
-            if database.save_db_data():
-                st.success("🎉 Associate registry & Hierarchy Slab updated successfully!")
+        st.write("")
+        if is_editing:
+            col_btn1, col_btn2 = st.columns(2)
+            save_comm = col_btn1.form_submit_button("💾 Update Partner Profile", use_container_width=True)
+            if col_btn2.form_submit_button("❌ Cancel / Abort", use_container_width=True):
                 clear_edit_fields()
                 st.rerun()
+        else:
+            save_comm = st.form_submit_button("💾 Register Profile & Set Slab", use_container_width=True)
 
-# --- Live Statement Ledger Engine (With Deep Difference Logic) ---
+        if save_comm:
+            if exec_name.strip() == "" or exec_mobile.strip() == "":
+                st.error("🚨 Full Name and Mobile Number are mandatory fields!")
+            elif len(exec_mobile.strip()) < 10:
+                st.error("🚨 Please enter a valid 10-digit mobile number layout!")
+            else:
+                exec_clean = exec_name.strip()
+                if is_editing and 'old_edit_name' in st.session_state:
+                    old_name = st.session_state['old_edit_name']
+                    if old_name != exec_clean:
+                        st.session_state.db_projects['executives'].pop(old_name, None)
+               
+                st.session_state.db_projects['executives'][exec_clean] = {
+                    "name": exec_clean, "mobile": exec_mobile.strip(),
+                    "senior_name": senior_name.strip() if senior_name.strip() else "Direct",
+                    "percentage_exec": exec_pct, 
+                    "rupees_exec": exec_rs,
+                    "last_updated": str(datetime.date.today())
+                }
+                if database.save_db_data():
+                    st.success("🎉 Associate registry & Hierarchy Slab updated successfully!")
+                    clear_edit_fields()
+                    st.rerun()
+
+# =========================================================
+# 📊 EVERYONE: LIVE STATEMENT LEDGER ENGINE 
+# =========================================================
 st.markdown("<br><hr>", unsafe_allow_html=True)
-st.subheader("📊 Advanced Statement (Direct Income + Team Difference Income)")
+st.subheader("📊 Advanced Statement & Payout Ledger")
+
 exec_clean_list = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
+
+if user_role != 'admin':
+    allowed_list_lower = [curr_user.lower()] + [d.lower() for d in get_all_downlines(curr_user)]
+    exec_clean_list = [k for k in exec_clean_list if k.lower() in allowed_list_lower]
+
 project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data or 'total_plots' in data)]
 
 if exec_clean_list:
@@ -182,10 +184,11 @@ if exec_clean_list:
     start_date = col_s2.date_input("📅 Start Date", datetime.date.today() - datetime.timedelta(days=30))
     end_date = col_s3.date_input("📅 End Date", datetime.date.today())
 
-    if st.button("🔍 Generate Comprehensive Agency Ledger", use_container_width=True):
+    # 🎯 NEW FEATURE: SMART FILTER RADIO BUTTONS
+    comm_filter = st.radio("🎯 Select Commission View Type:", ["All (Self + Team)", "⭐ Self Commission Only", "👥 Team Commission Only"], horizontal=True)
+
+    if st.button("🔍 Generate Comprehensive Ledger", use_container_width=True):
         search_exec_clean = str(search_exec).strip().lower()
-        
-        # 🔗 Find entire downline (All Levels)
         all_downlines_lower = [d.lower() for d in get_all_downlines(search_exec_clean)]
         
         statement_rows = []
@@ -205,9 +208,14 @@ if exec_clean_list:
                     plot_exec = str(plot_info.get('executive_name', '')).strip().lower()
                    
                     if plot_status == 'booked':
-                        # 🎯 Check if sale is by Self OR any Downline in the entire chain
                         is_direct = (plot_exec == search_exec_clean)
                         is_downline = (plot_exec in all_downlines_lower)
+
+                        # 🚀 APPLYING THE FILTER LOGIC
+                        if comm_filter == "⭐ Self Commission Only" and not is_direct:
+                            continue
+                        if comm_filter == "👥 Team Commission Only" and not is_downline:
+                            continue
                         
                         if is_direct or is_downline:
                             
@@ -215,22 +223,18 @@ if exec_clean_list:
                             sr_pct = safe_float(sr_profile.get('percentage_exec', 0.0))
                             sr_rs = safe_float(sr_profile.get('rupees_exec', 0.0))
 
-                            # --- DETERMINE EXACT DIFFERENCE SLAB ---
                             if is_direct:
                                 busi_type = "⭐ Direct Sale"
                                 final_calc_pct = sr_pct
                                 final_calc_rs = sr_rs
                                 display_comm_str = f"{sr_pct}%"
                             else:
-                                # Trace the deduction from the exact direct branch
                                 jr_pct_deduction, jr_rs_deduction, direct_branch_name = get_diff_deduction(plot_info.get('executive_name', ''), search_exec_clean)
-                                
                                 busi_type = f"👥 Team Sale (Via: {direct_branch_name})"
                                 final_calc_pct = max(0.0, sr_pct - jr_pct_deduction)
                                 final_calc_rs = max(0.0, sr_rs - jr_rs_deduction)
                                 display_comm_str = f"{final_calc_pct}% (Diff)"
 
-                            # Calculate Discount Adjustments
                             plot_area = safe_float(plot_info.get('plot_area', plot_info.get('area', 1116.23)))
                             company_rate = safe_float(plot_info.get('company_rate', p_info.get('base_rate', 700.0)))
                             if company_rate <= 0: company_rate = 700.0
@@ -247,14 +251,11 @@ if exec_clean_list:
                             else:
                                 net_comm_pct = final_calc_pct
 
-                            # Scan Payments
                             all_payments = []
-                            # 1. Booking Token
                             b_date_str = str(plot_info.get('booking_date', plot_info.get('receipt_date', ''))).strip()
                             token_amt = safe_float(plot_info.get('token_amount', plot_info.get('received_amount', 0.0)))
                             all_payments.append({'date_str': b_date_str, 'type': 'Booking Token', 'amt': token_amt})
                             
-                            # 2. EMIs
                             for pmt in plot_info.get('partial_payments', []):
                                 all_payments.append({'date_str': str(pmt.get('date', '')).strip(), 'type': str(pmt.get('remarks', 'Installment Payment')), 'amt': safe_float(pmt.get('amount', 0.0))})
 
@@ -272,7 +273,6 @@ if exec_clean_list:
                                         if "Percentage" in p_mode:
                                             gross_comm = (paid_amt * net_comm_pct) / 100.0
                                         else:
-                                            # Fixed amount usually triggered only on first token to avoid duplicate fixed payouts
                                             gross_comm = final_calc_rs if pmt_data['type'] == 'Booking Token' else 0
                                            
                                         tds_amt = (gross_comm * 2.0) / 100.0
@@ -311,34 +311,18 @@ if exec_clean_list:
             csv_data = df_statement.to_csv(index=False).encode('utf-8-sig')
             st.download_button("📥 Export Difference Statement File", csv_data, f"MLM_Statement_{search_exec}.csv", "text/csv", use_container_width=True)
         else:
-            st.info(f"🔍 '{search_exec}' या उनकी टीम के लिए {start_date.strftime('%d-%m-%Y')} से {end_date.strftime('%d-%m-%Y')} के बीच कोई रिकॉर्ड नहीं मिला।")
-
-# --- Active Partner Registry (Grid Layout) ---
-st.markdown("<br><hr>", unsafe_allow_html=True)
-st.markdown("<h4 style='font-size:16px;'>📋 Master Slab Registry & Login Credentials</h4>", unsafe_allow_html=True)
-exec_clean_list_view = {k: v for k, v in exec_data_root.items() if isinstance(v, dict) and 'name' in v}
-
-if not exec_clean_list_view:
-    st.caption("No registered partners available.")
+            st.info(f"🔍 '{search_exec}' के लिए {start_date.strftime('%d-%m-%Y')} से {end_date.strftime('%d-%m-%Y')} के बीच कोई रिकॉर्ड नहीं मिला।")
 else:
-    for ex_name, p_details in exec_clean_list_view.items():
-        with st.container():
-            st.markdown(f"""
-            <div class="ledger-box">
-                <span style="font-size: 14px; font-weight: bold; color: {p_color};">👨‍💼 Name: {ex_name}</span>
-                <span style="float: right; background-color: #f1f5f9; padding: 2px 8px; border-radius: 4px; font-size:12px; color: #475569; font-weight: 600;">🔑 Pass: {p_details.get('mobile','N/A')}</span>
-                <br><span style="font-size: 12px; color: #64748b;">👴 <b>Senior Upline:</b> {p_details.get('senior_name','N/A')} | 📈 <b>Slab:</b> {p_details.get('percentage_exec', 0)}% (₹{p_details.get('rupees_exec', 0)})</span>
-            </div>
-            """, unsafe_allow_html=True)
-           
-            c_m1, c_m2, c_m3 = st.columns([4, 1, 1])
-            with c_m2:
-                st.button("✏️ Edit Slab", key=f"edit_{ex_name}", use_container_width=True, on_click=prepare_edit, args=(ex_name, p_details))
-            with c_m3:
-                if st.button("🗑️ Delete", key=f"del_{ex_name}", use_container_width=True):
-                    st.session_state.db_projects['executives'].pop(ex_name, None)
-                    database.save_db_data()
-                    st.success(f"Partner Account '{ex_name}' successfully removed!")
-                    st.rerun()
-            st.write("")
+    if not exec_clean_list:
+        st.info("🚫 You currently have no associated accounts or downlines in the system.")
+
+# =========================================================
+# 🔒 ADMIN ONLY: REGISTRY & PASSWORDS GRID
+# =========================================================
+if user_role == 'admin':
+    st.markdown("<br><hr>", unsafe_allow_html=True)
+    st.markdown("<h4 style='font-size:16px;'>📋 Master Slab Registry & Login Credentials</h4>", unsafe_allow_html=True)
+    exec_clean_list_view = {k: v for k, v in exec_data_root.items() if isinstance(v, dict) and 'name' in v}
+
+    if not exec_clean_list_view
 
