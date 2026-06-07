@@ -325,4 +325,3 @@ if user_role == 'admin':
     exec_clean_list_view = {k: v for k, v in exec_data_root.items() if isinstance(v, dict) and 'name' in v}
 
     if not exec_clean_list_view
-
