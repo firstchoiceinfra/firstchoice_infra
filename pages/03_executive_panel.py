@@ -324,4 +324,26 @@ if user_role == 'admin':
     st.markdown("<h4 style='font-size:16px;'>📋 Master Slab Registry & Login Credentials</h4>", unsafe_allow_html=True)
     exec_clean_list_view = {k: v for k, v in exec_data_root.items() if isinstance(v, dict) and 'name' in v}
 
-    if not exec_clean_list_view
+    if not exec_clean_list_view:
+        st.caption("No registered partners available.")
+    else:
+        for ex_name, p_details in exec_clean_list_view.items():
+            with st.container():
+                st.markdown(f"""
+                <div class="ledger-box">
+                    <span style="font-size: 14px; font-weight: bold; color: {p_color};">👨‍💼 Name: {ex_name}</span>
+                    <span style="float: right; background-color: #f1f5f9; padding: 2px 8px; border-radius: 4px; font-size:12px; color: #475569; font-weight: 600;">🔑 Pass: {p_details.get('mobile','N/A')}</span>
+                    <br><span style="font-size: 12px; color: #64748b;">👴 <b>Senior Upline:</b> {p_details.get('senior_name','N/A')} | 📈 <b>Slab:</b> {p_details.get('percentage_exec', 0)}% (₹{p_details.get('rupees_exec', 0)})</span>
+                </div>
+                """, unsafe_allow_html=True)
+               
+                c_m1, c_m2, c_m3 = st.columns([4, 1, 1])
+                with c_m2:
+                    st.button("✏️ Edit Slab", key=f"edit_{ex_name}", use_container_width=True, on_click=prepare_edit, args=(ex_name, p_details))
+                with c_m3:
+                    if st.button("🗑️ Delete", key=f"del_{ex_name}", use_container_width=True):
+                        st.session_state.db_projects['executives'].pop(ex_name, None)
+                        database.save_db_data()
+                        st.success(f"Partner Account '{ex_name}' successfully removed!")
+                        st.rerun()
+                st.write("")
