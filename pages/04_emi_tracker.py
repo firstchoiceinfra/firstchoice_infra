@@ -67,14 +67,15 @@ def get_all_downlines(manager_name):
     return list(set(downlines))
 
 # =========================================================
-# 📊 DATA EXTRACTION ENGINE (Find Pending Dues)
+# 📊 DATA EXTRACTION ENGINE (Find Pending Dues & All Bookings)
 # =========================================================
 all_downlines_lower = [d.lower() for d in get_all_downlines(curr_user)]
 
 pending_records = []
 payment_map = {} # Admin Payment System Mapping
-total_company_pending = 0.0
+all_booked_map = {} # For Updating Token Slips
 
+total_company_pending = 0.0
 project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data or 'total_plots' in data)]
 
 for p_name in project_names:
@@ -90,6 +91,20 @@ for p_name in project_names:
             plot_exec = str(plot_info.get('executive_name', '')).strip().lower()
             
             if status == 'booked':
+                selling_rate = safe_float(plot_info.get('selling_rate', 0.0))
+                
+                if selling_rate <= 0:
+                    continue # Skip combo child plots
+                
+                customer = str(plot_info.get('customer_name', 'N/A')).title()
+                booked_str = plot_info.get('booked_plots_str', plot_id)
+                token_slip = str(plot_info.get('token_slip_no', 'N/A'))
+                
+                # Admin Full Registry for Token Slip Update
+                full_key = f"{p_name} | P-{booked_str} | {customer}"
+                all_booked_map[full_key] = {'proj': p_name, 'plot': plot_id, 'curr_slip': token_slip}
+                
+                # Executive Authorization Check
                 is_authorized = False
                 if user_role == 'admin':
                     is_authorized = True
@@ -97,11 +112,6 @@ for p_name in project_names:
                     is_authorized = True
                 
                 if is_authorized:
-                    selling_rate = safe_float(plot_info.get('selling_rate', 0.0))
-                    
-                    if selling_rate <= 0:
-                        continue
-                        
                     token_amt = safe_float(plot_info.get('token_amount', 0.0))
                     
                     partial_payments = plot_info.get('partial_payments', [])
@@ -114,9 +124,7 @@ for p_name in project_names:
                         total_company_pending += net_pending
                         
                         b_date = plot_info.get('booking_date', plot_info.get('receipt_date', 'N/A'))
-                        customer = str(plot_info.get('customer_name', 'N/A')).title()
                         phone = str(plot_info.get('phone', ''))
-                        booked_str = plot_info.get('booked_plots_str', plot_id)
                         
                         # Store in map for Admin Payment Form
                         opt_key = f"{p_name} | P-{booked_str} | {customer} (Due: ₹{net_pending:,.0f})"
@@ -131,12 +139,11 @@ for p_name in project_names:
                         pending_records.append({
                             "Project": p_name,
                             "Plot(s)": f"P-{booked_str}",
-                            "Booking Date": b_date,
                             "Client Name": customer,
-                            "Contact": phone,
                             "Executive": str(plot_info.get('executive_name', 'Direct')).title(),
                             "Total Value (₹)": selling_rate,
-                            "Down Payment/Token (₹)": token_amt,
+                            "Token/Down Pmt (₹)": token_amt,
+                            "Token Slip No": token_slip,
                             "Total Paid (₹)": total_paid,
                             "🚨 Net Pending (₹)": net_pending,
                             "WhatsApp": wa_url
@@ -167,7 +174,7 @@ if pending_records:
         return f'<a target="_blank" href="{link}" style="background-color:#25D366;color:white;padding:5px 10px;border-radius:5px;text-decoration:none;font-size:12px;font-weight:bold;">💬 Send Reminder</a>'
     
     df_display['WhatsApp'] = df_display['WhatsApp'].apply(make_clickable)
-    curr_cols = ["Total Value (₹)", "Down Payment/Token (₹)", "Total Paid (₹)", "🚨 Net Pending (₹)"]
+    curr_cols = ["Total Value (₹)", "Token/Down Pmt (₹)", "Total Paid (₹)", "🚨 Net Pending (₹)"]
     for c in curr_cols:
         df_display[c] = df_display[c].apply(lambda x: f"₹ {x:,.0f}")
         
@@ -179,51 +186,89 @@ if pending_records:
 
 else:
     st.success("🎉 Great News! There are no pending dues in your authorized network.")
-    st.balloons()
 
 # =========================================================
-# 🔒 NEW: SECURE PAYMENT REGISTRATION DESK (ADMIN ONLY)
+# 🔒 SECURE ADMIN DESK (PAYMENT & SLIP UPDATES)
 # =========================================================
 st.markdown("<br><hr>", unsafe_allow_html=True)
-st.subheader("💳 EMI Payment Registration Desk")
+st.subheader("💳 Admin Registration & Billing Desk")
 
 if user_role == 'admin':
-    if pending_records:
-        st.info("💡 Select the client's account below to securely register their new EMI payment.")
-        with st.form("admin_emi_payment_form"):
-            selected_key = st.selectbox("📌 Select Pending Account:", list(payment_map.keys()))
-            
-            col_p1, col_p2, col_p3 = st.columns(3)
-            pay_amt = col_p1.number_input("💸 Received Amount (₹)", min_value=1.0, step=500.0)
-            pay_date = col_p2.date_input("📅 Date of Receipt", datetime.date.today())
-            pay_mode = col_p3.selectbox("🏪 Payment Mode", ["Cash", "Online/UPI", "Cheque", "RTGS/NEFT"])
-            
-            pay_remarks = st.text_input("📝 Remarks / Transaction ID (Optional)")
-            
-            submit_pay = st.form_submit_button("✅ Register Payment & Update Ledger", use_container_width=True)
-            
-            if submit_pay:
-                target_proj = payment_map[selected_key]['proj']
-                target_plot = payment_map[selected_key]['plot']
+    tab1, tab2 = st.tabs(["💸 Register New EMI Payment", "🧾 Update Old Token Slip No."])
+    
+    # --- TAB 1: NEW EMI PAYMENT ---
+    with tab1:
+        if not payment_map:
+            st.info("No pending accounts available to collect payment right now.")
+        else:
+            with st.form("admin_emi_payment_form"):
+                selected_key = st.selectbox("📌 Select Pending Account:", list(payment_map.keys()))
                 
-                new_pmt = {
-                    "date": str(pay_date),
-                    "amount": pay_amt,
-                    "mode": pay_mode,
-                    "remarks": pay_remarks if pay_remarks.strip() != "" else "Installment Payment"
-                }
+                col_p1, col_p2 = st.columns(2)
+                pay_amt = col_p1.number_input("💸 Received Amount (₹) *", min_value=1.0, step=500.0)
+                pay_date = col_p2.date_input("📅 Date of Receipt", datetime.date.today())
                 
-                # Check and append new payment safely
-                if 'partial_payments' not in st.session_state.db_projects[target_proj]['plots'][target_plot]:
-                    st.session_state.db_projects[target_proj]['plots'][target_plot]['partial_payments'] = []
-                    
-                st.session_state.db_projects[target_proj]['plots'][target_plot]['partial_payments'].append(new_pmt)
+                col_p3, col_p4 = st.columns(2)
+                pay_mode = col_p3.selectbox("🏪 Payment Mode", ["Cash", "Online/UPI", "Cheque", "RTGS/NEFT"])
+                slip_no = col_p4.text_input("🧾 Receipt / Slip Number *")
                 
-                if database.save_db_data():
-                    st.success("🎉 Success! The payment has been securely added to the Master Ledger.")
-                    st.rerun()
+                pay_remarks = st.text_input("📝 Remarks / Transaction ID (Optional)")
+                
+                submit_pay = st.form_submit_button("✅ Register Payment & Update Ledger", use_container_width=True)
+                
+                if submit_pay:
+                    if slip_no.strip() == "":
+                        st.error("🚨 Please enter the Slip/Receipt Number!")
+                    else:
+                        target_proj = payment_map[selected_key]['proj']
+                        target_plot = payment_map[selected_key]['plot']
+                        
+                        new_pmt = {
+                            "date": str(pay_date),
+                            "amount": pay_amt,
+                            "mode": pay_mode,
+                            "slip_no": slip_no.strip(),
+                            "remarks": pay_remarks if pay_remarks.strip() != "" else "Installment Payment"
+                        }
+                        
+                        if 'partial_payments' not in st.session_state.db_projects[target_proj]['plots'][target_plot]:
+                            st.session_state.db_projects[target_proj]['plots'][target_plot]['partial_payments'] = []
+                            
+                        st.session_state.db_projects[target_proj]['plots'][target_plot]['partial_payments'].append(new_pmt)
+                        
+                        if database.save_db_data():
+                            st.success("🎉 Success! Payment and Slip Number securely added to the Master Ledger.")
+                            st.rerun()
+
+    # --- TAB 2: UPDATE OLD TOKEN SLIP NO. ---
+    with tab2:
+        if not all_booked_map:
+            st.info("No bookings found to update.")
+        else:
+            st.caption("Use this form to add or correct the 'Token Slip Number' for initial down payments that were already registered.")
+            with st.form("update_token_slip_form"):
+                update_key = st.selectbox("📌 Select Booked Account:", list(all_booked_map.keys()))
+                curr_slip_val = all_booked_map[update_key]['curr_slip']
+                
+                col_u1, col_u2 = st.columns(2)
+                col_u1.info(f"**Current Token Slip No:** {curr_slip_val}")
+                new_token_slip = col_u2.text_input("📝 Enter New Token Slip Number *")
+                
+                submit_update = st.form_submit_button("🔄 Update Token Slip", use_container_width=True)
+                
+                if submit_update:
+                    if new_token_slip.strip() == "":
+                        st.error("🚨 Please enter a valid Slip Number!")
+                    else:
+                        target_proj = all_booked_map[update_key]['proj']
+                        target_plot = all_booked_map[update_key]['plot']
+                        
+                        st.session_state.db_projects[target_proj]['plots'][target_plot]['token_slip_no'] = new_token_slip.strip()
+                        
+                        if database.save_db_data():
+                            st.success("🎉 Success! Initial Token Slip Number updated.")
+                            st.rerun()
 else:
-    # एग्जीक्यूटिव के लिए स्ट्रिक्ट लॉक मैसेज
     st.error("🔒 **ACTION RESTRICTED: ADMINISTRATIVE RIGHTS REQUIRED**")
-    st.info("💡 Executives are authorized to view pending dues and send reminders only. You cannot add or modify EMI payments. Please direct the client to the Admin Desk for payment clearance.")
+    st.info("💡 Executives are authorized to view pending dues and send reminders only. You cannot add or modify EMI payments or Slips. Please direct the client to the Admin Desk for payment clearance.")
 
