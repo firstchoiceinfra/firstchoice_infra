@@ -152,14 +152,14 @@ def is_authorized(plot_exec_name):
     if str(user_role).lower() == 'admin': return True
     plot_exec_clean = str(plot_exec_name).strip().lower()
     curr_user_clean = str(current_user).strip().lower()
-    
+   
     # Check 1: Own Sale
     if plot_exec_clean == curr_user_clean: return True
-    
+   
     # Check 2: Downline Sale
     all_downlines_lower = [d.lower() for d in get_all_downlines(curr_user_clean)]
     if plot_exec_clean in all_downlines_lower: return True
-    
+   
     return False
 
 # =========================================================
@@ -293,18 +293,28 @@ if 'booking_popup' in st.session_state:
         n_name = col6.text_input("Nominee Attributed Full Name")
         n_age = col7.text_input("Nominee Declared Age")
        
+        # 🎯 SMART AUTO-CALCULATOR SECTION START
         st.subheader("📐 Layout Specifications & Commercial Valuation", divider="blue")
-        st.caption("*(Note: For Combo Booking, enter the TOTAL Combined Area, Company Rate, and Selling Rate for all plots)*")
+        st.caption("*(💡 Type the Area and Rate below. The system will auto-calculate the total value. You can also edit the final deal value manually if needed.)*")
        
-        col8, col9, col10 = st.columns(3)
-        plot_area = col8.text_input("Total Combined Dimensions / Area (Sq.Ft / Sq.M)")
-        company_rate = col9.number_input("Total Standard Company Base Rate (₹)", min_value=0.0, step=50.0)
-        selling_rate = col10.number_input("Total Final Negotiated Selling Rate (₹) *", min_value=0.0, step=50.0)
-       
-        discount = company_rate - selling_rate
-        if discount > 0: st.success(f"🎉 **Authorized Instant Discount: ₹ {discount}**")
-        elif discount < 0: st.warning(f"⚠️ Premium Surcharge Value Applied: ₹ {abs(discount)}")
-           
+        col8, col9 = st.columns(2)
+        plot_area_input = col8.text_input("Total Plot Area (Sq.Ft) *", value="0")
+        try:
+            area_val = float(plot_area_input.strip())
+        except:
+            area_val = 0.0
+            
+        rate_sqft = col9.number_input("Negotiated Rate (per Sq.Ft) *", min_value=0.0, step=10.0)
+        
+        auto_calc_total = area_val * rate_sqft
+        
+        if auto_calc_total > 0:
+            st.success(f"💡 **Auto-Calculation Engine:** {area_val} Sq.Ft × ₹ {rate_sqft} = **₹ {auto_calc_total:,.2f}**")
+            
+        # This box stores the FINAL value, linked directly to the auto-calculator
+        selling_rate = st.number_input("💰 Final Total Deal Value (₹) *", min_value=0.0, value=float(auto_calc_total) if auto_calc_total > 0 else 0.0, step=1000.0)
+        # 🎯 SMART AUTO-CALCULATOR SECTION END
+
         st.subheader("💳 Secured Advance & Token Collection Details", divider="blue")
         col11, col12, col13 = st.columns(3)
         token_amt = col11.number_input("Total Deposited Token Amount (₹) *", min_value=0.0, step=1000.0)
@@ -328,14 +338,16 @@ if 'booking_popup' in st.session_state:
                 st.error("🚨 Validation Failure: Client Name and Mobile Contact Number are mandatory fields!")
             elif token_amt <= 0:
                 st.error("🚨 Accounting Failure: Token Deposit Value must be greater than zero!")
+            elif selling_rate <= 0:
+                st.error("🚨 Valuation Failure: Final Total Deal Value cannot be zero!")
             else:
                 # 1. Save Primary Plot (Holds the actual money value)
                 primary_booking_data = {
                     "status": "Booked", "customer_name": c_name.strip(), "dob": str(c_dob),
                     "phone": c_phone.strip(), "address": c_address.strip(), "aadhaar": c_aadhaar.strip(),
                     "pan": c_pan.strip(), "nominee_name": n_name.strip(), "nominee_age": n_age.strip(),
-                    "plot_area": plot_area.strip(), "company_rate": company_rate, "selling_rate": selling_rate,
-                    "discount": discount, "token_amount": token_amt, "payment_mode": pay_mode,
+                    "plot_area": plot_area_input.strip(), "selling_rate": selling_rate, "rate_per_sqft": rate_sqft,
+                    "token_amount": token_amt, "payment_mode": pay_mode,
                     "transaction_id": trans_id.strip(), "receipt_date": str(receive_date),
                     "executive_name": final_exec_name, "booking_date": str(datetime.date.today()),
                     "booked_plots_str": joined_plots_str, "is_primary": True, "primary_plot_id": plt
@@ -348,7 +360,7 @@ if 'booking_popup' in st.session_state:
                         "status": "Booked", "customer_name": c_name.strip(), "phone": c_phone.strip(),
                         "executive_name": final_exec_name, "booked_plots_str": joined_plots_str,
                         "is_primary": False, "primary_plot_id": plt,
-                        "selling_rate": 0, "token_amount": 0, "company_rate": 0, "plot_area": 0
+                        "selling_rate": 0, "token_amount": 0, "plot_area": 0
                     }
                     st.session_state.db_projects[proj]['plots'][child_plt].update(child_data)
                
@@ -392,14 +404,13 @@ if 'booking_popup' in st.session_state:
        
         with st.expander("📄 Financial Commercial Statement & Payout Ledger", expanded=True):
             col_s1, col_s2, col_s3 = st.columns(3)
-            col_s1.write(f"📐 **Total Plot Size:** {p_data.get('plot_area', 'N/A')}")
+            col_s1.write(f"📐 **Total Plot Size:** {p_data.get('plot_area', 'N/A')} Sq.Ft")
             col_s1.write(f"📆 **Allotment Date:** {p_data.get('booking_date', 'N/A')}")
            
-            col_s2.write(f"🏢 **Total Base Value:** ₹{p_data.get('company_rate', 0)}")
-            col_s2.write(f"💰 **Gross Selling Rate:** ₹{p_data.get('selling_rate', 0)}")
-            col_s2.success(f"💸 **Adjusted Discount Cut:** ₹{p_data.get('discount', 0)}")
+            col_s2.write(f"💰 **Gross Final Deal Value:** ₹ {p_data.get('selling_rate', 0):,.2f}")
+            col_s2.write(f"📊 **Sq.Ft Rate Applied:** ₹ {p_data.get('rate_per_sqft', 'N/A')}")
            
-            col_s3.warning(f"💳 **Deposited Advance Token:** ₹{p_data.get('token_amount', 0)}")
+            col_s3.warning(f"💳 **Deposited Advance Token:** ₹ {p_data.get('token_amount', 0):,.2f}")
             col_s3.write(f"🏪 **Payment Mode:** {p_data.get('payment_mode', 'N/A')}")
             col_s3.write(f"🔑 **Ref ID:** {p_data.get('transaction_id', 'N/A')}")
            
@@ -414,7 +425,7 @@ if 'booking_popup' in st.session_state:
             token_amt_val = sf(p_data.get('token_amount', 0.0))
             s_rate_val = sf(p_data.get('selling_rate', 0.0))
            
-            # Use strict selling rate for combined plots to avoid dynamic multiplication errors
+            # Now strictly relies on the Final Deal Value saved from the Auto-Calculator
             total_cost_val = s_rate_val
                
             partial_payments = p_data.get('partial_payments', [])
@@ -424,7 +435,7 @@ if 'booking_popup' in st.session_state:
             net_outstanding = max(0.0, total_cost_val - total_overall_paid)
            
             c_emi1, c_emi2, c_emi3 = st.columns(3)
-            c_emi1.metric("Gross Plot Value", f"₹ {total_cost_val:,.2f}")
+            c_emi1.metric("Gross Deal Value", f"₹ {total_cost_val:,.2f}")
             c_emi2.metric("Total Collection (Paid)", f"₹ {total_overall_paid:,.2f}")
             c_emi3.metric("Net Outstanding Due", f"₹ {net_outstanding:,.2f}")
            
@@ -528,3 +539,4 @@ for row in rows:
                     'current_status': status
                 }
                 st.rerun()
+
