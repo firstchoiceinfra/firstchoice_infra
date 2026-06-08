@@ -67,13 +67,13 @@ def get_all_downlines(manager_name):
     return list(set(downlines))
 
 # =========================================================
-# 📊 DATA EXTRACTION ENGINE (Find Pending Dues & All Bookings)
+# 📊 DATA EXTRACTION ENGINE (WITH SMART AUTO-CALCULATOR)
 # =========================================================
 all_downlines_lower = [d.lower() for d in get_all_downlines(curr_user)]
 
 pending_records = []
-payment_map = {} # Admin Payment System Mapping
-all_booked_map = {} # For Updating Token Slips
+payment_map = {} 
+all_booked_map = {} 
 
 total_company_pending = 0.0
 project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data or 'total_plots' in data)]
@@ -91,63 +91,67 @@ for p_name in project_names:
             plot_exec = str(plot_info.get('executive_name', '')).strip().lower()
             
             if status == 'booked':
-                selling_rate = safe_float(plot_info.get('selling_rate', 0.0))
+                # 🎯 AUTO-CALCULATOR LOGIC START
+                plot_area = safe_float(plot_info.get('plot_area', plot_info.get('area', 0.0)))
+                rate_per_sqft = safe_float(plot_info.get('selling_rate', 0.0))
                 
-                if selling_rate <= 0:
-                    continue # Skip combo child plots
+                # If rate is mistakenly entered as full amount (e.g. 15,00,000), use it directly. 
+                # Otherwise, calculate: Area x Rate
+                if rate_per_sqft > 100000:
+                    total_deal_value = rate_per_sqft
+                else:
+                    total_deal_value = plot_area * rate_per_sqft
                 
+                if total_deal_value <= 0:
+                    continue # Skip Combo child plots
+                # 🎯 AUTO-CALCULATOR LOGIC END
+
                 customer = str(plot_info.get('customer_name', 'N/A')).title()
                 booked_str = plot_info.get('booked_plots_str', plot_id)
                 token_slip = str(plot_info.get('token_slip_no', 'N/A'))
                 
-                # Admin Full Registry for Token Slip Update
+                token_amt = safe_float(plot_info.get('token_amount', 0.0))
+                partial_payments = plot_info.get('partial_payments', [])
+                total_emi_paid = sum(safe_float(pmt.get('amount', 0.0)) for pmt in partial_payments)
+                
+                total_paid = token_amt + total_emi_paid
+                net_pending = total_deal_value - total_paid
+
                 full_key = f"{p_name} | P-{booked_str} | {customer}"
                 all_booked_map[full_key] = {'proj': p_name, 'plot': plot_id, 'curr_slip': token_slip}
                 
-                # Executive Authorization Check
+                opt_key = f"{p_name} | P-{booked_str} | {customer} (Total Paid: ₹{total_paid:,.0f} | Due: ₹{net_pending:,.0f})"
+                payment_map[opt_key] = {'proj': p_name, 'plot': plot_id}
+                
                 is_authorized = False
                 if user_role == 'admin':
                     is_authorized = True
                 elif plot_exec == curr_user.lower() or plot_exec in all_downlines_lower:
                     is_authorized = True
                 
-                if is_authorized:
-                    token_amt = safe_float(plot_info.get('token_amount', 0.0))
+                if is_authorized and total_deal_value > 0 and net_pending > 0:
+                    total_company_pending += net_pending
                     
-                    partial_payments = plot_info.get('partial_payments', [])
-                    total_emi_paid = sum(safe_float(pmt.get('amount', 0.0)) for pmt in partial_payments)
+                    b_date = plot_info.get('booking_date', plot_info.get('receipt_date', 'N/A'))
+                    phone = str(plot_info.get('phone', ''))
                     
-                    total_paid = token_amt + total_emi_paid
-                    net_pending = selling_rate - total_paid
+                    wa_phone = phone.replace(' ', '').replace('+', '').strip()
+                    if len(wa_phone) == 10: wa_phone = "91" + wa_phone
+                    wa_msg = f"🌟 *FirstChoice Infra - Payment Reminder* 🌟\n\nDear *{customer}*,\nThis is a gentle reminder regarding the pending payment for your Plot *P-{booked_str}* in *{p_name}*.\n\n🔹 *Total Value:* ₹ {total_deal_value:,.2f}\n✅ *Amount Paid:* ₹ {total_paid:,.2f}\n⚠️ *Pending Due:* ₹ {net_pending:,.2f}\n\nKindly clear the pending dues at the earliest. Thank you!\n\nRegards,\n*FC Infra Team*"
+                    wa_url = f"https://wa.me/{wa_phone}?text={urllib.parse.quote(wa_msg)}"
                     
-                    if net_pending > 0:
-                        total_company_pending += net_pending
-                        
-                        b_date = plot_info.get('booking_date', plot_info.get('receipt_date', 'N/A'))
-                        phone = str(plot_info.get('phone', ''))
-                        
-                        # Store in map for Admin Payment Form
-                        opt_key = f"{p_name} | P-{booked_str} | {customer} (Due: ₹{net_pending:,.0f})"
-                        payment_map[opt_key] = {'proj': p_name, 'plot': plot_id}
-                        
-                        # WhatsApp Link
-                        wa_phone = phone.replace(' ', '').replace('+', '').strip()
-                        if len(wa_phone) == 10: wa_phone = "91" + wa_phone
-                        wa_msg = f"🌟 *FirstChoice Infra - Payment Reminder* 🌟\n\nDear *{customer}*,\nThis is a gentle reminder regarding the pending payment for your Plot *P-{booked_str}* in *{p_name}*.\n\n🔹 *Total Value:* ₹ {selling_rate:,.2f}\n✅ *Amount Paid:* ₹ {total_paid:,.2f}\n⚠️ *Pending Due:* ₹ {net_pending:,.2f}\n\nKindly clear the pending dues at the earliest. Thank you!\n\nRegards,\n*FC Infra Team*"
-                        wa_url = f"https://wa.me/{wa_phone}?text={urllib.parse.quote(wa_msg)}"
-                        
-                        pending_records.append({
-                            "Project": p_name,
-                            "Plot(s)": f"P-{booked_str}",
-                            "Client Name": customer,
-                            "Executive": str(plot_info.get('executive_name', 'Direct')).title(),
-                            "Total Value (₹)": selling_rate,
-                            "Token/Down Pmt (₹)": token_amt,
-                            "Token Slip No": token_slip,
-                            "Total Paid (₹)": total_paid,
-                            "🚨 Net Pending (₹)": net_pending,
-                            "WhatsApp": wa_url
-                        })
+                    pending_records.append({
+                        "Project": p_name,
+                        "Plot(s)": f"P-{booked_str}",
+                        "Client Name": customer,
+                        "Executive": str(plot_info.get('executive_name', 'Direct')).title(),
+                        "Total Value (₹)": total_deal_value,
+                        "Token/Down Pmt (₹)": token_amt,
+                        "Token Slip No": token_slip,
+                        "Total Paid (₹)": total_paid,
+                        "🚨 Net Pending (₹)": net_pending,
+                        "WhatsApp": wa_url
+                    })
 
 # =========================================================
 # 🎛️ DASHBOARD UI & FILTERS
@@ -185,7 +189,7 @@ if pending_records:
     st.download_button("📥 Download Pending Report (Excel)", clean_csv, "Pending_EMI_Report.csv", "text/csv")
 
 else:
-    st.success("🎉 Great News! There are no pending dues in your authorized network.")
+    st.success("🎉 Great News! There are no pending dues showing in the recovery system.")
 
 # =========================================================
 # 🔒 SECURE ADMIN DESK (PAYMENT & SLIP UPDATES)
@@ -196,13 +200,13 @@ st.subheader("💳 Admin Registration & Billing Desk")
 if user_role == 'admin':
     tab1, tab2 = st.tabs(["💸 Register New EMI Payment", "🧾 Update Old Token Slip No."])
     
-    # --- TAB 1: NEW EMI PAYMENT ---
     with tab1:
         if not payment_map:
-            st.info("No pending accounts available to collect payment right now.")
+            st.info("No booked accounts found in the database yet.")
         else:
             with st.form("admin_emi_payment_form"):
-                selected_key = st.selectbox("📌 Select Pending Account:", list(payment_map.keys()))
+                st.caption("💡 *Note: You can add payments to any booked plot here.*")
+                selected_key = st.selectbox("📌 Select Booked Account:", list(payment_map.keys()))
                 
                 col_p1, col_p2 = st.columns(2)
                 pay_amt = col_p1.number_input("💸 Received Amount (₹) *", min_value=1.0, step=500.0)
@@ -240,7 +244,6 @@ if user_role == 'admin':
                             st.success("🎉 Success! Payment and Slip Number securely added to the Master Ledger.")
                             st.rerun()
 
-    # --- TAB 2: UPDATE OLD TOKEN SLIP NO. ---
     with tab2:
         if not all_booked_map:
             st.info("No bookings found to update.")
@@ -270,5 +273,5 @@ if user_role == 'admin':
                             st.rerun()
 else:
     st.error("🔒 **ACTION RESTRICTED: ADMINISTRATIVE RIGHTS REQUIRED**")
-    st.info("💡 Executives are authorized to view pending dues and send reminders only. You cannot add or modify EMI payments or Slips. Please direct the client to the Admin Desk for payment clearance.")
+    st.info("💡 Executives are authorized to view pending dues and send reminders only.")
 
