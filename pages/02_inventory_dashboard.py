@@ -53,7 +53,6 @@ h1, h2, h3, h4 {{
     font-weight: 900;
     letter-spacing: -0.5px;
 }}
-/* Premium Plot Cards */
 .plot-card {{
     padding: 18px 10px;
     border-radius: 14px;
@@ -78,19 +77,16 @@ h1, h2, h3, h4 {{
     color: #721c24 !important;
     border: 1px solid #f1b0b7;
 }}
-/* New HOLD Status CSS */
 .plot-hold {{
     background: linear-gradient(135deg, #fff3cd 0%, #ffe8a1 100%);
     color: #856404 !important;
     border: 1px solid #ffeeba;
 }}
-/* 🔒 Locked Privacy Status CSS */
 .plot-locked {{
     background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
     color: #475569 !important;
     border: 1px solid #94a3b8;
 }}
-/* Premium Buttons */
 .stButton>button {{
     background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%);
     color: white !important;
@@ -128,12 +124,11 @@ h1, h2, h3, h4 {{
 }}
 </style>
 """, unsafe_allow_html=True)
-# ====================================================================
 
 st.markdown("<h1 style='text-align: center;'>🏗️ Premium Inventory & Allocation Matrix</h1>", unsafe_allow_html=True)
 
 # =========================================================
-# 🛡️ SMART AUTHORIZATION & TEAM HIERARCHY ENGINE
+# 🛡️ SMART AUTHORIZATION
 # =========================================================
 current_user = st.session_state.get('current_user_name', '')
 user_role = st.session_state.get('user_role', 'executive')
@@ -145,7 +140,7 @@ def get_all_downlines(manager_name):
     for ex_name, details in exec_data_root.items():
         if str(details.get('senior_name', '')).strip().lower() == manager_clean:
             downlines.append(ex_name)
-            downlines.extend(get_all_downlines(ex_name)) # Deep search
+            downlines.extend(get_all_downlines(ex_name)) 
     return list(set(downlines))
 
 def is_authorized(plot_exec_name):
@@ -153,10 +148,8 @@ def is_authorized(plot_exec_name):
     plot_exec_clean = str(plot_exec_name).strip().lower()
     curr_user_clean = str(current_user).strip().lower()
    
-    # Check 1: Own Sale
     if plot_exec_clean == curr_user_clean: return True
    
-    # Check 2: Downline Sale
     all_downlines_lower = [d.lower() for d in get_all_downlines(curr_user_clean)]
     if plot_exec_clean in all_downlines_lower: return True
    
@@ -189,7 +182,6 @@ for e in exec_list_temp:
         exec_list.append(e_clean)
 exec_list.sort()
 
-# --- Sidebar Controls ---
 if st.sidebar.button("🔄 Sync Cloud Storage (Refresh)"):
     with st.spinner("Synchronizing database..."):
         database.load_db_data()
@@ -216,7 +208,6 @@ if not plots:
     st.info("No plot matrix mapped inside this project profile.")
     st.stop()
 
-
 # =========================================================
 # 📝 Interactive Booking Assignment Form Desk
 # =========================================================
@@ -234,7 +225,6 @@ if 'booking_popup' in st.session_state:
 
     st.markdown(f"### 📝 Project Matrix: {proj} | Secure Plot Node Assignment: P-{plt}")
    
-    # --- A. HOLD STATUS VIEW ---
     if curr_stat == "Hold":
         st.warning(f"🚧 **Plot P-{plt} is currently on HOLD (Blocked from Sale / Not for Sale).**")
         st.info("This plot cannot be booked by executives.")
@@ -249,10 +239,7 @@ if 'booking_popup' in st.session_state:
         else:
             st.error("🔒 Only Admins have the authority to unblock this plot.")
            
-    # --- B. AVAILABLE BOOKING FORM ---
     elif curr_stat == "Available":
-       
-        # 🟡 ADMIN HOLD BUTTON
         if st.session_state.get('user_role', 'executive') == 'admin':
             if st.button("⏸️ Block Unit / Put on Hold (Admin Action)", use_container_width=True):
                 st.session_state.db_projects[proj]['plots'][plt] = {"status": "Hold"}
@@ -264,7 +251,6 @@ if 'booking_popup' in st.session_state:
 
         st.info(f"📍 **Land Location Specifications:** Khasra No: {p_khasra} | PH No: {p_ph} | Mauza: {p_mauza} | Tahsil: {p_tahsil}")
        
-        # 🔗 COMBO BOOKING ENGINE
         st.subheader("🔗 Joint / Combo Booking (Optional)", divider="blue")
         st.caption("💡 Select additional plots below if the client is buying multiple units. They will be merged into a single Master Ledger.")
        
@@ -293,7 +279,6 @@ if 'booking_popup' in st.session_state:
         n_name = col6.text_input("Nominee Attributed Full Name")
         n_age = col7.text_input("Nominee Declared Age")
        
-        # 🎯 SMART AUTO-CALCULATOR SECTION START
         st.subheader("📐 Layout Specifications & Commercial Valuation", divider="blue")
         st.caption("*(💡 Type the Area and Rate below. The system will auto-calculate the total value. You can also edit the final deal value manually if needed.)*")
        
@@ -311,9 +296,7 @@ if 'booking_popup' in st.session_state:
         if auto_calc_total > 0:
             st.success(f"💡 **Auto-Calculation Engine:** {area_val} Sq.Ft × ₹ {rate_sqft} = **₹ {auto_calc_total:,.2f}**")
             
-        # This box stores the FINAL value, linked directly to the auto-calculator
         selling_rate = st.number_input("💰 Final Total Deal Value (₹) *", min_value=0.0, value=float(auto_calc_total) if auto_calc_total > 0 else 0.0, step=1000.0)
-        # 🎯 SMART AUTO-CALCULATOR SECTION END
 
         st.subheader("💳 Secured Advance & Token Collection Details", divider="blue")
         col11, col12, col13 = st.columns(3)
@@ -341,7 +324,6 @@ if 'booking_popup' in st.session_state:
             elif selling_rate <= 0:
                 st.error("🚨 Valuation Failure: Final Total Deal Value cannot be zero!")
             else:
-                # 1. Save Primary Plot (Holds the actual money value)
                 primary_booking_data = {
                     "status": "Booked", "customer_name": c_name.strip(), "dob": str(c_dob),
                     "phone": c_phone.strip(), "address": c_address.strip(), "aadhaar": c_aadhaar.strip(),
@@ -354,7 +336,6 @@ if 'booking_popup' in st.session_state:
                 }
                 st.session_state.db_projects[proj]['plots'][plt].update(primary_booking_data)
                
-                # 2. Save Combo Child Plots (Values set to 0 to prevent double counting in Master Ledger)
                 for child_plt in combo_selections:
                     child_data = {
                         "status": "Booked", "customer_name": c_name.strip(), "phone": c_phone.strip(),
@@ -374,7 +355,6 @@ if 'booking_popup' in st.session_state:
     else:
         p_data = st.session_state.db_projects[proj]['plots'][plt]
        
-        # 🔒 FINAL PRIVACY CHECK BEFORE SHOWING STATEMENT
         if not is_authorized(p_data.get('executive_name', '')):
             st.error("🔒 **ACCESS DENIED:** You are not authorized to view the commercial statement of this plot. It belongs to another executive's portfolio.")
             if st.button("❌ Back to Grid Matrix", use_container_width=True):
@@ -382,7 +362,6 @@ if 'booking_popup' in st.session_state:
                 st.rerun()
             st.stop()
 
-        # 🔗 COMBO RESOLVER: If they clicked a child plot, route them to the primary plot's ledger
         if not p_data.get('is_primary', True):
             prim_id = p_data.get('primary_plot_id')
             if prim_id and prim_id in st.session_state.db_projects[proj]['plots']:
@@ -403,30 +382,39 @@ if 'booking_popup' in st.session_state:
         c3.write(f"**Nominee:** {p_data.get('nominee_name', 'N/A')} (Age: {p_data.get('nominee_age', 'N/A')})")
        
         with st.expander("📄 Financial Commercial Statement & Payout Ledger", expanded=True):
-            col_s1, col_s2, col_s3 = st.columns(3)
-            col_s1.write(f"📐 **Total Plot Size:** {p_data.get('plot_area', 'N/A')} Sq.Ft")
-            col_s1.write(f"📆 **Allotment Date:** {p_data.get('booking_date', 'N/A')}")
-           
-            col_s2.write(f"💰 **Gross Final Deal Value:** ₹ {p_data.get('selling_rate', 0):,.2f}")
-            col_s2.write(f"📊 **Sq.Ft Rate Applied:** ₹ {p_data.get('rate_per_sqft', 'N/A')}")
-           
-            col_s3.warning(f"💳 **Deposited Advance Token:** ₹ {p_data.get('token_amount', 0):,.2f}")
-            col_s3.write(f"🏪 **Payment Mode:** {p_data.get('payment_mode', 'N/A')}")
-            col_s3.write(f"🔑 **Ref ID:** {p_data.get('transaction_id', 'N/A')}")
-           
-            st.markdown("#### 🔄 Live Payment & EMI Sync")
-           
             def sf(val, default=0.0):
                 try:
                     if val is None or str(val).strip() == "": return float(default)
                     return float(val)
                 except: return float(default)
-               
-            token_amt_val = sf(p_data.get('token_amount', 0.0))
-            s_rate_val = sf(p_data.get('selling_rate', 0.0))
+                
+            # 🛠️ SMART BACKWARD COMPATIBILITY FIX FOR OLD DATA
+            plot_area_val = sf(p_data.get('plot_area', 0.0))
+            saved_selling_rate = sf(p_data.get('selling_rate', 0.0))
+            
+            if saved_selling_rate > 0 and saved_selling_rate <= 100000 and plot_area_val > 0:
+                # If the saved value is small (like 650), auto-multiply by area
+                total_cost_val = plot_area_val * saved_selling_rate
+                rate_applied = saved_selling_rate
+            else:
+                # Normal behavior for new bookings
+                total_cost_val = saved_selling_rate
+                rate_applied = sf(p_data.get('rate_per_sqft', 0.0))
+
+            col_s1, col_s2, col_s3 = st.columns(3)
+            col_s1.write(f"📐 **Total Plot Size:** {p_data.get('plot_area', 'N/A')} Sq.Ft")
+            col_s1.write(f"📆 **Allotment Date:** {p_data.get('booking_date', 'N/A')}")
            
-            # Now strictly relies on the Final Deal Value saved from the Auto-Calculator
-            total_cost_val = s_rate_val
+            col_s2.write(f"💰 **Gross Final Deal Value:** ₹ {total_cost_val:,.2f}")
+            col_s2.write(f"📊 **Sq.Ft Rate Applied:** ₹ {rate_applied}")
+           
+            col_s3.warning(f"💳 **Deposited Advance Token:** ₹ {p_data.get('token_amount', 0)}")
+            col_s3.write(f"🏪 **Payment Mode:** {p_data.get('payment_mode', 'N/A')}")
+            col_s3.write(f"🔑 **Ref ID:** {p_data.get('transaction_id', 'N/A')}")
+           
+            st.markdown("#### 🔄 Live Payment & EMI Sync")
+           
+            token_amt_val = sf(p_data.get('token_amount', 0.0))
                
             partial_payments = p_data.get('partial_payments', [])
             total_emi_paid = sum(sf(pmt.get('amount', 0.0)) for pmt in partial_payments)
@@ -439,15 +427,49 @@ if 'booking_popup' in st.session_state:
             c_emi2.metric("Total Collection (Paid)", f"₹ {total_overall_paid:,.2f}")
             c_emi3.metric("Net Outstanding Due", f"₹ {net_outstanding:,.2f}")
            
+            # 📝 STATEMENT TABLE WITH SLIP NO
             history_rows = []
-            history_rows.append({"Date": p_data.get('receipt_date', p_data.get('booking_date', 'N/A')), "Type": "Booking Advance (Token)", "Mode": p_data.get('payment_mode', 'N/A'), "Amount (₹)": token_amt_val})
+            history_rows.append({
+                "Date": p_data.get('receipt_date', p_data.get('booking_date', 'N/A')), 
+                "Type": "Booking Advance (Token)", 
+                "Mode": p_data.get('payment_mode', 'N/A'), 
+                "Slip No": p_data.get('token_slip_no', 'N/A'),
+                "Amount (₹)": token_amt_val
+            })
             for pmt in partial_payments:
-                history_rows.append({"Date": pmt.get('date', 'N/A'), "Type": pmt.get('remarks', 'Installment Payment'), "Mode": pmt.get('mode', 'N/A'), "Amount (₹)": sf(pmt.get('amount', 0.0))})
+                history_rows.append({
+                    "Date": pmt.get('date', 'N/A'), 
+                    "Type": pmt.get('remarks', 'Installment Payment'), 
+                    "Mode": pmt.get('mode', 'N/A'), 
+                    "Slip No": pmt.get('slip_no', 'N/A'),
+                    "Amount (₹)": sf(pmt.get('amount', 0.0))
+                })
            
             df_display = pd.DataFrame(history_rows)
             df_display['Amount (₹)'] = df_display['Amount (₹)'].apply(lambda x: f"₹ {x:,.2f}")
             st.dataframe(df_display, use_container_width=True, hide_index=True)
            
+            # 🛠️ EDIT MISSING SLIP NUMBERS SECTION
+            if st.session_state.get('user_role', 'executive') == 'admin':
+                st.write("")
+                with st.expander("✏️ Edit Missing Slip Numbers (Admin Only)"):
+                    with st.form(f"edit_slips_form_{plt}"):
+                        st.caption("Fill in or update any missing slip numbers below and hit Save.")
+                        new_tok_slip = st.text_input("Booking Advance (Token) - Slip No:", value=p_data.get('token_slip_no', ''))
+                        
+                        new_emi_slips = []
+                        for i, pmt in enumerate(partial_payments):
+                            ns = st.text_input(f"EMI on {pmt.get('date', 'N/A')} (₹{pmt.get('amount', 0)}) - Slip No:", value=pmt.get('slip_no', ''))
+                            new_emi_slips.append(ns)
+                            
+                        if st.form_submit_button("💾 Save Slip Updates", use_container_width=True):
+                            st.session_state.db_projects[proj]['plots'][plt]['token_slip_no'] = new_tok_slip
+                            for i, pmt in enumerate(partial_payments):
+                                st.session_state.db_projects[proj]['plots'][plt]['partial_payments'][i]['slip_no'] = new_emi_slips[i]
+                            if database.save_db_data():
+                                st.success("Slip numbers updated successfully!")
+                                st.rerun()
+
             st.write("---")
             c_btn1, c_btn2 = st.columns(2)
            
@@ -475,7 +497,6 @@ if 'booking_popup' in st.session_state:
             st.write("")
             st.warning("Strategic Action: Force Cancel will revoke all plots attached to this Joint Booking.")
             if st.button("✅ Force Cancel Allotment & Revoke Allocation", use_container_width=True):
-                # Frees up the primary and ALL child plots!
                 plots_to_free = [p.strip() for p in p_data.get('booked_plots_str', str(plt)).split(",")]
                 for f_plt in plots_to_free:
                     if f_plt in st.session_state.db_projects[proj]['plots']:
@@ -520,14 +541,12 @@ for row in rows:
                 btn_txt = "🔓 View Hold"
                 btn_disabled = False
             else:
-                # 🔒 STRICT PRIVACY LOGIC (Checks Admin, Self, or Downline)
                 if is_authorized(plot_exec_name):
                     cust = plot_info.get('customer_name', 'N/A')
                     st.markdown(f'<div class="plot-card plot-booked">🛑 Plot {plot_id}<br>❌ Booked ({cust.split(" ")[0]})</div>', unsafe_allow_html=True)
                     btn_txt = "📄 Statement"
                     btn_disabled = False
                 else:
-                    # 🔒 LOCKED VIEW FOR UNAUTHORIZED EXECUTIVES (Cross-Line)
                     st.markdown(f'<div class="plot-card plot-locked">🛑 Plot {plot_id}<br>🔒 Booked</div>', unsafe_allow_html=True)
                     btn_txt = "🔒 Access Denied"
                     btn_disabled = True
