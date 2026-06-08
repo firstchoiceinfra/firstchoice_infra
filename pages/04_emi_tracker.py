@@ -95,15 +95,13 @@ for p_name in project_names:
                 plot_area = safe_float(plot_info.get('plot_area', plot_info.get('area', 0.0)))
                 rate_per_sqft = safe_float(plot_info.get('selling_rate', 0.0))
                 
-                # If rate is mistakenly entered as full amount (e.g. 15,00,000), use it directly. 
-                # Otherwise, calculate: Area x Rate
                 if rate_per_sqft > 100000:
                     total_deal_value = rate_per_sqft
                 else:
                     total_deal_value = plot_area * rate_per_sqft
                 
                 if total_deal_value <= 0:
-                    continue # Skip Combo child plots
+                    continue 
                 # 🎯 AUTO-CALCULATOR LOGIC END
 
                 customer = str(plot_info.get('customer_name', 'N/A')).title()
@@ -235,10 +233,14 @@ if user_role == 'admin':
                             "remarks": pay_remarks if pay_remarks.strip() != "" else "Installment Payment"
                         }
                         
-                        if 'partial_payments' not in st.session_state.db_projects[target_proj]['plots'][target_plot]:
-                            st.session_state.db_projects[target_proj]['plots'][target_plot]['partial_payments'] = []
+                        # 🛠️ THE FIX: Handle List vs Dict gracefully
+                        plots_ref = st.session_state.db_projects[target_proj]['plots']
+                        plot_idx = int(target_plot) if isinstance(plots_ref, list) else target_plot
+                        
+                        if 'partial_payments' not in plots_ref[plot_idx]:
+                            plots_ref[plot_idx]['partial_payments'] = []
                             
-                        st.session_state.db_projects[target_proj]['plots'][target_plot]['partial_payments'].append(new_pmt)
+                        plots_ref[plot_idx]['partial_payments'].append(new_pmt)
                         
                         if database.save_db_data():
                             st.success("🎉 Success! Payment and Slip Number securely added to the Master Ledger.")
@@ -266,7 +268,11 @@ if user_role == 'admin':
                         target_proj = all_booked_map[update_key]['proj']
                         target_plot = all_booked_map[update_key]['plot']
                         
-                        st.session_state.db_projects[target_proj]['plots'][target_plot]['token_slip_no'] = new_token_slip.strip()
+                        # 🛠️ THE FIX: Handle List vs Dict gracefully
+                        plots_ref = st.session_state.db_projects[target_proj]['plots']
+                        plot_idx = int(target_plot) if isinstance(plots_ref, list) else target_plot
+                        
+                        plots_ref[plot_idx]['token_slip_no'] = new_token_slip.strip()
                         
                         if database.save_db_data():
                             st.success("🎉 Success! Initial Token Slip Number updated.")
