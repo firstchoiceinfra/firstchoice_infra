@@ -29,12 +29,16 @@ if user_role == 'admin':
             senior = c3.text_input("Senior / Upline Name")
             pct = c4.number_input("Commission (%)", 0.0, 100.0)
             rs = c3.number_input("Fixed Payout (₹)", 0.0)
-            if st.form_submit_button("💾 Save Partner"):
+            if st.form_submit_button("💾 Save Partner Registry"):
                 db_data['executives'][exec_name] = {"name": exec_name, "mobile": exec_mobile, "senior_name": senior or "Direct", "percentage_exec": pct, "rupees_exec": rs}
                 database.save_db_data(); st.rerun()
 
 st.markdown("<hr><h3>📋 Master Slab Registry</h3>", unsafe_allow_html=True)
 for ex_name, p in exec_data_root.items():
     if isinstance(p, dict):
-        st.markdown(f'<div class="luxury-card"><b>👤 {ex_name}</b> | 📱 Pass: {p.get("mobile")} | 📈 {p.get("percentage_exec")}% | 💵 ₹{p.get("rupees_exec", 0):,.0f}</div>', unsafe_allow_html=True)
+        cols = st.columns([8, 1, 1])
+        cols[0].markdown(f'<div class="luxury-card"><b>👤 {ex_name}</b> | 📱 Pass: {p.get("mobile")} | 📈 {p.get("percentage_exec")}% | 💵 ₹{p.get("rupees_exec", 0):,.0f}</div>', unsafe_allow_html=True)
+        if cols[1].button("✏️", key=f"edit_{ex_name}"): pass 
+        if cols[2].button("🗑️", key=f"del_{ex_name}"):
+            db_data['executives'].pop(ex_name); database.save_db_data(); st.rerun()
 
