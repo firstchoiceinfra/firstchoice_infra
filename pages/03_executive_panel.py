@@ -15,12 +15,12 @@ if 'logged_in' not in st.session_state or not st.session_state.logged_in:
 curr_user = st.session_state.get('current_user_name', '')
 user_role = st.session_state.get('user_role', 'executive')
 
-# --- 3. Database Sync ---
+# --- 3. Cloud Database Integration ---
 database.init_db()
 db_data = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
-# --- ✨ PROFESSIONAL HEADER FUNCTION ---
+# --- ✨ PROFESSIONAL BRANDING HEADER ---
 def print_commission_header(exec_name, start_date, end_date):
     st.markdown(f"""
     <div style="border: 4px solid #b8860b; padding: 20px; border-radius: 15px; background: #fdfaf6; margin-bottom: 25px; text-align: center; box-shadow: 0px 5px 15px rgba(0,0,0,0.2);">
@@ -35,7 +35,7 @@ def print_commission_header(exec_name, start_date, end_date):
     </div>
     """, unsafe_allow_html=True)
 
-# --- Theme CSS ---
+# --- Theme & CSS ---
 st.markdown("""
 <style>
 .stApp { background-image: url("https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"); background-attachment: fixed; background-size: cover; }
@@ -59,46 +59,69 @@ def get_all_downlines(manager_name):
             downlines.extend(get_all_downlines(ex_name))
     return list(set(downlines))
 
-# --- Main Ledger Logic ---
+def get_diff_deduction(sale_maker_key, senior_key):
+    curr = sale_maker_key
+    child_of_senior = curr
+    while curr and curr.lower() != senior_key.lower():
+        child_of_senior = curr
+        curr_key_actual = next((k for k in exec_data_root.keys() if k.lower() == curr.lower()), None)
+        if not curr_key_actual: break
+        curr = str(exec_data_root.get(curr_key_actual, {}).get('senior_name', '')).strip()
+        if not curr or curr.lower() == 'direct': break
+    if curr and curr.lower() == senior_key.lower():
+        child_actual = next((k for k in exec_data_root.keys() if k.lower() == child_of_senior.lower()), None)
+        if child_actual:
+            profile = exec_data_root.get(child_actual, {})
+            return float(profile.get('percentage_exec', 0.0)), float(profile.get('rupees_exec', 0.0)), child_actual
+    return 0.0, 0.0, None
+
+# --- UI & Ledger Engine ---
 st.markdown("<h1 style='text-align: center;'>👑 Executive & Master Commission Panel</h1>", unsafe_allow_html=True)
-
-# (यहाँ आपका एडमिन/पार्टनर प्रोफाइल मैनेजमेंट कोड रखें - मैंने इसे यहाँ छोटा रखा है)
-
-search_exec = st.selectbox("🔎 Select Executive for Statement", [k for k in exec_data_root.keys()])
+exec_clean_list = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
+search_exec = st.selectbox("🔎 Select Executive", exec_clean_list)
 start_date = st.date_input("📅 Start Date", datetime.date.today() - datetime.timedelta(days=30))
 end_date = st.date_input("📅 End Date", datetime.date.today())
 comm_filter = st.radio("🎯 View Type:", ["All (Self + Team)", "⭐ Self", "👥 Team"], horizontal=True)
 
 if st.button("🔍 Generate Comprehensive Ledger"):
-    # (यहाँ आपका 349 लाइनों वाला डेटा लूपिंग लॉजिक है...)
-    # [statement_rows तैयार होने के बाद नीचे वाला हिस्सा जोड़ें]
+    search_exec_clean = str(search_exec).strip().lower()
+    all_downlines_lower = [d.lower() for d in get_all_downlines(search_exec_clean)]
+    statement_rows = []
+    project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data)]
     
+    for p_name in project_names:
+        p_info = db_data[p_name]
+        for plot_id, plot_info in p_info.get('plots', {}).items():
+            if isinstance(plot_info, dict) and str(plot_info.get('status', '')).lower() == 'booked':
+                plot_exec = str(plot_info.get('executive_name', '')).strip().lower()
+                is_direct = (plot_exec == search_exec_clean)
+                is_downline = (plot_exec in all_downlines_lower)
+                
+                if (comm_filter == "⭐ Self" and not is_direct) or (comm_filter == "👥 Team" and not is_downline): continue
+                if is_direct or is_downline:
+                    sr_profile = exec_data_root[search_exec]
+                    sr_pct = safe_float(sr_profile.get('percentage_exec', 0.0))
+                    # ... [यहाँ अपना पिछला पूरा डेटा लूपिंग लॉजिक पेस्ट करें] ...
+                    # (लूप पूरा होने के बाद नीचे वाला ब्लॉक लगाएं)
+
     if statement_rows:
         df_statement = pd.DataFrame(statement_rows)
-        
-        # 1. हेडर प्रिंट करें
+        # 1. हेडर
         print_commission_header(search_exec, start_date, end_date)
-        
-        # 2. टेबल दिखाएं
+        # 2. टेबल
         st.dataframe(df_statement, use_container_width=True, hide_index=True)
-        st.write("---")
-        
-        # 3. टोटल कैलकुलेशन
+        # 3. कैलकुलेशन
         t_gross = df_statement['Gross (₹)'].sum()
         t_tds = df_statement['TDS (₹)'].sum()
         t_net = df_statement['Net Payout (₹)'].sum()
-        
         c1, c2, c3 = st.columns(3)
         c1.metric("Total Gross Value", f"₹ {t_gross:,.2f}")
         c2.metric("Total TDS Deduction", f"₹ {t_tds:,.2f}")
         c3.metric("🏆 Grand Net Payable", f"₹ {t_net:,.2f}")
-        
-        # 4. बटन्स
+        # 4. बटन
         c_b1, c_b2 = st.columns(2)
-        csv_data = df_statement.to_csv(index=False).encode('utf-8-sig')
-        c_b1.download_button("🖨️ Download Statement (Excel)", csv_data, "Commission.csv", "text/csv", use_container_width=True)
-        
-        wa_msg = f"Firstchoice Infra Commission Statement for {search_exec}: Gross: ₹{t_gross:.0f}, Net Payable: ₹{t_net:.0f}"
-        wa_url = f"https://wa.me/?text={urllib.parse.quote(wa_msg)}"
+        csv = df_statement.to_csv(index=False).encode('utf-8-sig')
+        c_b1.download_button("🖨️ Download Statement (Excel)", csv, "Commission.csv", "text/csv", use_container_width=True)
+        wa_url = f"https://wa.me/?text=Statement for {search_exec}: Net Pay: ₹{t_net:,.0f}"
         c_b2.markdown(f'<a href="{wa_url}" target="_blank" style="display:block; text-align:center; background:#25D366; color:white; padding:10px; border-radius:8px; font-weight:bold; text-decoration:none;">💬 Send on WhatsApp</a>', unsafe_allow_html=True)
 
