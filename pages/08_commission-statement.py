@@ -1,49 +1,46 @@
 import streamlit as st
-import database
-import datetime
 import pandas as pd
+import datetime
 
-st.set_page_config(layout="wide", page_title="Commission Statement")
-database.init_db()
-db_data = st.session_state.db_projects
-exec_data_root = db_data.get('executives', {})
-
-# Global Theme Sync Function
-def apply_theme():
-    settings = db_data.get('_app_settings', {})
-    bg_url = settings.get('bg_url', "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop")
-    p_color = settings.get('primary_color', "#1e3a8a")
-    st.markdown(f"""<style>.stApp {{background-image: url("{bg_url}"); background-attachment: fixed; background-size: cover;}} .block-container {{background: rgba(255, 255, 255, 0.95) !important; padding: 2rem; border-radius: 20px;}} h1, h2 {{color: {p_color} !important;}}</style>""", unsafe_allow_html=True)
-
-apply_theme()
+# डेटाबेस और फंक्शन को यहाँ कॉल करें (init_db, safe_float, आदि)
 
 st.title("📊 Advanced Statement & Payout Ledger")
-search_exec = st.selectbox("🔎 Select Executive", [k for k, v in exec_data_root.items() if isinstance(v, dict)])
-start, end = st.columns(2)
-start_date = start.date_input("Start Date", datetime.date.today() - datetime.timedelta(days=30))
-end_date = end.date_input("End Date", datetime.date.today())
 
-if st.button("🔍 Generate Ledger", use_container_width=True):
-    rows = []
-    for p_name, p_info in db_data.items():
-        if isinstance(p_info, dict) and 'plots' in p_info:
-            for pid, info in p_info['plots'].items() if isinstance(p_info['plots'], dict) else enumerate(p_info['plots']):
-                info = info if isinstance(info, dict) else {}
-                if str(info.get('status', '')).lower() == 'booked' and info.get('executive_name', '').lower() == search_exec.lower():
-                    # टोकन और इंस्टॉलमेंट्स को इकट्ठा करें
-                    payments = [{'type': 'Booking Token', 'amt': float(info.get('token_amount', 0))}]
-                    for pmt in info.get('partial_payments', []):
-                        payments.append({'type': pmt.get('remarks', 'Installment'), 'amt': float(pmt.get('amount', 0))})
-                    
-                    for pmt in payments:
-                        if pmt['amt'] > 0:
-                            gross = pmt['amt'] * 0.05 # अपना स्लैब लॉजिक यहाँ रखें
-                            rows.append({"Client": info.get('customer_name'), "Type": pmt['type'], "Paid Amt (₹)": pmt['amt'], "Gross (₹)": gross, "Net Payout (₹)": gross * 0.98})
+# फिल्टर्स
+col1, col2, col3 = st.columns(3)
+search_exec = col1.selectbox("🔎 Select Executive", exec_list)
+start_date = col2.date_input("📅 Start Date")
+end_date = col3.date_input("📅 End Date")
+
+if st.button("🔍 Generate Ledger"):
+    statement_rows = []
+    # यहाँ अपना लूपिंग लॉजिक लगाएँ (जो बुकिंग्स और पेमेंट ढूँढे)
     
-    if rows:
-        df = pd.DataFrame(rows)
+    # कैलकुलेशन लॉजिक:
+    # 1. ग्रॉस कमीशन (जैसे: amt * commission_pct)
+    # 2. डिस्काउंट माइनस (gross_comm - discount_val)
+    # 3. नेट कमीशन (बचा हुआ अमाउंट)
+    # 4. टीडीएस (net_comm * 0.02)
+    # 5. नेट इन हैंड (net_comm - tds)
+
+    if statement_rows:
+        df = pd.DataFrame(statement_rows)
+        # कॉलम ऑर्डर: S.No, Customer, Plot, Mauza, Received Amt, Date, Gross, Discount, Net Comm, TDS, Net In Hand
         st.dataframe(df, use_container_width=True)
-        st.metric("🏆 Grand Net Payable", f"₹ {df['Net Payout (₹)'].sum():,.2f}")
+        
+        # नीचे टोटल दिखाना
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Total Gross", f"₹ {df['Gross (₹)'].sum():,.2f}")
+        c2.metric("Total Discount", f"₹ {df['Discount'].sum():,.2f}")
+        c3.metric("Total TDS", f"₹ {df['TDS (₹)'].sum():,.2f}")
+        c4.metric("🏆 Total Net In Hand", f"₹ {df['Net In Hand'].sum():,.2f}")
+        
+        # बटन
+        b1, b2 = st.columns(2)
+        if b1.button("🖨️ Print Statement"):
+            st.write("Printing...") # प्रिंट फंक्शनलिटी
+        if b2.button("💬 Send to WhatsApp"):
+            st.write("Redirecting to WhatsApp...") # WhatsApp लिंक जनरेशन
     else:
-        st.info("कोई बुकिंग नहीं मिली।")
+        st.warning("कोई रिकॉर्ड नहीं मिला।")
 
