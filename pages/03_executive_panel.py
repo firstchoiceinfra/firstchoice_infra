@@ -74,7 +74,118 @@ if st.button("🔍 Generate Comprehensive Ledger"):
     
     if 'statement_rows' in locals() and statement_rows:
         df_statement = pd.DataFrame(statement_rows)
-        
+       gross_total = df_statement['Gross (₹)'].sum()
+tds_total = df_statement['TDS (₹)'].sum()
+net_total = df_statement['Net Payout (₹)'].sum()
+
+st.markdown(f"""
+<div style="
+background:#ffffff;
+padding:20px;
+border-radius:15px;
+border:2px solid #1e3a8a;
+margin-bottom:15px;
+text-align:center;
+">
+
+<h2 style="color:#1e3a8a;">
+🏢 FIRSTCHOICE INFRA
+</h2>
+
+<h3>
+💰 COMMISSION STATEMENT
+</h3>
+
+<h4>
+👨‍💼 Executive : {search_exec}
+</h4>
+
+<p>
+📅 Statement Period :
+<b>{start_date.strftime('%d-%m-%Y')}</b>
+To
+<b>{end_date.strftime('%d-%m-%Y')}</b>
+</p>
+
+</div>
+""", unsafe_allow_html=True)
+
+st.dataframe(df_statement, use_container_width=True, hide_index=True)
+
+st.markdown("### 📊 Commission Summary")
+
+c1,c2,c3 = st.columns(3)
+
+with c1:
+    st.metric(
+        "💰 Gross Commission",
+        f"₹ {gross_total:,.2f}"
+    )
+
+with c2:
+    st.metric(
+        "🧾 Total TDS Deduction",
+        f"₹ {tds_total:,.2f}"
+    )
+
+with c3:
+    st.metric(
+        "🏆 Net Payable Amount",
+        f"₹ {net_total:,.2f}"
+    )
+
+st.markdown("---")
+
+whatsapp_msg = f'''
+FIRSTCHOICE INFRA
+
+COMMISSION STATEMENT
+
+Executive : {search_exec}
+
+Period :
+{start_date.strftime("%d-%m-%Y")}
+To
+{end_date.strftime("%d-%m-%Y")}
+
+Gross Commission :
+₹ {gross_total:,.2f}
+
+TDS Deduction :
+₹ {tds_total:,.2f}
+
+Net Payable :
+₹ {net_total:,.2f}
+'''
+
+wa_link = f"https://wa.me/?text={urllib.parse.quote(whatsapp_msg)}"
+
+col_btn1,col_btn2 = st.columns(2)
+
+with col_btn1:
+    st.link_button(
+        "📲 Share On WhatsApp",
+        wa_link,
+        use_container_width=True
+    )
+
+with col_btn2:
+    st.components.v1.html("""
+    <button onclick="window.print()"
+    style="
+    width:100%;
+    padding:12px;
+    background:#1e3a8a;
+    color:white;
+    border:none;
+    border-radius:8px;
+    font-size:16px;
+    font-weight:bold;
+    cursor:pointer;">
+    🖨️ Print Statement
+    </button>
+    """, height=60)
+ 
         # हेडर और टेबल
         print_commission_header(search_exec, start_date, end_date)
         st.dataframe(df_statement, use_container_width=True, hide_index=True)
