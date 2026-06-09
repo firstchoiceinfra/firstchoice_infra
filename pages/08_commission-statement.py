@@ -1,42 +1,47 @@
 import streamlit as st
 import database
+import datetime
 import pandas as pd
 import urllib.parse
-import datetime
 
 st.set_page_config(page_title="Commission Statement", layout="wide")
 database.init_db()
 db_data = st.session_state.db_projects
+exec_data_root = db_data.get('executives', {})
 
-# प्रोफेशनल हेडर
-def print_commission_header(exec_name, start, end):
-    st.markdown(f"""
-    <div style="border: 4px solid #b8860b; padding: 20px; border-radius: 15px; background: #fdfaf6; text-align: center;">
-        <h1>Firstchoice Infra</h1>
-        <h2>Executive Commission Statement</h2>
-        <p><b>Executive:</b> {exec_name} | <b>Period:</b> {start.strftime('%d-%m-%Y')} to {end.strftime('%d-%m-%Y')}</p>
-    </div>
-    """, unsafe_allow_html=True)
+st.title("📊 Advanced Statement & Payout Ledger")
 
-# [यहाँ अपना पूरा Ledger Engine लूप कोड पेस्ट करें]
-# (जो आपने पहले इस्तेमाल किया था, वही यहाँ काम करेगा)
+# 1. एग्जीक्यूटिव लिस्ट चेक करें
+exec_clean_list = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
+if not exec_clean_list:
+    st.error("🚨 डेटाबेस में कोई एग्जीक्यूटिव नहीं मिला। क्या आपने Partner Management में एग्जीक्यूटिव ऐड किए हैं?")
+    st.stop()
 
-# अंत में यह जोड़ें:
-if 'statement_rows' in locals() and statement_rows:
-    df = pd.DataFrame(statement_rows)
-    print_commission_header(search_exec, start_date, end_date)
-    st.dataframe(df, use_container_width=True)
+# 2. इनपुट फिल्टर्स
+col1, col2, col3 = st.columns(3)
+search_exec = col1.selectbox("🔎 Select Executive", exec_clean_list)
+start_date = col2.date_input("📅 Start Date", datetime.date.today() - datetime.timedelta(days=30))
+end_date = col3.date_input("📅 End Date", datetime.date.today())
+
+# 3. जनरेट बटन
+if st.button("🔍 Generate Ledger"):
+    statement_rows = []
+    # यहाँ आपका लूपिंग लॉजिक जो 'statement_rows' को भरता है
+    # (जो पहले काम कर रहा था, उसे यहाँ पेस्ट करें)
     
-    t_gross = df['Gross (₹)'].sum()
-    t_net = df['Net Payout (₹)'].sum()
-    
-    c1, c2 = st.columns(2)
-    c1.metric("Total Gross Value", f"₹ {t_gross:,.2f}")
-    c2.metric("🏆 Grand Net Payable", f"₹ {t_net:,.2f}")
-    
-    # बटन्स
-    cb1, cb2 = st.columns(2)
-    csv = df.to_csv(index=False).encode('utf-8-sig')
-    cb1.download_button("📥 Download Excel", csv, "Commission.csv", "text/csv")
-    wa_url = f"https://wa.me/?text=Report for {search_exec}: Net Pay: ₹{t_net:,.0f}"
-    cb2.markdown(f'<a href="{wa_url}" target="_blank" style="padding:10px; background:#25D366; color:white; border-radius:5px; text-decoration:none;">💬 Send on WhatsApp</a>', unsafe_allow_html=True)
+    # --- DEBUGGING: चेक करें कि डेटा मिल रहा है या नहीं ---
+    if not statement_rows:
+        st.warning(f"⚠️ {search_exec} के लिए इस तारीख के बीच कोई 'Booked' बुकिंग नहीं मिली।")
+    else:
+        df = pd.DataFrame(statement_rows)
+        st.success(f"🎉 {len(df)} रिकॉर्ड मिले!")
+        st.dataframe(df, use_container_width=True)
+        
+        # टोटल कैलकुलेशन
+        t_net = df['Net Payout (₹)'].sum()
+        st.metric("🏆 Grand Net Payable", f"₹ {t_net:,.2f}")
+        
+        # WhatsApp बटन
+        wa_url = f"https://wa.me/?text=Commission Report: Net Pay ₹{t_net:,.0f}"
+        st.markdown(f'<a href="{wa_url}" target="_blank" style="padding:10px; background:#25D366; color:white; border-radius:5px; text-decoration:none;">💬 Send on WhatsApp</a>', unsafe_allow_html=True)
+
