@@ -4,3 +4,4 @@ pillow
 folium
 streamlit-folium
 plotly
+reportlab
