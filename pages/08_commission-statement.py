@@ -3,63 +3,71 @@ import database
 import pandas as pd
 import datetime
 
-# Page configuration
 st.set_page_config(layout="wide", page_title="Firstchoice Infra - Payout")
 database.init_db()
 db_data = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
-# PREMIUM A4 PRINT CSS
-st.markdown("""<style>
-    @media print {
-        .no-print { display: none !important; }
-        .a4-page { width: 210mm; margin: auto; padding: 20px; background: white; color: black; }
-    }
-    .a4-page { background: white; padding: 50px; border: 1px solid #ccc; max-width: 800px; margin: auto; color: black; }
-    .header-section { text-align: center; border-bottom: 2px solid #b8860b; padding-bottom: 20px; margin-bottom: 20px; }
-    .company-name { font-size: 32px; font-weight: 900; color: #b8860b; margin: 0; }
-    .slogan { font-style: italic; color: #1e3a8a; }
-    .info-row { display: flex; justify-content: space-between; margin: 20px 0; font-weight: bold; }
-    .summary-box { background: #f8fafc; padding: 15px; border: 1px solid #ddd; margin-top: 20px; }
-</style>""", unsafe_allow_html=True)
-
-# सिलेक्शन लॉजिक (आपका पुराना ही)
 search_exec = st.selectbox("🔎 Select Business Partner", [k for k, v in exec_data_root.items() if isinstance(v, dict)])
 col1, col2 = st.columns(2)
-start, end = col1.date_input("Start Date"), col2.date_input("End Date")
+start = col1.date_input("Start Date", datetime.date.today() - datetime.timedelta(days=30))
+end = col2.date_input("End Date", datetime.date.today())
 
 if st.button("🚀 Generate Elite Statement"):
-    # ... (आपका कैलकुलेशन लॉजिक यहाँ रखें) ...
-    # मान लेते हैं कि 'df' तैयार है
-    st.session_state.df_view = df 
+    rows = []
+    s_no = 1
+    p_profile = exec_data_root.get(search_exec, {})
+    p_pct = float(p_profile.get('percentage_exec', 0))
+    
+    for p_name, p_info in db_data.items():
+        if isinstance(p_info, dict) and 'plots' in p_info:
+            for pid, info in p_info['plots'].items() if isinstance(p_info['plots'], dict) else enumerate(p_info['plots']):
+                info = info if isinstance(info, dict) else {}
+                if str(info.get('status', '')).lower() == 'booked' and info.get('executive_name', '').lower() == search_exec.lower():
+                    
+                    comp_rate = float(info.get('company_rate', p_info.get('base_rate', 700)))
+                    discount_sqft = float(info.get('discount', 0))
+                    
+                    payments = [{'type': 'Booking', 'amt': float(info.get('token_amount', 0)), 'date': info.get('booking_date', '')}]
+                    for pmt in info.get('partial_payments', []):
+                        payments.append({'type': pmt.get('remarks', 'Installment'), 'amt': float(pmt.get('amount', 0)), 'date': pmt.get('date', '')})
+                    
+                    for pmt in payments:
+                        if pmt['amt'] > 0:
+                            gross = (pmt['amt'] * p_pct) / 100
+                            disc_amt = (pmt['amt'] * (discount_sqft / comp_rate)) if comp_rate > 0 else 0
+                            net_comm = max(0, gross - disc_amt)
+                            tds = net_comm * 0.02
+                            in_hand = net_comm - tds
+                            
+                            rows.append({
+                                "S.No.": s_no, "Customer": info.get('customer_name', 'N/A'), "Plot": pid, 
+                                "Received Amt": pmt['amt'], "Date": pmt['date'], "Gross": gross, 
+                                "Discount": disc_amt, "Net Comm": net_comm, "TDS (2%)": tds, "Net In Hand": in_hand
+                            })
+                            s_no += 1
+    
+    if rows:
+        st.session_state.df_view = pd.DataFrame(rows)
+    else:
+        st.session_state.df_view = None
+        st.warning("इस पार्टनर के लिए कोई डेटा नहीं मिला।")
 
-# स्टेटमेंट डिस्प्ले (A4 स्टाइल में)
-if 'df_view' in st.session_state:
+# रेंडरिंग (KeyError से बचने के लिए .get() का इस्तेमाल किया है)
+if 'df_view' in st.session_state and st.session_state.df_view is not None:
     df = st.session_state.df_view
     
-    st.markdown("<div class='a4-page'>", unsafe_allow_html=True)
-    # कंपनी लेटरहेड
-    st.markdown("<div class='header-section'><h1 class='company-name'>FIRSTCHOICE INFRA</h1><p class='slogan'>Symbol Of Trust...</p><p>Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034</p></div>", unsafe_allow_html=True)
-    
-    st.markdown("<h2>Business Partner Commission Statement</h2>", unsafe_allow_html=True)
-    st.markdown(f"<div class='info-row'><span>Partner: {search_exec}</span> <span>Period: {start} to {end}</span></div>", unsafe_allow_html=True)
-    
+    # प्रिंट लेआउट (A4 स्टाइल)
+    st.markdown("<div style='background:white; padding:30px; border:1px solid #ccc;'>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align:center; color:#b8860b;'>FIRSTCHOICE INFRA</h1><h4 style='text-align:center;'>Business Partner Commission Statement</h4>", unsafe_allow_html=True)
     st.dataframe(df, use_container_width=True)
     
-    # फाइनल समरी
-    st.markdown("<div class='summary-box'>", unsafe_allow_html=True)
+    # Totals (Safe calculation)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Gross Total", f"₹ {df['Gross'].sum():,.2f}")
-    c2.metric("Discount Total", f"₹ {df['Discount'].sum():,.2f}")
-    c3.metric("TDS Total", f"₹ {df['TDS (2%)'].sum():,.2f}")
-    c4.metric("Final Net Pay", f"₹ {df['Net In Hand'].sum():,.2f}")
-    st.markdown("</div></div>", unsafe_allow_html=True)
+    c2.metric("Discount Total", f"₹ {df.get('Discount', 0).sum():,.2f}")
+    c3.metric("TDS Total", f"₹ {df.get('TDS (2%)', 0).sum():,.2f}")
+    c4.metric("Net Payout", f"₹ {df.get('Net In Hand', 0).sum():,.2f}")
     
-    # एक्शन बटन्स
-    st.markdown("<div class='no-print' style='text-align:center; margin-top:20px;'>", unsafe_allow_html=True)
-    if st.button("🖨️ Print as A4"):
-        st.markdown("<script>window.print();</script>", unsafe_allow_html=True)
-    
-    st.info("WhatsApp के लिए 'Print as A4' दबाएं, फिर 'Save as PDF' चुनें और उस फाइल को भेजें। यही सबसे प्रोफेशनल तरीका है।")
     st.markdown("</div>", unsafe_allow_html=True)
 
