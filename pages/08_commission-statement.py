@@ -2,50 +2,52 @@ import streamlit as st
 import database
 import pandas as pd
 import datetime
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-import os
 
-# (अपना डेटाबेस और बाकी कोड यहाँ रखें...)
+st.set_page_config(layout="wide", page_title="Firstchoice Infra - Payout")
+database.init_db()
+db_data = st.session_state.db_projects
+exec_data_root = db_data.get('executives', {})
 
-# PDF जनरेटर फंक्शन
-def create_pdf(df, search_exec, start, end):
-    pdf_file = f"Statement_{search_exec}.pdf"
-    c = canvas.Canvas(pdf_file, pagesize=A4)
-    # प्रीमियम लेआउट
-    c.setFont("Helvetica-Bold", 24)
-    c.drawString(150, 800, "FIRSTCHOICE INFRA")
-    c.setFont("Helvetica-Oblique", 12)
-    c.drawString(250, 780, "Symbol Of Trust...")
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(180, 740, "Business Partner Commission Statement")
-    
-    # डिटेल्स
-    c.setFont("Helvetica", 12)
-    c.drawString(50, 700, f"Partner: {search_exec}")
-    c.drawString(350, 700, f"Period: {start} to {end}")
-    
-    # टेबल डेटा (सिंपल लूप)
-    y = 650
-    for index, row in df.iterrows():
-        c.drawString(50, y, f"{row['Customer']} | {row['Plot']} | ₹{row['Received Amt']:,.2f}")
-        y -= 20
-    
-    # फाइनेंशियल समरी
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(50, y-50, f"Total Net Payout: ₹{df['Net In Hand'].sum():,.2f}")
-    c.save()
-    return pdf_file
+st.title("📊 Commission Statement")
 
-# बटन लॉजिक
-if 'df_statement' in st.session_state:
-    df = st.session_state.df_statement
+# सिलेक्शन पैनल
+exec_list = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
+search_exec = st.selectbox("🔎 Select Business Partner", exec_list)
+col1, col2 = st.columns(2)
+start = col1.date_input("Start Date", datetime.date.today() - datetime.timedelta(days=30))
+end = col2.date_input("End Date", datetime.date.today())
+
+if st.button("🚀 Generate Statement"):
+    rows = []
+    s_no = 1
+    p_profile = exec_data_root.get(search_exec, {})
+    p_pct = float(p_profile.get('percentage_exec', 0))
     
-    if st.button("📄 Generate PDF for WhatsApp/Print"):
-        pdf_path = create_pdf(df, search_exec, start, end)
-        
-        # डाउनलोड बटन
-        with open(pdf_path, "rb") as f:
-            st.download_button("📥 Download A4 PDF", f, file_name="Commission_Statement.pdf")
-            
-        st.success("PDF तैयार है! अब आप इसे WhatsApp पर शेयर कर सकते हैं।")
+    for p_name, p_info in db_data.items():
+        if isinstance(p_info, dict) and 'plots' in p_info:
+            for pid, info in p_info['plots'].items() if isinstance(p_info['plots'], dict) else enumerate(p_info['plots']):
+                info = info if isinstance(info, dict) else {}
+                if str(info.get('status', '')).lower() == 'booked' and info.get('executive_name', '').lower() == search_exec.lower():
+                    
+                    # बेसिक कैलकुलेशन
+                    comp_rate = float(info.get('company_rate', p_info.get('base_rate', 700)))
+                    discount_sqft = float(info.get('discount', 0))
+                    
+                    payments = [{'type': 'Booking', 'amt': float(info.get('token_amount', 0)), 'date': info.get('booking_date', '')}]
+                    # (यहाँ पेमेंट लॉजिक जारी रखें...)
+                    
+                    rows.append({
+                        "S.No.": s_no, "Customer": info.get('customer_name', 'N/A'), "Plot": pid, 
+                        "Received Amt": 0, "Gross": 100, "Net": 98 
+                    })
+                    s_no += 1
+    
+    # डेटा को सेव करें ताकि ब्लैंक न आए
+    st.session_state.df_view = pd.DataFrame(rows)
+
+# डेटा दिखाएं
+if 'df_view' in st.session_state and st.session_state.df_view is not None:
+    st.dataframe(st.session_state.df_view, use_container_width=True)
+else:
+    st.info("डेटा लोड करने के लिए बटन दबाएं।")
+
