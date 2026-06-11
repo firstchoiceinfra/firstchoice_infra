@@ -2,70 +2,50 @@ import streamlit as st
 import database
 import pandas as pd
 import datetime
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+import os
 
-st.set_page_config(layout="wide", page_title="Firstchoice Infra - Payout")
-database.init_db()
-db_data = st.session_state.db_projects
-exec_data_root = db_data.get('executives', {})
+# (अपना डेटाबेस और बाकी कोड यहाँ रखें...)
 
-# प्रीमियम स्टाइलिंग
-st.markdown("""<style>
-    .premium-container { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); border: 2px solid #b8860b; color: #333; }
-    .comp-name { text-align: center; color: #b8860b; font-size: 45px; font-weight: 900; text-transform: uppercase; margin: 0; }
-    .comp-slogan { text-align: center; color: #1e3a8a; font-size: 18px; font-style: italic; margin-bottom: 20px; }
-    .title-heading { text-align: center; background: #1e3a8a; color: white; padding: 10px; border-radius: 5px; margin-top: 20px; }
-    .info-bar { display: flex; justify-content: space-between; padding: 15px; background: #f1f5f9; border-radius: 10px; margin: 20px 0; font-weight: bold; }
-</style>""", unsafe_allow_html=True)
-
-search_exec = st.selectbox("🔎 Select Business Partner", [k for k, v in exec_data_root.items() if isinstance(v, dict)])
-col1, col2 = st.columns(2)
-start = col1.date_input("Start Date", datetime.date.today() - datetime.timedelta(days=30))
-end = col2.date_input("End Date", datetime.date.today())
-
-if st.button("🚀 Generate Elite Statement"):
-    # (आपका कैलकुलेशन लॉजिक यहाँ सुरक्षित है...)
-    # [कैलकुलेशन लॉजिक यहाँ वैसा ही रहेगा...]
-    # मान लेते हैं कि 'df' और 'rows' तैयार हैं...
+# PDF जनरेटर फंक्शन
+def create_pdf(df, search_exec, start, end):
+    pdf_file = f"Statement_{search_exec}.pdf"
+    c = canvas.Canvas(pdf_file, pagesize=A4)
+    # प्रीमियम लेआउट
+    c.setFont("Helvetica-Bold", 24)
+    c.drawString(150, 800, "FIRSTCHOICE INFRA")
+    c.setFont("Helvetica-Oblique", 12)
+    c.drawString(250, 780, "Symbol Of Trust...")
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(180, 740, "Business Partner Commission Statement")
     
-    if 'rows' in locals() and rows:
-        st.session_state.df_statement = pd.DataFrame(rows)
+    # डिटेल्स
+    c.setFont("Helvetica", 12)
+    c.drawString(50, 700, f"Partner: {search_exec}")
+    c.drawString(350, 700, f"Period: {start} to {end}")
+    
+    # टेबल डेटा (सिंपल लूप)
+    y = 650
+    for index, row in df.iterrows():
+        c.drawString(50, y, f"{row['Customer']} | {row['Plot']} | ₹{row['Received Amt']:,.2f}")
+        y -= 20
+    
+    # फाइनेंशियल समरी
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(50, y-50, f"Total Net Payout: ₹{df['Net In Hand'].sum():,.2f}")
+    c.save()
+    return pdf_file
 
-if 'df_statement' in st.session_state and st.session_state.df_statement is not None:
+# बटन लॉजिक
+if 'df_statement' in st.session_state:
     df = st.session_state.df_statement
     
-    st.markdown("<div class='premium-container'>", unsafe_allow_html=True)
-    # हेडर एरिया
-    st.markdown("<h1 class='comp-name'>FIRSTCHOICE INFRA</h1>", unsafe_allow_html=True)
-    st.markdown("<p class='comp-slogan'>Symbol Of Trust...</p>", unsafe_allow_html=True)
-    st.markdown("<h2 class='title-heading'>Business Partner Commission Statement</h2>", unsafe_allow_html=True)
-    
-    # पार्टनर और डेट डिटेल्स
-    st.markdown(f"""<div class='info-bar'>
-        <span>Partner Name: {search_exec}</span>
-        <span>Period: {start} to {end}</span>
-    </div>""", unsafe_allow_html=True)
-    
-    st.dataframe(df, use_container_width=True)
-    
-    # टोटल सेक्शन
-    st.markdown("### 📊 Financial Summary")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Gross Total", f"₹ {df['Gross'].sum():,.2f}")
-    c2.metric("Discount Total", f"₹ {df['Discount'].sum():,.2f}")
-    c3.metric("TDS Total", f"₹ {df['TDS (2%)'].sum():,.2f}")
-    c4.metric("Net In Hand", f"₹ {df['Net In Hand'].sum():,.2f}")
-    
-    # प्रिंट और व्हाट्सएप (फिक्स्ड)
-    st.markdown("<br><hr>", unsafe_allow_html=True)
-    col_p, col_w = st.columns(2)
-    
-    # प्रिंट बटन - ब्राउज़र का प्रिंट डायलॉग खोलेगा
-    col_p.markdown("""<button onclick="window.print()" style="width:100%; padding:15px; background:#1e3a8a; color:white; border-radius:10px; border:none; font-weight:bold;">🖨️ Print Statement</button>""", unsafe_allow_html=True)
-    
-    # व्हाट्सएप बटन - डायरेक्ट मैसेज
-    wa_msg = f"Statement for {search_exec}: Gross ₹{df['Gross'].sum():,.2f}, Net Pay ₹{df['Net In Hand'].sum():,.2f}"
-    wa_link = f"https://wa.me/?text={wa_msg.replace(' ', '%20')}"
-    col_w.markdown(f'<a href="{wa_link}" target="_blank"><button style="width:100%; padding:15px; background:#25d366; color:white; border-radius:10px; border:none; font-weight:bold;">💬 Send to WhatsApp</button></a>', unsafe_allow_html=True)
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-
+    if st.button("📄 Generate PDF for WhatsApp/Print"):
+        pdf_path = create_pdf(df, search_exec, start, end)
+        
+        # डाउनलोड बटन
+        with open(pdf_path, "rb") as f:
+            st.download_button("📥 Download A4 PDF", f, file_name="Commission_Statement.pdf")
+            
+        st.success("PDF तैयार है! अब आप इसे WhatsApp पर शेयर कर सकते हैं।")
