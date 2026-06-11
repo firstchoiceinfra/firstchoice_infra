@@ -77,3 +77,4 @@ if 'df_statement' in st.session_state and st.session_state.df_statement is not N
     if b1.button("🖨️ Print Statement"): st.write("Print mode enabled...")
     if b2.button("💬 Send to WhatsApp"): st.write("WhatsApp redirecting...")
     st.markdown("</div>", unsafe_allow_html=True)
+
