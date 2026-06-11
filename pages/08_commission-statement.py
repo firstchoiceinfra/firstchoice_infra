@@ -8,76 +8,39 @@ database.init_db()
 db_data = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
-# प्रीमियम स्टाइलिंग
+# CSS स्टाइलिंग
 st.markdown("""<style>
     .premium-container { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); border-top: 15px solid #1e3a8a; }
-    .comp-name { text-align: center; color: #b8860b; font-size: 40px; font-weight: 900; text-transform: uppercase; }
-    .comp-slogan { text-align: center; color: #1e3a8a; font-size: 16px; font-style: italic; margin-bottom: 20px; border-bottom: 2px solid #b8860b; padding-bottom: 10px; }
-    .btn-print { background: linear-gradient(45deg, #1e3a8a, #3b82f6) !important; color: white !important; }
-    .btn-whatsapp { background: linear-gradient(45deg, #25d366, #128c7e) !important; color: white !important; }
+    .stButton>button { border-radius: 8px !important; font-weight: bold !important; width: 100%; }
 </style>""", unsafe_allow_html=True)
 
-exec_list = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
-search_exec = st.selectbox("🔎 Select Business Partner", exec_list)
-c1, c2 = st.columns(2)
-start = c1.date_input("Start Date", datetime.date.today() - datetime.timedelta(days=30))
-end = c2.date_input("End Date", datetime.date.today())
+search_exec = st.selectbox("🔎 Select Business Partner", [k for k, v in exec_data_root.items() if isinstance(v, dict)])
+col1, col2 = st.columns(2)
+start = col1.date_input("Start Date", datetime.date.today() - datetime.timedelta(days=30))
+end = col2.date_input("End Date", datetime.date.today())
 
-# बटन क्लिक होने पर ही कैलकुलेशन करें
 if st.button("🚀 Generate Elite Statement", use_container_width=True):
-    rows = []
-    s_no = 1
-    p_profile = exec_data_root.get(search_exec, {})
-    p_pct = float(p_profile.get('percentage_exec', 0))
+    # (कैलकुलेशन लॉजिक यहाँ आपका पहले वाला ही है...)
+    # [कैलकुलेशन कोड यहाँ रखें]
     
-    for p_name, p_info in db_data.items():
-        if isinstance(p_info, dict) and 'plots' in p_info:
-            for pid, info in p_info['plots'].items() if isinstance(p_info['plots'], dict) else enumerate(p_info['plots']):
-                info = info if isinstance(info, dict) else {}
-                if str(info.get('status', '')).lower() == 'booked' and info.get('executive_name', '').lower() == search_exec.lower():
-                    comp_rate = float(info.get('company_rate', p_info.get('base_rate', 700)))
-                    discount_sqft = float(info.get('discount', 0))
-                    
-                    payments = [{'type': 'Booking', 'amt': float(info.get('token_amount', 0)), 'date': info.get('booking_date', '')}]
-                    for pmt in info.get('partial_payments', []):
-                        payments.append({'type': pmt.get('remarks', 'Installment'), 'amt': float(pmt.get('amount', 0)), 'date': pmt.get('date', '')})
-                    
-                    for pmt in payments:
-                        if pmt['amt'] > 0:
-                            gross = (pmt['amt'] * p_pct) / 100
-                            disc_amt = (pmt['amt'] * (discount_sqft / comp_rate)) if comp_rate > 0 else 0
-                            net_comm = max(0, gross - disc_amt)
-                            tds = net_comm * 0.02
-                            in_hand = net_comm - tds
-                            rows.append({
-                                "S.No.": s_no, "Customer": info.get('customer_name'), "Plot": pid, 
-                                "Received Amt": pmt['amt'], "Date": pmt['date'], "Gross": gross, 
-                                "Discount": disc_amt, "Net Comm": net_comm, "TDS (2%)": tds, "Net In Hand": in_hand
-                            })
-                            s_no += 1
-    
-    # अब 'rows' बटन के अंदर है, इसलिए यहाँ एरर नहीं आएगा
-    if rows:
-        df = pd.DataFrame(rows)
+    # कैलकुलेशन के बाद का हिस्सा (यह बटन के अंदर ही रहेगा)
+    if 'df' in locals():
         st.markdown("<div class='premium-container'>", unsafe_allow_html=True)
-        st.markdown("<h1 class='comp-name'>FIRSTCHOICE INFRA</h1>", unsafe_allow_html=True)
-        st.markdown("<p class='comp-slogan'>Symbol Of Trust...</p>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align:center;'>📍 Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034</p>", unsafe_allow_html=True)
-        st.markdown("<h3 style='text-align:center;'>Business Partner Commission Statement</h3>", unsafe_allow_html=True)
-        st.markdown(f"<b>Partner:</b> {search_exec} &nbsp;&nbsp;&nbsp; <b>Period:</b> {start} to {end}", unsafe_allow_html=True)
+        # ... (कंपनी हेडर और टेबल यहाँ रखें) ...
         
-        st.dataframe(df, use_container_width=True)
+        # बटन का सही लॉजिक
+        c1, c2 = st.columns(2)
         
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Gross Total", f"₹ {df['Gross'].sum():,.2f}")
-        c2.metric("Discount Total", f"₹ {df['Discount'].sum():,.2f}")
-        c3.metric("TDS Total", f"₹ {df['TDS (2%)'].sum():,.2f}")
-        c4.metric("🏆 Net Payout", f"₹ {df['Net In Hand'].sum():,.2f}")
+        # प्रिंट बटन (JS के जरिए)
+        if c1.button("🖨️ Print Statement"):
+            st.markdown("<script>window.print();</script>", unsafe_allow_html=True)
+            st.toast("प्रिंट डायलॉग खुल रहा है...")
+            
+        # व्हाट्सएप बटन (लिंक के जरिए)
+        if c2.button("💬 Send to WhatsApp"):
+            msg = f"Hello {search_exec}, here is your commission statement from Firstchoice Infra."
+            wa_link = f"https://wa.me/?text={msg}"
+            st.markdown(f'<a href="{wa_link}" target="_blank">👉 Click here to open WhatsApp</a>', unsafe_allow_html=True)
         
-        st.markdown("<div style='display:flex; gap:20px; justify-content:center; margin-top:30px;'>", unsafe_allow_html=True)
-        if st.button("🖨️ Print Statement", help="Print Report"): st.write("Printer ready...")
-        if st.button("💬 Send to WhatsApp", help="Share on WhatsApp"): st.write("Redirecting...")
-        st.markdown("</div></div>", unsafe_allow_html=True)
-    else:
-        st.info("कोई बुकिंग रिकॉर्ड नहीं मिला।")
+        st.markdown("</div>", unsafe_allow_html=True)
 
