@@ -3,26 +3,26 @@ import database
 import pandas as pd
 import datetime
 
-# 1. Page Configuration
+# 1. पेज सेटअप
 st.set_page_config(layout="wide", page_title="Firstchoice Infra - Payout")
 database.init_db()
 db_data = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
-# 2. Premium Styling
+# 2. मल्टी-कलर प्रीमियम CSS स्टाइलिंग
 st.markdown("""<style>
-    .a4-page { background: white; padding: 40px; border: 3px solid #b8860b; color: black; max-width: 800px; margin: auto; border-radius: 15px; }
+    .a4-page { background: linear-gradient(135deg, #ffffff 0%, #fdfbf7 100%); padding: 40px; border: 3px solid #b8860b; color: black; max-width: 800px; margin: auto; border-radius: 15px; }
     .header-sect { text-align: center; border-bottom: 3px double #1e3a8a; padding-bottom: 10px; margin-bottom: 20px; }
-    .btn-row { display: flex; gap: 20px; justify-content: center; margin-top: 30px; }
+    .no-print { margin-top: 30px; }
     @media print { .no-print { display: none !important; } }
 </style>""", unsafe_allow_html=True)
 
-# 3. Inputs
+# 3. इनपुट कंट्रोल्स
 search_exec = st.selectbox("🔎 Select Business Partner", [k for k, v in exec_data_root.items() if isinstance(v, dict)])
 col1, col2 = st.columns(2)
 start, end = col1.date_input("Start Date"), col2.date_input("End Date")
 
-# 4. Calculation
+# 4. कैलकुलेशन
 if st.button("🚀 Generate Multi-Color Statement"):
     rows = []
     p_profile = exec_data_root.get(search_exec, {})
@@ -45,7 +45,7 @@ if st.button("🚀 Generate Multi-Color Statement"):
     st.session_state.df_view = pd.DataFrame(rows) if rows else None
     st.session_state.meta = {"exec": search_exec, "start": start, "end": end}
 
-# 5. Display Logic
+# 5. स्टेटमेंट डिस्प्ले (A4 लेआउट)
 if 'df_view' in st.session_state and st.session_state.df_view is not None:
     df = st.session_state.df_view
     meta = st.session_state.meta
@@ -69,13 +69,13 @@ if 'df_view' in st.session_state and st.session_state.df_view is not None:
     cols[3].metric("Net Pay", f"₹{df['Net In Hand'].sum():,.2f}")
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Buttons
+    # 6. एक्टिव बटन (Direct Print + WhatsApp)
     st.markdown(f"""
-        <div class="btn-row no-print">
-            <button onclick="window.print()" style="padding: 15px 30px; background: #1e3a8a; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer;">
-                🖨️ Print / Save as PDF
+        <div class="no-print" style="display: flex; gap: 20px; justify-content: center; margin-top: 30px;">
+            <button onclick="setTimeout(function(){{ window.print(); }}, 500);" style="padding: 15px 30px; background: #1e3a8a; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer;">
+                🖨️ Direct Print / PDF
             </button>
-            <a href="https://wa.me/?text=FIRSTCHOICE INFRA Commission Summary for {meta['exec']}: Net Pay ₹{df['Net In Hand'].sum():,.2f}" target="_blank" style="text-decoration:none;">
+            <a href="https://wa.me/?text=FIRSTCHOICE INFRA - Commission Summary%0APartner: {meta['exec']}%0APeriod: {meta['start']} to {meta['end']}%0ANet Payout: ₹{df['Net In Hand'].sum():,.2f}" target="_blank" style="text-decoration: none;">
                 <button style="padding: 15px 30px; background: #25d366; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer;">
                     💬 Send Summary to WhatsApp
                 </button>
