@@ -11,14 +11,34 @@ exec_data_root = db_data.get('executives', {})
 
 # 2. CSS (प्रिंट के लिए एकदम क्लीन)
 st.markdown("""<style>
-    @media print { .no-print { display: none !important; } .a4-page { width: 100% !important; margin: 0 !important; } }
+    @media print {
+        /* पूरी स्क्रीन की बाकी चीजें गायब */
+        body * { visibility: hidden; }
+        
+        /* सिर्फ स्टेटमेंट को दिखाएं */
+        .a4-page, .a4-page * { visibility: visible; }
+        
+        /* स्टेटमेंट को पेज के कोनों में सेट करें */
+        .a4-page {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        /* बटन्स प्रिंट न हों */
+        .no-print { display: none !important; }
+        
+        @page { size: auto; margin: 10mm; }
+    }
     .a4-page { background: white; padding: 20px; color: black; max-width: 900px; margin: auto; }
     .data-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
     .data-table th, .data-table td { border: 1px solid #333; padding: 8px; text-align: left; font-size: 11px; }
     .data-table th { background-color: #eee; }
     .summary-box { margin-top: 20px; padding: 15px; border: 2px solid #b8860b; font-weight: bold; background: #fdfbf7; }
 </style>""", unsafe_allow_html=True)
-
 # 3. Inputs
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 search_exec = st.selectbox("🔎 Select Business Partner", [k for k, v in exec_data_root.items() if isinstance(v, dict)])
