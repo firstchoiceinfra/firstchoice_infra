@@ -11,35 +11,37 @@ exec_data_root = db_data.get('executives', {})
 
 # 2. CSS (प्रिंट के लिए एकदम क्लीन)
 st.markdown("""<style>
-    /* प्रिंट के लिए सख्त नियम */
-    @media print {
-        /* इनपुट कंट्रोल्स को पूरी तरह हटा दें */
-        .stSelectbox, .stDateInput, .stButton, div[data-testid="stSidebar"], div[data-testid="stToolbar"], div[data-testid="stDecoration"] {
-            display: none !important;
-        }
-        
-        /* हेडर और बाकी चीजों को प्रिंट से हटाएं */
-        header, footer { display: none !important; }
-        
-        /* स्टेटमेंट को पेज पर सेट करें */
-        .a4-page { 
-            display: block !important; 
-            width: 100% !important; 
-            margin: 0 !important; 
-            padding: 0 !important; 
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-        }
-    }
-    
-    /* स्क्रीन के लिए स्टाइलिंग */
+    /* 1. स्क्रीन के लिए स्टाइलिंग */
     .a4-page { background: white; padding: 20px; color: black; max-width: 900px; margin: auto; }
     .data-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
     .data-table th, .data-table td { border: 1px solid #333; padding: 8px; text-align: left; font-size: 11px; }
     .data-table th { background-color: #eee; }
     .summary-box { margin-top: 20px; padding: 15px; border: 2px solid #b8860b; font-weight: bold; background: #fdfbf7; }
+
+    /* 2. प्रिंट के लिए सबसे शक्तिशाली सेटिंग्स */
+    @media print {
+        /* साइडबार, मेनू और बटन्स को प्रिंट से पूरी तरह हटा दें */
+        [data-testid="stSidebar"], .no-print, header, footer, .stButton, .stSelectbox, .stDateInput { 
+            display: none !important; 
+        }
+        
+        /* बॉडी को साफ रखें */
+        body, html { background: white !important; }
+        
+        /* स्टेटमेंट को पूरे पेज पर दिखाएं */
+        .a4-page { 
+            display: block !important; 
+            width: 100% !important; 
+            margin: 0 !important; 
+            padding: 10px !important; 
+            box-shadow: none !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+        }
+    }
 </style>""", unsafe_allow_html=True)
+
        
 # 3. Inputs
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
