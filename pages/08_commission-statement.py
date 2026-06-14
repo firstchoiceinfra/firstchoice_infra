@@ -12,23 +12,23 @@ exec_data_root = db_data.get('executives', {})
 # 2. CSS - प्रिंट के लिए सबसे बेस्ट सेटिंग
 st.markdown("""<style>
     @media print {
-        /* प्रिंट से सब फालतू चीजें हटाएं */
-        [data-testid="stSidebar"], .no-print, header, footer, .stButton, .stSelectbox, .stDateInput { 
-            display: none !important; 
-        }
-        body { background: white !important; }
-        .a4-page { width: 100% !important; margin: 0 !important; padding: 5px !important; position: absolute !important; top: 0 !important; }
+        [data-testid="stSidebar"], .no-print, header, footer, .stButton { display: none !important; }
         
-        /* टेबल को फिक्स चौड़ाई और छोटा फॉन्ट ताकि सब फिट हो जाए */
-        .data-table { width: 100% !important; table-layout: fixed !important; font-size: 9px !important; border-collapse: collapse; }
-        .data-table th, .data-table td { border: 1px solid #333; padding: 4px !important; word-wrap: break-word !important; }
-        .data-table th { background-color: #eee !important; }
+        /* ये सेटिंग्स पेज को हिलने की आजादी देंगी */
+        html, body {
+            height: auto !important;
+            overflow: visible !important;
+        }
+        
+        .a4-page { 
+            display: block !important; 
+            width: 100% !important; 
+            margin: 0 !important; 
+            padding: 10px !important;
+            position: relative !important; /* absolute से हटाकर relative किया */
+            height: auto !important;
+        }
     }
-    .a4-page { background: white; padding: 20px; color: black; max-width: 900px; margin: auto; }
-    .data-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    .data-table th, .data-table td { border: 1px solid #333; padding: 8px; text-align: left; font-size: 11px; }
-    .data-table th { background-color: #eee; }
-    .summary-box { margin-top: 20px; padding: 15px; border: 2px solid #b8860b; font-weight: bold; background: #fdfbf7; }
 </style>""", unsafe_allow_html=True)
 
 # 3. Inputs (प्रिंट में नहीं दिखेंगे)
