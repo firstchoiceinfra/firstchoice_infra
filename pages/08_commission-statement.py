@@ -9,7 +9,7 @@ database.init_db()
 db_data = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
-# 2. CSS - प्रिंट के लिए एकदम क्लीन
+# 2. CSS (प्रिंट के लिए एकदम क्लीन)
 st.markdown("""<style>
     @media print { .no-print { display: none !important; } .a4-page { width: 100% !important; margin: 0 !important; } }
     .a4-page { background: white; padding: 20px; color: black; max-width: 900px; margin: auto; }
@@ -34,10 +34,14 @@ if btn_generate:
     p_profile = exec_data_root.get(search_exec, {})
     p_pct = float(p_profile.get('percentage_exec', 0))
     
+    # मौजा मैपिंग लिस्ट
+    mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
+    
     for project_name, p_info in db_data.items():
         if isinstance(p_info, dict) and 'plots' in p_info:
-            # मौजा ढूँढने का स्मार्ट लॉजिक
-            mauja = p_info.get('mauja') or p_info.get('location') or p_info.get('project_location') or project_name
+            # मौजा लॉजिक
+            db_mauja = p_info.get('mauja', '')
+            mauja = db_mauja if db_mauja and db_mauja.lower() != project_name.lower() else mapping.get(project_name.lower(), "Nagpur")
             
             for pid, info in p_info['plots'].items() if isinstance(p_info['plots'], dict) else enumerate(p_info['plots']):
                 info = info if isinstance(info, dict) else {}
