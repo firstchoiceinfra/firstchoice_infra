@@ -1,3 +1,4 @@
+
 import streamlit as st
 import database
 import pandas as pd
@@ -9,50 +10,48 @@ database.init_db()
 db_data = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
-# 2. CSS (प्रिंट के लिए एकदम क्लीन)
+# 2. CSS (प्रिंट के लिए सुपर-क्लीन सेटिंग्स)
 st.markdown("""<style>
-    /* प्रिंट के लिए सबसे महत्वपूर्ण सेटिंग्स */
     @media print {
-        [data-testid="stSidebar"], .no-print, header, footer { display: none !important; }
-        
-        /* यह हिस्सा सुनिश्चित करेगा कि पूरा डेटा प्रिंट हो */
-        body, html { height: auto !important; }
-        
+        /* इनपुट बॉक्स, बटन और साइडबार प्रिंट से पूरी तरह गायब */
+        [data-testid="stSidebar"], .no-print, header, footer, .stButton, .stSelectbox, .stDateInput, .stMetric { 
+            display: none !important; 
+        }
+        /* पेज लेआउट को प्रिंट के लिए फ्री करें */
+        body, html { background: white !important; height: auto !important; overflow: visible !important; }
         .a4-page { 
             display: block !important; 
             width: 100% !important; 
             margin: 0 !important; 
             padding: 0 !important;
-            height: auto !important; /* हाइट ऑटो रखी है ताकि नीचे का डेटा न कटे */
-            overflow: visible !important;
+            position: relative !important;
         }
-        
-        .data-table { width: 100% !important; page-break-inside: auto !important; }
-        tr { page-break-inside: avoid !important; page-break-after: auto !important; }
     }
+    .a4-page { background: white; padding: 20px; color: black; max-width: 900px; margin: auto; }
+    .data-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    .data-table th, .data-table td { border: 1px solid #333; padding: 8px; text-align: left; font-size: 11px; }
+    .data-table th { background-color: #eee; }
+    .summary-box { margin-top: 20px; padding: 15px; border: 2px solid #b8860b; font-weight: bold; background: #fdfbf7; }
 </style>""", unsafe_allow_html=True)
-       
-# 3. Inputs
+
+# 3. Inputs (सिर्फ स्क्रीन पर दिखेंगे)
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 search_exec = st.selectbox("🔎 Select Business Partner", [k for k, v in exec_data_root.items() if isinstance(v, dict)])
 col1, col2 = st.columns(2)
 start, end = col1.date_input("Start Date"), col2.date_input("End Date")
-btn_generate = st.button("🚀 Generate Full Commission Statement")
+btn_generate = st.button("🚀 Generate Commission Statement")
 st.markdown('</div>', unsafe_allow_html=True)
 
-# 4. Calculation Logic
+# 4. Calculation
 if btn_generate:
     rows = []
     count = 1
     p_profile = exec_data_root.get(search_exec, {})
     p_pct = float(p_profile.get('percentage_exec', 0))
-    
-    # मौजा मैपिंग लिस्ट
     mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
     
     for project_name, p_info in db_data.items():
         if isinstance(p_info, dict) and 'plots' in p_info:
-            # मौजा लॉजिक
             db_mauja = p_info.get('mauja', '')
             mauja = db_mauja if db_mauja and db_mauja.lower() != project_name.lower() else mapping.get(project_name.lower(), "Nagpur")
             
@@ -79,7 +78,7 @@ if btn_generate:
     st.session_state.df_view = pd.DataFrame(rows) if rows else None
     st.session_state.meta = {"exec": search_exec, "start": start, "end": end}
 
-# 5. Display
+# 5. Display (A4 पेज लेआउट)
 if 'df_view' in st.session_state and st.session_state.df_view is not None:
     df = st.session_state.df_view
     meta = st.session_state.meta
@@ -97,24 +96,21 @@ if 'df_view' in st.session_state and st.session_state.df_view is not None:
     st.markdown(f"""
         <div class="summary-box">
             Gross Total: ₹{df['Gross'].sum():,.2f} &nbsp;|&nbsp; 
-            Discount Total: ₹{df['Discount'].sum():,.2f} &nbsp;|&nbsp; 
-            TDS Total: ₹{df['TDS'].sum():,.2f} &nbsp;|&nbsp; 
             Net In Hand: ₹{df['Net In Hand'].sum():,.2f}
         </div>
         </div>
     """, unsafe_allow_html=True)
 
-    # 6. Buttons
+    # 6. Buttons (प्रिंट बटन के लिए)
     st.markdown(f"""
         <div class="no-print" style="text-align:center; margin-top:30px;">
             <button onclick="window.print()" style="padding: 15px 30px; background: #1e3a8a; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer;">
-                🖨️ Print Statement
+                🖨️ Final Print Statement
             </button>
-            <a href="https://wa.me/?text=FIRSTCHOICE INFRA Commission for {meta['exec']}: Net Pay ₹{df['Net In Hand'].sum():,.2f}" target="_blank" style="text-decoration: none; margin-left: 20px;">
+            <a href="https://wa.me/?text=FIRSTCHOICE INFRA Commission: {meta['exec']} - Net Payout ₹{df['Net In Hand'].sum():,.2f}" target="_blank" style="text-decoration: none; margin-left: 20px;">
                 <button style="padding: 15px 30px; background: #25d366; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer;">
                     💬 Send Summary to WhatsApp
                 </button>
             </a>
         </div>
     """, unsafe_allow_html=True)
-
