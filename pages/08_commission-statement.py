@@ -9,14 +9,14 @@ database.init_db()
 db_data = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
-# 2. CSS - प्रिंट के लिए बिल्कुल क्लीन
+# 2. CSS (प्रिंट के लिए एकदम क्लीन)
 st.markdown("""<style>
     @media print { .no-print { display: none !important; } .a4-page { width: 100% !important; margin: 0 !important; } }
     .a4-page { background: white; padding: 20px; color: black; max-width: 900px; margin: auto; }
     .data-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
     .data-table th, .data-table td { border: 1px solid #333; padding: 8px; text-align: left; font-size: 11px; }
     .data-table th { background-color: #eee; }
-    .summary-box { margin-top: 20px; padding: 10px; border: 2px solid #b8860b; font-weight: bold; }
+    .summary-box { margin-top: 20px; padding: 15px; border: 2px solid #b8860b; font-weight: bold; background: #fdfbf7; }
 </style>""", unsafe_allow_html=True)
 
 # 3. Inputs
@@ -27,15 +27,18 @@ start, end = col1.date_input("Start Date"), col2.date_input("End Date")
 btn_generate = st.button("🚀 Generate Full Commission Statement")
 st.markdown('</div>', unsafe_allow_html=True)
 
-# 4. Calculation
+# 4. Calculation Logic
 if btn_generate:
     rows = []
     count = 1
     p_profile = exec_data_root.get(search_exec, {})
     p_pct = float(p_profile.get('percentage_exec', 0))
+    
     for project_name, p_info in db_data.items():
         if isinstance(p_info, dict) and 'plots' in p_info:
-            mauja = p_info.get('mauja', 'N/A') # यहाँ से मौजा का नाम उठाया है
+            # मौजा का नाम डेटाबेस से पिक कर रहे हैं
+            mauja = p_info.get('mauja', 'Not Defined') 
+            
             for pid, info in p_info['plots'].items() if isinstance(p_info['plots'], dict) else enumerate(p_info['plots']):
                 info = info if isinstance(info, dict) else {}
                 if info.get('executive_name', '').lower() == search_exec.lower() and info.get('status', '').lower() == 'booked':
@@ -43,15 +46,17 @@ if btn_generate:
                     discount_sqft = float(info.get('discount', 0))
                     payments = [{'type': 'Booking', 'amt': float(info.get('token_amount', 0)), 'date': info.get('booking_date', '')}]
                     payments.extend([{'type': pmt.get('remarks', 'Installment'), 'amt': float(pmt.get('amount', 0)), 'date': pmt.get('date', '')} for pmt in info.get('partial_payments', [])])
+                    
                     for pmt in payments:
                         if pmt['amt'] > 0:
                             gross = (pmt['amt'] * p_pct) / 100
                             disc_amt = (pmt['amt'] * (discount_sqft / comp_rate)) if comp_rate > 0 else 0
                             net_comm = max(0, gross - disc_amt)
                             rows.append({
-                                "S.No.": count, "Mauja": mauja, "Project": project_name, "Customer": info.get('customer_name', 'N/A'), 
-                                "Plot": pid, "Received": pmt['amt'], "Date": pmt['date'], "Gross": gross, 
-                                "Discount": disc_amt, "TDS": net_comm * 0.02, "Net": net_comm - (net_comm * 0.02)
+                                "S.No.": count, "Mauja": mauja, "Project": project_name, 
+                                "Customer": info.get('customer_name', 'N/A'), "Plot": pid, 
+                                "Received": pmt['amt'], "Date": pmt['date'], "Gross": gross, 
+                                "Discount": disc_amt, "TDS": net_comm * 0.02, "Net In Hand": net_comm - (net_comm * 0.02)
                             })
                             count += 1
     st.session_state.df_view = pd.DataFrame(rows) if rows else None
@@ -72,10 +77,13 @@ if 'df_view' in st.session_state and st.session_state.df_view is not None:
     
     st.markdown(df.to_html(classes='data-table', index=False), unsafe_allow_html=True)
     
+    # समरी वापस जोड़ दी है
     st.markdown(f"""
         <div class="summary-box">
-            Gross Total: ₹{df['Gross'].sum():,.2f} | Discount Total: ₹{df['Discount'].sum():,.2f} | 
-            TDS Total: ₹{df['TDS'].sum():,.2f} | Net In Hand: ₹{df['Net'].sum():,.2f}
+            Gross Total: ₹{df['Gross'].sum():,.2f} &nbsp;|&nbsp; 
+            Discount Total: ₹{df['Discount'].sum():,.2f} &nbsp;|&nbsp; 
+            TDS Total: ₹{df['TDS'].sum():,.2f} &nbsp;|&nbsp; 
+            Net In Hand: ₹{df['Net In Hand'].sum():,.2f}
         </div>
         </div>
     """, unsafe_allow_html=True)
@@ -86,7 +94,7 @@ if 'df_view' in st.session_state and st.session_state.df_view is not None:
             <button onclick="window.print()" style="padding: 15px 30px; background: #1e3a8a; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer;">
                 🖨️ Print Statement
             </button>
-            <a href="https://wa.me/?text=FIRSTCHOICE INFRA - Commission Summary for {meta['exec']}%0AGross: ₹{df['Gross'].sum():,.2f}%0ANet Total: ₹{df['Net'].sum():,.2f}" target="_blank" style="text-decoration: none; margin-left: 20px;">
+            <a href="https://wa.me/?text=FIRSTCHOICE INFRA Commission for {meta['exec']}: Net Pay ₹{df['Net In Hand'].sum():,.2f}" target="_blank" style="text-decoration: none; margin-left: 20px;">
                 <button style="padding: 15px 30px; background: #25d366; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer;">
                     💬 Send Summary to WhatsApp
                 </button>
