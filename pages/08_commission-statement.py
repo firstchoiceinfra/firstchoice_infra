@@ -3,13 +3,13 @@ import database
 import pandas as pd
 import datetime
 
-# 1. पेज सेटअप
+# 1. Page Configuration
 st.set_page_config(layout="wide", page_title="Firstchoice Infra - Payout")
 database.init_db()
 db_data = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
-# 2. मल्टी-कलर प्रीमियम CSS स्टाइलिंग
+# 2. प्रीमियम मल्टी-कलर स्टाइलिंग
 st.markdown("""<style>
     .a4-page { background: linear-gradient(135deg, #ffffff 0%, #fdfbf7 100%); padding: 40px; border: 3px solid #b8860b; color: black; max-width: 800px; margin: auto; border-radius: 15px; }
     .header-sect { text-align: center; border-bottom: 3px double #1e3a8a; padding-bottom: 10px; margin-bottom: 20px; }
@@ -17,12 +17,12 @@ st.markdown("""<style>
     @media print { .no-print { display: none !important; } }
 </style>""", unsafe_allow_html=True)
 
-# 3. इनपुट कंट्रोल्स
+# 3. Inputs
 search_exec = st.selectbox("🔎 Select Business Partner", [k for k, v in exec_data_root.items() if isinstance(v, dict)])
 col1, col2 = st.columns(2)
 start, end = col1.date_input("Start Date"), col2.date_input("End Date")
 
-# 4. कैलकुलेशन
+# 4. Calculation Logic
 if st.button("🚀 Generate Multi-Color Statement"):
     rows = []
     p_profile = exec_data_root.get(search_exec, {})
@@ -45,7 +45,7 @@ if st.button("🚀 Generate Multi-Color Statement"):
     st.session_state.df_view = pd.DataFrame(rows) if rows else None
     st.session_state.meta = {"exec": search_exec, "start": start, "end": end}
 
-# 5. स्टेटमेंट डिस्प्ले (A4 लेआउट)
+# 5. Display Statement
 if 'df_view' in st.session_state and st.session_state.df_view is not None:
     df = st.session_state.df_view
     meta = st.session_state.meta
@@ -69,13 +69,14 @@ if 'df_view' in st.session_state and st.session_state.df_view is not None:
     cols[3].metric("Net Pay", f"₹{df['Net In Hand'].sum():,.2f}")
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # 6. एक्टिव बटन (Direct Print + WhatsApp)
+    # 6. Buttons
     st.markdown(f"""
-        <div class="no-print" style="display: flex; gap: 20px; justify-content: center; margin-top: 30px;">
-            <button onclick="setTimeout(function(){{ window.print(); }}, 500);" style="padding: 15px 30px; background: #1e3a8a; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer;">
+        <div class="no-print" style="text-align:center; margin-top:30px;">
+            <p style="color:gray;">प्रिंट नहीं हो रहा? तो कीबोर्ड पर <b>Ctrl + P</b> दबाएं</p>
+            <button onclick="window.print()" style="padding: 15px 30px; background: #1e3a8a; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer;">
                 🖨️ Direct Print / PDF
             </button>
-            <a href="https://wa.me/?text=FIRSTCHOICE INFRA - Commission Summary%0APartner: {meta['exec']}%0APeriod: {meta['start']} to {meta['end']}%0ANet Payout: ₹{df['Net In Hand'].sum():,.2f}" target="_blank" style="text-decoration: none;">
+            <a href="https://wa.me/?text=FIRSTCHOICE INFRA - Commission Summary%0APartner: {meta['exec']}%0ANet Payout: ₹{df['Net In Hand'].sum():,.2f}" target="_blank" style="text-decoration: none; margin-left: 20px;">
                 <button style="padding: 15px 30px; background: #25d366; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer;">
                     💬 Send Summary to WhatsApp
                 </button>
