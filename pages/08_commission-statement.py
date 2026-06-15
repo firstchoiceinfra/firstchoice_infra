@@ -9,14 +9,27 @@ database.init_db()
 db_data = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
-# 2. CSS - 100% Strict Print Mode & UI Cleanup
+# 2. CSS - 100% Strict Print Mode & Remove Manage App Badge
 st.markdown("""<style>
+    /* Streamlit Cloud के 'Manage App' काले बटन को हमेशा के लिए गायब करना */
+    div[class^="viewerBadge"], 
+    div[class*="viewerBadge"], 
+    #viewerBadge_container__1QSob,
+    a[href*="streamlit.io/cloud"],
+    #Manage-app { 
+        display: none !important; 
+        visibility: hidden !important; 
+        opacity: 0 !important;
+        height: 0 !important;
+        width: 0 !important;
+    }
+
     @media print {
         [data-testid="stHeader"], [data-testid="stDecoration"], header, .stAppHeader, 
-        [data-testid="stSidebar"], [data-testid="stToolbar"], #Manage-app, .viewerBadge_container__1QSob { 
+        [data-testid="stSidebar"], [data-testid="stToolbar"] { 
             display: none !important; 
         }
-        [data-testid="stSelectbox"], [data-testid="stHorizontalBlock"], div.stButton, .no-print {
+        [data-testid="stSelectbox"], [data-testid="stHorizontalBlock"], div.stButton, div[role="radiogroup"], .no-print {
             display: none !important;
         }
         body, html, .stApp, main { background: white !important; }
@@ -40,10 +53,16 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 
 # 3. Inputs
+st.markdown('<div class="no-print">', unsafe_allow_html=True)
 search_exec = st.selectbox("🔎 Select Business Partner", [k for k, v in exec_data_root.items() if isinstance(v, dict)])
+
+# Commission Type Button
+comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
+
 col1, col2 = st.columns(2)
 start, end = col1.date_input("Start Date"), col2.date_input("End Date")
 btn_generate = st.button("🚀 Generate Final Statement")
+st.markdown('</div>', unsafe_allow_html=True)
 
 # Safe Float Function
 def safe_float(val):
@@ -52,7 +71,7 @@ def safe_float(val):
     except:
         return 0.0
 
-# 4. Calculation Logic (Locked & Accurate)
+# 4. Calculation Logic
 if btn_generate:
     rows = []
     count = 1
@@ -70,7 +89,23 @@ if btn_generate:
             
             for pid, info in plot_items:
                 info = info if isinstance(info, dict) else {}
-                if str(info.get('executive_name', '')).strip().lower() == str(search_exec).strip().lower():
+                
+                exec_in_db = str(info.get('executive_name', '')).strip().lower()
+                sponsor_in_db = str(info.get('sponsor_name', info.get('sponsor', ''))).strip().lower()
+                target_exec = str(search_exec).strip().lower()
+                
+                is_self = (exec_in_db == target_exec)
+                is_group = (sponsor_in_db == target_exec)
+                
+                is_valid = False
+                if comm_type == "Self":
+                    is_valid = is_self
+                elif comm_type == "Group":
+                    is_valid = is_group
+                else: 
+                    is_valid = is_self or is_group
+                
+                if is_valid:
                     payments = [{'amt': safe_float(info.get('token_amount', 0)), 'date': info.get('booking_date', '')}]
                     pp_data = info.get('partial_payments', [])
                     if isinstance(pp_data, dict): pp_list = pp_data.values()
@@ -90,8 +125,11 @@ if btn_generate:
                             net_comm = gross - disc_amt
                             tds = net_comm * 0.02
                             in_hand = net_comm - tds
+                            
+                            entry_type = "Self" if is_self else "Group"
+                            
                             rows.append({
-                                "S.No.": count, "Mauja": mauja, "Project": project_name, "Plot": pid, 
+                                "S.No.": count, "Type": entry_type, "Mauja": mauja, "Project": project_name, "Plot": pid, 
                                 "Customer": info.get('customer_name', 'N/A'), "Received": amt, 
                                 "Date": pmt['date'], "Gross": gross, "Discount": disc_amt, 
                                 "Net Comm": net_comm, "TDS": tds, "In Hand": in_hand
@@ -100,7 +138,7 @@ if btn_generate:
     
     df = pd.DataFrame(rows)
     totals = {
-        "S.No.": "TOTAL", "Mauja": "", "Project": "", "Plot": "", "Customer": "", "Date": "",
+        "S.No.": "TOTAL", "Type": "", "Mauja": "", "Project": "", "Plot": "", "Customer": "", "Date": "",
         "Received": df['Received'].sum() if not df.empty else 0, 
         "Gross": df['Gross'].sum() if not df.empty else 0, 
         "Discount": df['Discount'].sum() if not df.empty else 0, 
@@ -110,7 +148,7 @@ if btn_generate:
     }
     df = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
     st.session_state.df_view = df
-    st.session_state.meta = {"exec": search_exec, "start": start, "end": end}
+    st.session_state.meta = {"exec": search_exec, "start": start, "end": end, "type": comm_type}
 
 # 5. Display Render
 if 'df_view' in st.session_state and st.session_state.df_view is not None:
@@ -125,18 +163,19 @@ if 'df_view' in st.session_state and st.session_state.df_view is not None:
     </div>
     <h3 style='text-align:center; margin-top:0;'>Executive Commission Statement</h3>
     <div style='margin-bottom:10px; font-size:13px;'>
-        <b>Partner:</b> {meta['exec']} <span style="float:right;"><b>Period:</b> {meta['start']} to {meta['end']}</span>
+        <b>Partner:</b> {meta['exec']} &nbsp;&nbsp;|&nbsp;&nbsp; 
+        <b>Type:</b> {meta['type']} 
+        <span style="float:right;"><b>Period:</b> {meta['start']} to {meta['end']}</span>
     </div>""", unsafe_allow_html=True)
     
     html_table = df.to_html(classes='data-table', index=False, float_format="%.2f")
     st.markdown(html_table, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
     
-    # 6. Active Print Button (100% Working)
+    # 6. Active Print Button
     components.html(
         """
         <style>
-            /* प्रिंटिंग के समय यह बटन गायब हो जाएगा ताकि कागज पर न छपे */
             @media print { body { display: none !important; } }
         </style>
         <div style="text-align:center; margin-top:20px;">
