@@ -8,34 +8,33 @@ database.init_db()
 db_data = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
-# 2. CSS (प्रिंट के लिए फाइनल सेटिंग)
+# 2. CSS (प्रिंट के लिए फाइनल क्लीनअप)
 st.markdown("""<style>
+    /* ये प्रिंटिंग के समय बाकी सब कुछ गायब कर देगा */
     @media print {
         [data-testid="stSidebar"], .no-print, header, footer, .stButton, .stSelectbox, .stDateInput { 
             display: none !important; 
         }
-        /* यह सेटिंग पेज को ऊपर-नीचे होने और पूरा डेटा लेने की आजादी देगी */
-        body, html { height: auto !important; overflow: visible !important; }
-        .a4-page { 
+        body, html { background: white !important; }
+        
+        /* पूरा डेटा पेज पर सही से आए इसके लिए */
+        .a4-container { 
             display: block !important; 
             width: 100% !important; 
             margin: 0 !important; 
-            padding: 10px !important;
-            height: auto !important; 
-            overflow: visible !important;
-            page-break-after: always; /* पेज ज्यादा होने पर अपने आप ब्रेक होगा */
+            padding: 20px !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
         }
-        .data-table { width: 100% !important; border-collapse: collapse; }
-        tr { page-break-inside: avoid !important; } /* रो को कटने से बचाएगा */
     }
-    .a4-page { background: white; padding: 20px; color: black; max-width: 900px; margin: auto; }
-    .data-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    .data-table th, .data-table td { border: 1px solid #333; padding: 6px; text-align: left; font-size: 10px; }
-    .data-table th { background-color: #eee; }
-    .summary-box { margin-top: 20px; padding: 10px; border: 2px solid #b8860b; font-weight: bold; }
+    .a4-container { background: white; color: black; max-width: 1000px; margin: auto; }
+    .data-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 10px; }
+    .data-table th, .data-table td { border: 1px solid #000; padding: 5px; text-align: left; }
+    .data-table th { background-color: #f0f0f0; }
 </style>""", unsafe_allow_html=True)
 
-# 3. Inputs
+# 3. Inputs (प्रिंट में नहीं दिखेंगे)
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 search_exec = st.selectbox("🔎 Select Business Partner", [k for k, v in exec_data_root.items() if isinstance(v, dict)])
 col1, col2 = st.columns(2)
@@ -57,25 +56,23 @@ if btn_generate:
             for pid, info in p_info['plots'].items() if isinstance(p_info['plots'], dict) else enumerate(p_info['plots']):
                 info = info if isinstance(info, dict) else {}
                 if info.get('executive_name', '').lower() == search_exec.lower() and info.get('status', '').lower() == 'booked':
-                    payments = [{'type': 'Booking', 'amt': float(info.get('token_amount', 0)), 'date': info.get('booking_date', '')}]
-                    payments.extend([{'type': pmt.get('remarks', 'Installment'), 'amt': float(pmt.get('amount', 0)), 'date': pmt.get('date', '')} for pmt in info.get('partial_payments', [])])
-                    for pmt in payments:
-                        if pmt['amt'] > 0:
-                            gross = (pmt['amt'] * p_pct) / 100
-                            rows.append({"S.No.": count, "Mauja": mauja, "Project": project_name, "Customer": info.get('customer_name', 'N/A'), "Plot": pid, "Received": pmt['amt'], "Date": pmt['date'], "Gross": gross, "Net In Hand": gross * 0.98})
-                            count += 1
+                    amt = float(info.get('token_amount', 0))
+                    if amt > 0:
+                        gross = (amt * p_pct) / 100
+                        rows.append({"S.No.": count, "Mauja": mauja, "Project": project_name, "Customer": info.get('customer_name', 'N/A'), "Plot": pid, "Received": amt, "Date": info.get('booking_date', ''), "Gross": gross, "Net In Hand": gross * 0.98})
+                        count += 1
     st.session_state.df_view = pd.DataFrame(rows) if rows else None
     st.session_state.meta = {"exec": search_exec, "start": start, "end": end}
 
-# 5. Display
+# 5. Display (A4 Container)
 if 'df_view' in st.session_state and st.session_state.df_view is not None:
     df = st.session_state.df_view
     meta = st.session_state.meta
-    st.markdown("<div class='a4-page'>", unsafe_allow_html=True)
-    st.markdown(f"<h3>FIRSTCHOICE INFRA</h3><p>Partner: {meta['exec']} | Period: {meta['start']} to {meta['end']}</p>", unsafe_allow_html=True)
+    st.markdown("<div class='a4-container'>", unsafe_allow_html=True)
+    st.markdown(f"<h2>FIRSTCHOICE INFRA</h2><p>Partner: {meta['exec']} | Period: {meta['start']} to {meta['end']}</p>", unsafe_allow_html=True)
     st.markdown(df.to_html(classes='data-table', index=False), unsafe_allow_html=True)
-    st.markdown(f"<div class='summary-box'>Gross Total: ₹{df['Gross'].sum():,.2f} | Net Total: ₹{df['Net In Hand'].sum():,.2f}</div></div>", unsafe_allow_html=True)
-
-    # 6. Buttons
-    st.markdown('<div class="no-print" style="text-align:center;"><button onclick="window.print()">🖨️ Print as PDF</button></div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # प्रिंट बटन
+    st.markdown('<div class="no-print" style="text-align:center;"><button onclick="window.print()" style="padding:10px 20px;">🖨️ Print Statement</button></div>', unsafe_allow_html=True)
 
