@@ -4,47 +4,41 @@ import database
 import pandas as pd
 
 # 1. Page Config (Locked)
-st.set_page_config(layout="wide", page_title="Firstchoice Infra - Statement")
+st.set_page_config(layout="wide", page_title="Firstchoice Infra - Statement", initial_sidebar_state="collapsed")
 database.init_db()
 db_data = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
-# 2. CSS - 100% Strict Print Mode & Remove Manage App Badge
+# 2. CSS - 100% Strict Print Mode & Top Space Fix
 st.markdown("""<style>
-    /* Streamlit Cloud के 'Manage App' काले बटन को हमेशा के लिए गायब करना */
-    div[class^="viewerBadge"], 
-    div[class*="viewerBadge"], 
-    #viewerBadge_container__1QSob,
-    a[href*="streamlit.io/cloud"],
-    #Manage-app { 
-        display: none !important; 
-        visibility: hidden !important; 
-        opacity: 0 !important;
-        height: 0 !important;
-        width: 0 !important;
+    /* Streamlit का टॉप पैडिंग हटाना ताकि पेज एकदम ऊपर से शुरू हो */
+    .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; max-width: 100% !important; }
+    
+    /* Manage App और वॉटरमार्क हटाना */
+    div[class^="viewerBadge"], div[class*="viewerBadge"], #viewerBadge_container__1QSob, a[href*="streamlit.io/cloud"], #Manage-app { 
+        display: none !important; visibility: hidden !important; opacity: 0 !important; height: 0 !important; width: 0 !important;
     }
 
     @media print {
+        @page { margin-top: 5mm !important; margin-bottom: 5mm !important; } /* प्रिंटर का ऊपरी मार्जिन कम करना */
+        
         [data-testid="stHeader"], [data-testid="stDecoration"], header, .stAppHeader, 
-        [data-testid="stSidebar"], [data-testid="stToolbar"] { 
-            display: none !important; 
-        }
+        [data-testid="stSidebar"], [data-testid="stToolbar"] { display: none !important; }
+        
         [data-testid="stSelectbox"], [data-testid="stHorizontalBlock"], div.stButton, div[role="radiogroup"], .no-print {
             display: none !important;
         }
+        
         body, html, .stApp, main { background: white !important; }
+        .block-container { padding-top: 0 !important; margin-top: 0 !important; }
+        
         .a4-container { 
-            display: block !important; 
-            width: 100% !important; 
-            position: absolute !important; 
-            top: 0 !important; 
-            left: 0 !important; 
-            margin: 0 !important; 
-            padding: 0 !important; 
-            border: none !important; 
+            display: block !important; width: 100% !important; position: absolute !important; 
+            top: 0 !important; left: 0 !important; margin: 0 !important; padding: 0 !important; border: none !important; 
         }
     }
-    .a4-container { background: white; color: black; max-width: 1000px; margin: auto; padding: 20px; }
+    
+    .a4-container { background: white; color: black; max-width: 1000px; margin: auto; padding: 10px 20px; }
     .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
     .title { font-size: 30px; font-weight: bold; margin: 0; color: #000; text-transform: uppercase; }
     .data-table { width: 100%; border-collapse: collapse; font-size: 11px; }
@@ -56,7 +50,6 @@ st.markdown("""<style>
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 search_exec = st.selectbox("🔎 Select Business Partner", [k for k, v in exec_data_root.items() if isinstance(v, dict)])
 
-# Commission Type Button
 comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
 
 col1, col2 = st.columns(2)
@@ -64,12 +57,9 @@ start, end = col1.date_input("Start Date"), col2.date_input("End Date")
 btn_generate = st.button("🚀 Generate Final Statement")
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Safe Float Function
 def safe_float(val):
-    try:
-        return float(str(val).strip() or 0)
-    except:
-        return 0.0
+    try: return float(str(val).strip() or 0)
+    except: return 0.0
 
 # 4. Calculation Logic
 if btn_generate:
@@ -98,12 +88,9 @@ if btn_generate:
                 is_group = (sponsor_in_db == target_exec)
                 
                 is_valid = False
-                if comm_type == "Self":
-                    is_valid = is_self
-                elif comm_type == "Group":
-                    is_valid = is_group
-                else: 
-                    is_valid = is_self or is_group
+                if comm_type == "Self": is_valid = is_self
+                elif comm_type == "Group": is_valid = is_group
+                else: is_valid = is_self or is_group
                 
                 if is_valid:
                     payments = [{'amt': safe_float(info.get('token_amount', 0)), 'date': info.get('booking_date', '')}]
@@ -158,8 +145,8 @@ if 'df_view' in st.session_state and st.session_state.df_view is not None:
     st.markdown("<div class='a4-container'>", unsafe_allow_html=True)
     st.markdown(f"""<div class='header'>
         <h1 class='title'>FIRSTCHOICE INFRA</h1>
-        <p><i>Symbol Of Trust...</i></p>
-        <p style='font-size:12px;'>Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034</p>
+        <p style='margin: 5px 0;'><i>Symbol Of Trust...</i></p>
+        <p style='font-size:12px; margin: 0;'>Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034</p>
     </div>
     <h3 style='text-align:center; margin-top:0;'>Executive Commission Statement</h3>
     <div style='margin-bottom:10px; font-size:13px;'>
@@ -175,9 +162,7 @@ if 'df_view' in st.session_state and st.session_state.df_view is not None:
     # 6. Active Print Button
     components.html(
         """
-        <style>
-            @media print { body { display: none !important; } }
-        </style>
+        <style>@media print { body { display: none !important; } }</style>
         <div style="text-align:center; margin-top:20px;">
             <button onclick="window.parent.print()" style="padding:12px 30px; background-color:#1e3a8a; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold; font-size:16px; font-family:sans-serif;">
                 🖨️ Print Final Document
