@@ -8,22 +8,23 @@ database.init_db()
 db_data = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
-# 2. CSS - प्रोफेशनल फॉर्मेटिंग
+# 2. CSS - यहाँ मैंने इनपुट्स को प्रिंट से गायब करने के लिए अलग क्लास 'no-print' का इस्तेमाल किया है
 st.markdown("""<style>
+    /* ये हिस्सा प्रिंट में बिल्कुल नहीं आएगा */
     @media print {
-        [data-testid="stSidebar"], .no-print, header, footer, .stButton { display: none !important; }
-        .a4-container { width: 100% !important; margin: 0 !important; }
+        .no-print { display: none !important; }
+        .a4-container { margin: 0 !important; padding: 10px !important; border: none !important; }
+        .data-table { font-size: 9px !important; }
     }
     .a4-container { background: white; color: black; max-width: 1000px; margin: auto; padding: 20px; }
     .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
     .title { font-size: 32px; font-weight: bold; margin: 0; text-transform: uppercase; }
     .data-table { width: 100%; border-collapse: collapse; font-size: 11px; }
-    .data-table th, .data-table td { border: 1px solid #000; padding: 6px; text-align: right; }
+    .data-table th, .data-table td { border: 1px solid #000; padding: 5px; text-align: right; }
     .data-table th { background-color: #f0f0f0; text-align: center; }
-    .total-row { font-weight: bold; background-color: #e0e0e0; }
 </style>""", unsafe_allow_html=True)
 
-# 3. Inputs
+# 3. Inputs (इनको 'no-print' क्लास में डाल दिया है ताकि ये प्रिंट में गायब हो जाएं)
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 search_exec = st.selectbox("🔎 Select Business Partner", [k for k, v in exec_data_root.items() if isinstance(v, dict)])
 col1, col2 = st.columns(2)
@@ -31,7 +32,7 @@ start, end = col1.date_input("Start Date"), col2.date_input("End Date")
 btn_generate = st.button("🚀 Generate Final Statement")
 st.markdown('</div>', unsafe_allow_html=True)
 
-# 4. Calculation
+# 4. Calculation Logic (वही पुराना सटीक लॉजिक)
 if btn_generate:
     rows = []
     count = 1
@@ -61,14 +62,13 @@ if btn_generate:
                             rows.append({"S.No.": count, "Mauja": mauja, "Project": project_name, "Plot": pid, "Customer": info.get('customer_name', 'N/A'), "Received": pmt['amt'], "Date": pmt['date'], "Gross": gross, "Discount": discount, "Net Comm": net_comm, "TDS (2%)": tds, "In Hand": in_hand})
                             count += 1
     
-    # Total Row
     df = pd.DataFrame(rows)
     totals = {"S.No.": "TOTAL", "Received": df['Received'].sum(), "Gross": df['Gross'].sum(), "Discount": df['Discount'].sum(), "Net Comm": df['Net Comm'].sum(), "TDS (2%)": df['TDS (2%)'].sum(), "In Hand": df['In Hand'].sum()}
     df = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
     st.session_state.df_view = df
     st.session_state.meta = {"exec": search_exec, "start": start, "end": end}
 
-# 5. Display
+# 5. Display (A4 CONTAINER के अंदर सब कुछ)
 if 'df_view' in st.session_state and st.session_state.df_view is not None:
     df = st.session_state.df_view
     meta = st.session_state.meta
@@ -80,9 +80,10 @@ if 'df_view' in st.session_state and st.session_state.df_view is not None:
         <p style='font-size:12px;'>Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034</p>
     </div>
     <h3 style='text-align:center;'>Executive Commission Statement</h3>
-    <div style='margin-bottom:10px;'><b>Partner:</b> {meta['exec']} <br> <b>Period:</b> {meta['start']} to {meta['end']}</div>""", unsafe_allow_html=True)
+    <div style='margin-bottom:10px;'><b>Partner:</b> {meta['exec']} &nbsp;&nbsp;|&nbsp;&nbsp; <b>Period:</b> {meta['start']} to {meta['end']}</div>""", unsafe_allow_html=True)
     
     st.markdown(df.to_html(classes='data-table', index=False, float_format="%.2f"), unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True) # A4 Container Close
     
-    st.markdown('<div class="no-print" style="text-align:center; margin-top:20px;"><button onclick="window.print()">🖨️ Print Document</button></div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="no-print" style="text-align:center; margin-top:20px;"><button onclick="window.print()">🖨️ Print Final Document</button></div>', unsafe_allow_html=True)
 
