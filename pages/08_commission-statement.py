@@ -11,18 +11,19 @@ database.init_db()
 db_data = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
-# लोगो को प्रिंट में 100% पक्का दिखाने के लिए Base64 फंक्शन (JPG फॉर्मेट के लिए अपडेटेड)
+# लोगो को प्रिंट में 100% पक्का दिखाने के लिए Base64 फंक्शन
 def get_image_base64(image_path):
     if os.path.exists(image_path):
         with open(image_path, "rb") as img_file:
             return base64.b64encode(img_file.read()).decode()
     return ""
 
-# अपने लोगो फाइल का नाम 'logo.jpg' रखें और सेम फोल्डर में डालें
+# ध्यान दें: फाइल का नाम वापस 'logo.jpg' कर दिया गया है
 LOGO_FILE = "logo.jpg" 
 logo_base64 = get_image_base64(LOGO_FILE)
-# कोने (Left-Upper) में लोगो सेट करने का HTML
-logo_html = f"<img src='data:image/jpeg;base64,{logo_base64}' style='position:absolute; top:5px; left:10px; width:100px; height:auto;'/>" if logo_base64 else ""
+
+# MAGIC CSS: mix-blend-mode: multiply; - यह ओरिजिनल फोटो के क्रीम बैकग्राउंड को गायब कर देगा!
+logo_html = f"<img src='data:image/jpeg;base64,{logo_base64}' style='position:absolute; top:0px; left:15px; width:130px; height:auto; mix-blend-mode: multiply;'/>" if logo_base64 else ""
 
 # 2. CSS - Strict Print Mode & SUPER HIGHLIGHTED Totals
 st.markdown("""<style>
@@ -45,7 +46,6 @@ st.markdown("""<style>
     
     .a4-container { background: white; color: black; max-width: 1000px; margin: auto; padding: 5px 20px; }
     
-    /* हेडर में 'position: relative' डाला है ताकि लोगो कोने में सही से सेट हो सके */
     .header { position: relative; text-align: center; border-bottom: 2px solid #000; padding-bottom: 5px; margin-bottom: 15px; }
     .title { font-size: 30px; font-weight: bold; margin: 0; color: #000; text-transform: uppercase; }
     
@@ -171,7 +171,6 @@ if 'df_view' in st.session_state and st.session_state.df_view is not None:
     
     st.markdown("<div class='a4-container'>", unsafe_allow_html=True)
     
-    # हेडर के अंदर लेफ्ट साइड में लोगो को जोड़ दिया गया है
     st.markdown(f"""<div class='header'>
         {logo_html}
         <h1 class='title'>FIRSTCHOICE INFRA</h1>
