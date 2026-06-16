@@ -5,13 +5,13 @@ import pandas as pd
 import base64
 import os
 
-# 1. Page Config (Locked)
+# 1. Page Config
 st.set_page_config(layout="wide", page_title="Firstchoice Infra - Statement", initial_sidebar_state="collapsed")
 database.init_db()
 db_data = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
-# लोगो को प्रिंट में 100% पक्का दिखाने के लिए Base64 फंक्शन
+# लोगो फंक्शन
 def get_image_base64(image_path):
     if os.path.exists(image_path):
         with open(image_path, "rb") as img_file:
@@ -22,12 +22,11 @@ LOGO_FILE = "logo.jpg"
 logo_base64 = get_image_base64(LOGO_FILE)
 logo_html = f"<img src='data:image/jpeg;base64,{logo_base64}' style='position:absolute; top:0px; left:15px; width:130px; height:auto; mix-blend-mode: multiply;'/>" if logo_base64 else ""
 
-# 2. CSS - Strict Print Mode & SUPER HIGHLIGHTED Totals
+# 2. CSS 
 st.markdown("""<style>
     .block-container { padding-top: 0rem !important; margin-top: -60px !important; padding-bottom: 1rem !important; max-width: 100% !important; }
     [data-testid="stHeader"] { display: none !important; height: 0 !important; }
 
-    /* Manage App और वॉटरमार्क हटाना */
     div[class^="viewerBadge"], div[class*="viewerBadge"], #viewerBadge_container__1QSob, a[href*="streamlit.io/cloud"], #Manage-app { 
         display: none !important; visibility: hidden !important; opacity: 0 !important; height: 0 !important; width: 0 !important;
     }
@@ -49,7 +48,7 @@ st.markdown("""<style>
     .data-table th, .data-table td { border: 1px solid #000; padding: 6px; text-align: right; }
     .data-table th { background-color: #f0f0f0; text-align: center; font-weight: bold; }
     
-    /* TOTAL वाली लाइन को एकदम ब्रॉड (Broad), डार्क और हाईलाइट करने का कोड */
+    /* TOTAL वाली लाइन एकदम डार्क और हाईलाइटेड */
     .data-table tr:last-child td { 
         font-weight: 900 !important; 
         background-color: #ffeb3b !important; 
@@ -61,7 +60,7 @@ st.markdown("""<style>
     }
 </style>""", unsafe_allow_html=True)
 
-# किसी भी एग्जीक्यूटिव की पूरी डाउनलाइन टीम निकालने का फंक्शन
+# डाउनलाइन निकालने का फंक्शन
 def get_downline_team(target_user, exec_data):
     team = set()
     queue = [str(target_user).strip().lower()]
@@ -77,24 +76,30 @@ def get_downline_team(target_user, exec_data):
                         queue.append(sub_exec)
     return team
 
-# 3. Security & Hierarchy Control Section
+# 3. 100% Smart Security & Login Logic
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
-# डिफ़ॉल्ट रूप से अब यह 'Admin' रहेगा ताकि आपको कोई परेशानी न हो
-user_role = st.session_state.get('role', 'Admin') 
-logged_in_user = st.session_state.get('username', 'Admin')
+# आपके लॉगिन पेज से जो भी डाटा आएगा, उसे हम स्मॉल लेटर्स (lower) में बदल देंगे ताकि कोई एरर न आए
+raw_role = st.session_state.get('role', 'admin') # अगर कुछ नहीं मिला तो बाय-डिफ़ॉल्ट admin मान लेंगे
+user_role = str(raw_role).strip().lower() 
+logged_in_user = str(st.session_state.get('username', '')).strip()
 
-if user_role == 'Admin':
-    # एडमिन को कंपनी के सभी एग्जीक्यूटिव्स की लिस्ट दिखेगी
-    st.info("👑 **Admin View:** You can see all Business Partners.")
+if user_role == 'admin':
+    # एडमिन को 100% सभी एग्जीक्यूटिव दिखेंगे
+    st.info("👑 **Admin View:** You can view all Business Partners.")
     all_execs = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
     search_exec = st.selectbox("🔎 Select Business Partner", all_execs)
 else:
-    # एग्जीक्यूटिव को सिर्फ अपना और अपनी डाउनलाइन का नाम दिखेगा
+    # एग्जीक्यूटिव को सिर्फ अपना नाम और अपने डाउनलाइन का नाम दिखेगा
     my_downline = get_downline_team(logged_in_user, exec_data_root)
-    allowed_options = [k for k in exec_data_root.keys() if str(k).strip().lower() == str(logged_in_user).strip().lower() or str(k).strip().lower() in my_downline]
-    st.info(f"🔒 **Secure View Enabled:** Logged in as {logged_in_user}")
-    search_exec = st.selectbox("🔎 Select Business Partner (Your Team Only)", allowed_options)
+    allowed_options = [k for k in exec_data_root.keys() if str(k).strip().lower() == logged_in_user.lower() or str(k).strip().lower() in my_downline]
+    
+    st.info(f"🔒 **Secure View:** Logged in as **{logged_in_user}** (Showing your team only)")
+    if allowed_options:
+        search_exec = st.selectbox("🔎 Select Business Partner", allowed_options)
+    else:
+        st.warning("No data found. Please check your login ID.")
+        search_exec = None
 
 comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
 
