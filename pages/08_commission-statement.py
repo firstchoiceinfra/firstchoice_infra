@@ -18,11 +18,8 @@ def get_image_base64(image_path):
             return base64.b64encode(img_file.read()).decode()
     return ""
 
-# ध्यान दें: फाइल का नाम वापस 'logo.jpg' कर दिया गया है
 LOGO_FILE = "logo.jpg" 
 logo_base64 = get_image_base64(LOGO_FILE)
-
-# MAGIC CSS: mix-blend-mode: multiply; - यह ओरिजिनल फोटो के क्रीम बैकग्राउंड को गायब कर देगा!
 logo_html = f"<img src='data:image/jpeg;base64,{logo_base64}' style='position:absolute; top:0px; left:15px; width:130px; height:auto; mix-blend-mode: multiply;'/>" if logo_base64 else ""
 
 # 2. CSS - Strict Print Mode & SUPER HIGHLIGHTED Totals
@@ -45,7 +42,6 @@ st.markdown("""<style>
     }
     
     .a4-container { background: white; color: black; max-width: 1000px; margin: auto; padding: 5px 20px; }
-    
     .header { position: relative; text-align: center; border-bottom: 2px solid #000; padding-bottom: 5px; margin-bottom: 15px; }
     .title { font-size: 30px; font-weight: bold; margin: 0; color: #000; text-transform: uppercase; }
     
@@ -65,17 +61,40 @@ st.markdown("""<style>
     }
 </style>""", unsafe_allow_html=True)
 
-# 3. Security & Login Logic
+# नया फंक्शन: किसी भी एग्जीक्यूटिव की पूरी डाउनलाइन टीम (recursive) निकालने के लिए
+def get_downline_team(target_user, exec_data):
+    team = set()
+    queue = [str(target_user).strip().lower()]
+    while queue:
+        curr = queue.pop(0)
+        for k, v in exec_data.items():
+            if isinstance(v, dict):
+                # चेक करें कि उनका स्पॉन्सर कौन है
+                sp = str(v.get('sponsor', v.get('sponsor_name', ''))).strip().lower()
+                if sp == curr:
+                    sub_exec = str(k).strip().lower()
+                    if sub_exec not in team:
+                        team.add(sub_exec)
+                        queue.append(sub_exec) # इसके नीचे की टीम ढूंढने के लिए कतार में जोड़ें
+    return team
+
+# 3. Security & Hierarchy Control Section
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
-user_role = st.session_state.get('role', 'Admin') 
-logged_in_user = st.session_state.get('username', '')
+user_role = st.session_state.get('role', 'Executive') 
+logged_in_user = st.session_state.get('username', 'kiran parate')
+
+# लॉगिन यूजर की पूरी डाउनलाइन टीम कैलकुलेट करें
+my_downline = get_downline_team(logged_in_user, exec_data_root)
 
 if user_role == 'Admin':
+    # एडमिन सबको देख सकता है
     search_exec = st.selectbox("🔎 Select Business Partner", [k for k, v in exec_data_root.items() if isinstance(v, dict)])
 else:
-    st.info(f"👤 Logged in as: **{logged_in_user}**")
-    search_exec = logged_in_user
+    # एग्जीक्यूटिव सिर्फ खुद को या अपनी डाउनलाइन टीम के मेम्बर्स को ही सिलेक्ट कर सकता है
+    allowed_options = [k for k in exec_data_root.keys() if str(k).strip().lower() == str(logged_in_user).strip().lower() or str(k).strip().lower() in my_downline]
+    st.info(f"🔒 Secure View Enabled for {logged_in_user}")
+    search_exec = st.selectbox("🔎 Select Business Partner (Your Team Only)", allowed_options)
 
 comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
 
@@ -88,13 +107,16 @@ def safe_float(val):
     try: return float(str(val).strip() or 0)
     except: return 0.0
 
-# 4. Calculation Logic
+# 4. Calculation Logic (With Recursive Downline Filter)
 if btn_generate and search_exec: 
     rows = []
     count = 1
     p_profile = exec_data_root.get(search_exec, {})
     p_pct = safe_float(p_profile.get('percentage_exec', 0))
     mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
+    
+    # सिलेक्टेड पार्टनर की डाउनलाइन टीम निकालें (Group कैलकुलेशन के लिए)
+    selected_user_downline = get_downline_team(search_exec, exec_data_root)
     
     for project_name, p_info in db_data.items():
         if isinstance(p_info, dict) and 'plots' in p_info:
@@ -111,8 +133,11 @@ if btn_generate and search_exec:
                 sponsor_in_db = str(info.get('sponsor_name', info.get('sponsor', ''))).strip().lower()
                 target_exec = str(search_exec).strip().lower()
                 
+                # 'Self' मतलब खुद का डायरेक्ट बिज़नेस
                 is_self = (exec_in_db == target_exec)
-                is_group = (sponsor_in_db == target_exec)
+                
+                # 'Group' मतलब उसकी पूरी डाउनलाइन ट्री में से किसी का भी बिज़नेस या डायरेक्ट स्पॉन्सरशिप
+                is_group = (exec_in_db in selected_user_downline or sponsor_in_db == target_exec)
                 
                 is_valid = False
                 if comm_type == "Self": is_valid = is_self
@@ -170,7 +195,6 @@ if 'df_view' in st.session_state and st.session_state.df_view is not None:
     meta = st.session_state.meta
     
     st.markdown("<div class='a4-container'>", unsafe_allow_html=True)
-    
     st.markdown(f"""<div class='header'>
         {logo_html}
         <h1 class='title'>FIRSTCHOICE INFRA</h1>
