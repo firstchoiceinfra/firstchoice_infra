@@ -61,7 +61,7 @@ st.markdown("""<style>
     }
 </style>""", unsafe_allow_html=True)
 
-# नया फंक्शन: किसी भी एग्जीक्यूटिव की पूरी डाउनलाइन टीम (recursive) निकालने के लिए
+# किसी भी एग्जीक्यूटिव की पूरी डाउनलाइन टीम निकालने का फंक्शन
 def get_downline_team(target_user, exec_data):
     team = set()
     queue = [str(target_user).strip().lower()]
@@ -69,31 +69,31 @@ def get_downline_team(target_user, exec_data):
         curr = queue.pop(0)
         for k, v in exec_data.items():
             if isinstance(v, dict):
-                # चेक करें कि उनका स्पॉन्सर कौन है
                 sp = str(v.get('sponsor', v.get('sponsor_name', ''))).strip().lower()
                 if sp == curr:
                     sub_exec = str(k).strip().lower()
                     if sub_exec not in team:
                         team.add(sub_exec)
-                        queue.append(sub_exec) # इसके नीचे की टीम ढूंढने के लिए कतार में जोड़ें
+                        queue.append(sub_exec)
     return team
 
 # 3. Security & Hierarchy Control Section
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
-user_role = st.session_state.get('role', 'Executive') 
-logged_in_user = st.session_state.get('username', 'kiran parate')
-
-# लॉगिन यूजर की पूरी डाउनलाइन टीम कैलकुलेट करें
-my_downline = get_downline_team(logged_in_user, exec_data_root)
+# डिफ़ॉल्ट रूप से अब यह 'Admin' रहेगा ताकि आपको कोई परेशानी न हो
+user_role = st.session_state.get('role', 'Admin') 
+logged_in_user = st.session_state.get('username', 'Admin')
 
 if user_role == 'Admin':
-    # एडमिन सबको देख सकता है
-    search_exec = st.selectbox("🔎 Select Business Partner", [k for k, v in exec_data_root.items() if isinstance(v, dict)])
+    # एडमिन को कंपनी के सभी एग्जीक्यूटिव्स की लिस्ट दिखेगी
+    st.info("👑 **Admin View:** You can see all Business Partners.")
+    all_execs = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
+    search_exec = st.selectbox("🔎 Select Business Partner", all_execs)
 else:
-    # एग्जीक्यूटिव सिर्फ खुद को या अपनी डाउनलाइन टीम के मेम्बर्स को ही सिलेक्ट कर सकता है
+    # एग्जीक्यूटिव को सिर्फ अपना और अपनी डाउनलाइन का नाम दिखेगा
+    my_downline = get_downline_team(logged_in_user, exec_data_root)
     allowed_options = [k for k in exec_data_root.keys() if str(k).strip().lower() == str(logged_in_user).strip().lower() or str(k).strip().lower() in my_downline]
-    st.info(f"🔒 Secure View Enabled for {logged_in_user}")
+    st.info(f"🔒 **Secure View Enabled:** Logged in as {logged_in_user}")
     search_exec = st.selectbox("🔎 Select Business Partner (Your Team Only)", allowed_options)
 
 comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
@@ -107,7 +107,7 @@ def safe_float(val):
     try: return float(str(val).strip() or 0)
     except: return 0.0
 
-# 4. Calculation Logic (With Recursive Downline Filter)
+# 4. Calculation Logic
 if btn_generate and search_exec: 
     rows = []
     count = 1
@@ -115,7 +115,6 @@ if btn_generate and search_exec:
     p_pct = safe_float(p_profile.get('percentage_exec', 0))
     mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
     
-    # सिलेक्टेड पार्टनर की डाउनलाइन टीम निकालें (Group कैलकुलेशन के लिए)
     selected_user_downline = get_downline_team(search_exec, exec_data_root)
     
     for project_name, p_info in db_data.items():
@@ -133,10 +132,7 @@ if btn_generate and search_exec:
                 sponsor_in_db = str(info.get('sponsor_name', info.get('sponsor', ''))).strip().lower()
                 target_exec = str(search_exec).strip().lower()
                 
-                # 'Self' मतलब खुद का डायरेक्ट बिज़नेस
                 is_self = (exec_in_db == target_exec)
-                
-                # 'Group' मतलब उसकी पूरी डाउनलाइन ट्री में से किसी का भी बिज़नेस या डायरेक्ट स्पॉन्सरशिप
                 is_group = (exec_in_db in selected_user_downline or sponsor_in_db == target_exec)
                 
                 is_valid = False
