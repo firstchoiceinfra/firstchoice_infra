@@ -2,6 +2,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 import database
 import pandas as pd
+import base64
+import os
 
 # 1. Page Config (Locked)
 st.set_page_config(layout="wide", page_title="Firstchoice Infra - Statement", initial_sidebar_state="collapsed")
@@ -9,46 +11,71 @@ database.init_db()
 db_data = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
-# 2. CSS - 100% Strict Print Mode & Top Space Fix
+# लोगो को प्रिंट में 100% पक्का दिखाने के लिए Base64 फंक्शन (JPG फॉर्मेट के लिए अपडेटेड)
+def get_image_base64(image_path):
+    if os.path.exists(image_path):
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    return ""
+
+# अपने लोगो फाइल का नाम 'logo.jpg' रखें और सेम फोल्डर में डालें
+LOGO_FILE = "logo.jpg" 
+logo_base64 = get_image_base64(LOGO_FILE)
+# कोने (Left-Upper) में लोगो सेट करने का HTML
+logo_html = f"<img src='data:image/jpeg;base64,{logo_base64}' style='position:absolute; top:5px; left:10px; width:100px; height:auto;'/>" if logo_base64 else ""
+
+# 2. CSS - Strict Print Mode & SUPER HIGHLIGHTED Totals
 st.markdown("""<style>
-    /* Streamlit का टॉप पैडिंग हटाना ताकि पेज एकदम ऊपर से शुरू हो */
-    .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; max-width: 100% !important; }
-    
+    .block-container { padding-top: 0rem !important; margin-top: -60px !important; padding-bottom: 1rem !important; max-width: 100% !important; }
+    [data-testid="stHeader"] { display: none !important; height: 0 !important; }
+
     /* Manage App और वॉटरमार्क हटाना */
     div[class^="viewerBadge"], div[class*="viewerBadge"], #viewerBadge_container__1QSob, a[href*="streamlit.io/cloud"], #Manage-app { 
         display: none !important; visibility: hidden !important; opacity: 0 !important; height: 0 !important; width: 0 !important;
     }
 
     @media print {
-        @page { margin-top: 5mm !important; margin-bottom: 5mm !important; } /* प्रिंटर का ऊपरी मार्जिन कम करना */
-        
-        [data-testid="stHeader"], [data-testid="stDecoration"], header, .stAppHeader, 
-        [data-testid="stSidebar"], [data-testid="stToolbar"] { display: none !important; }
-        
-        [data-testid="stSelectbox"], [data-testid="stHorizontalBlock"], div.stButton, div[role="radiogroup"], .no-print {
-            display: none !important;
-        }
-        
-        body, html, .stApp, main { background: white !important; }
+        @page { margin-top: 0mm !important; margin-bottom: 5mm !important; }
+        [data-testid="stHeader"], [data-testid="stDecoration"], header, .stAppHeader, [data-testid="stSidebar"], [data-testid="stToolbar"] { display: none !important; }
+        [data-testid="stSelectbox"], [data-testid="stHorizontalBlock"], div.stButton, div[role="radiogroup"], div.stInfo, .no-print { display: none !important; }
+        body, html, .stApp, main { background: white !important; padding: 0 !important; margin: 0 !important; }
         .block-container { padding-top: 0 !important; margin-top: 0 !important; }
-        
-        .a4-container { 
-            display: block !important; width: 100% !important; position: absolute !important; 
-            top: 0 !important; left: 0 !important; margin: 0 !important; padding: 0 !important; border: none !important; 
-        }
+        .a4-container { display: block !important; width: 100% !important; position: absolute !important; top: 0 !important; left: 0 !important; margin: 0 !important; padding: 0 !important; border: none !important; }
     }
     
-    .a4-container { background: white; color: black; max-width: 1000px; margin: auto; padding: 10px 20px; }
-    .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
+    .a4-container { background: white; color: black; max-width: 1000px; margin: auto; padding: 5px 20px; }
+    
+    /* हेडर में 'position: relative' डाला है ताकि लोगो कोने में सही से सेट हो सके */
+    .header { position: relative; text-align: center; border-bottom: 2px solid #000; padding-bottom: 5px; margin-bottom: 15px; }
     .title { font-size: 30px; font-weight: bold; margin: 0; color: #000; text-transform: uppercase; }
+    
     .data-table { width: 100%; border-collapse: collapse; font-size: 11px; }
     .data-table th, .data-table td { border: 1px solid #000; padding: 6px; text-align: right; }
     .data-table th { background-color: #f0f0f0; text-align: center; font-weight: bold; }
+    
+    /* TOTAL वाली लाइन को एकदम ब्रॉड (Broad), डार्क और हाईलाइट करने का कोड */
+    .data-table tr:last-child td { 
+        font-weight: 900 !important; 
+        background-color: #ffeb3b !important; 
+        color: #000 !important; 
+        font-size: 15px !important; 
+        padding: 12px 6px !important; 
+        border-top: 3px solid #000 !important; 
+        border-bottom: 3px solid #000 !important; 
+    }
 </style>""", unsafe_allow_html=True)
 
-# 3. Inputs
+# 3. Security & Login Logic
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
-search_exec = st.selectbox("🔎 Select Business Partner", [k for k, v in exec_data_root.items() if isinstance(v, dict)])
+
+user_role = st.session_state.get('role', 'Admin') 
+logged_in_user = st.session_state.get('username', '')
+
+if user_role == 'Admin':
+    search_exec = st.selectbox("🔎 Select Business Partner", [k for k, v in exec_data_root.items() if isinstance(v, dict)])
+else:
+    st.info(f"👤 Logged in as: **{logged_in_user}**")
+    search_exec = logged_in_user
 
 comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
 
@@ -62,7 +89,7 @@ def safe_float(val):
     except: return 0.0
 
 # 4. Calculation Logic
-if btn_generate:
+if btn_generate and search_exec: 
     rows = []
     count = 1
     p_profile = exec_data_root.get(search_exec, {})
@@ -143,7 +170,10 @@ if 'df_view' in st.session_state and st.session_state.df_view is not None:
     meta = st.session_state.meta
     
     st.markdown("<div class='a4-container'>", unsafe_allow_html=True)
+    
+    # हेडर के अंदर लेफ्ट साइड में लोगो को जोड़ दिया गया है
     st.markdown(f"""<div class='header'>
+        {logo_html}
         <h1 class='title'>FIRSTCHOICE INFRA</h1>
         <p style='margin: 5px 0;'><i>Symbol Of Trust...</i></p>
         <p style='font-size:12px; margin: 0;'>Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034</p>
