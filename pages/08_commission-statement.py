@@ -69,7 +69,7 @@ def safe_float(val):
     try: return float(str(val).strip() or 0)
     except: return 0.0
 
-# 🛠️ स्मार्ट ट्री बिल्डर (स्पेलिंग की गलतियों को इग्नोर करके चेन जोड़ेगा)
+# 🛠️ स्मार्ट ट्री बिल्डर
 def build_exec_tree(exec_data):
     norm_data = {}
     for k, v in exec_data.items():
@@ -78,10 +78,8 @@ def build_exec_tree(exec_data):
             pct = 0.0
             for key, val in v.items():
                 k_low = str(key).strip().lower()
-                # स्पॉन्सर का नाम किसी भी तरह लिखा हो, यह पकड़ लेगा
                 if k_low in ['sponsor', 'sponsor_name', 'sponsor name']:
                     sp = str(val).strip().lower()
-                # परसेंटेज किसी भी तरह लिखा हो, यह पकड़ लेगा
                 elif k_low in ['percentage_exec', 'percentage', 'pct', 'commission']:
                     pct = safe_float(val)
             
@@ -92,7 +90,7 @@ def build_exec_tree(exec_data):
             }
     return norm_data
 
-# 🛠️ पूरी डाउनलाइन ढूँढने वाला स्कैनर (रमेश -> दिनेश -> अतुल)
+# 🛠️ पूरी डाउनलाइन ढूँढने वाला स्कैनर
 def get_downline_set(target_norm, norm_data):
     team = set()
     queue = [target_norm]
@@ -114,7 +112,6 @@ def get_diff_pct(target_norm, plot_exec_norm, norm_data):
     child_of_target = None
     visited = set()
     
-    # चेन में नीचे से ऊपर की तरफ जाना (अतुल -> दिनेश -> रमेश)
     while curr and curr in norm_data and curr != target_norm:
         visited.add(curr)
         sp = norm_data[curr]['sponsor']
@@ -197,7 +194,6 @@ if btn_generate and search_exec:
     count = 1
     target_norm = str(search_exec).strip().lower()
     
-    # सिलेक्ट किए गए पार्टनर की डाउनलाइन ढूँढना
     selected_user_downline = get_downline_set(target_norm, norm_exec_data)
     mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
     
@@ -212,7 +208,6 @@ if btn_generate and search_exec:
             for pid, info in plot_items:
                 info = info if isinstance(info, dict) else {}
                 
-                # प्लॉट डेटा से स्पॉन्सर और एग्जीक्यूटिव का नाम निकालना
                 ex_name = ""
                 sp_name = ""
                 for key, val in info.items():
@@ -226,7 +221,6 @@ if btn_generate and search_exec:
                 sponsor_in_db = sp_name
                 
                 is_self = (exec_in_db == target_norm)
-                # अगर प्लॉट बेचने वाला डाउनलाइन में है, या प्लॉट का डायरेक्ट स्पॉन्सर टारगेट यूजर है
                 is_group = (exec_in_db in selected_user_downline) or (sponsor_in_db == target_norm)
                 
                 is_valid = False
@@ -246,13 +240,80 @@ if btn_generate and search_exec:
                     if comp_rate <= 0: comp_rate = 650 
                     discount_sqft = safe_float(info.get('discount', 0))
                     
-                    # 🎯 'डिफरेंस कमीशन' लागू
                     applicable_pct = get_diff_pct(target_norm, exec_in_db, norm_exec_data)
                     
-                    # टेबल में बेचने वाले का नाम दिखाने का लेबल
                     if is_self:
                         entry_label = "Self"
                     else:
                         orig_seller_name = norm_exec_data.get(exec_in_db, {}).get('name', exec_in_db.title())
                         if not orig_seller_name:
-                            orig_seller_name = "Team
+                            orig_seller_name = "Team"
+                        entry_label = f"Group ({orig_seller_name})"
+                    
+                    for pmt in payments:
+                        amt = safe_float(pmt['amt'])
+                        if amt > 0:
+                            gross = (amt * applicable_pct) / 100
+                            disc_amt = (amt / comp_rate) * discount_sqft 
+                            net_comm = gross - disc_amt
+                            tds = net_comm * 0.02
+                            in_hand = net_comm - tds
+                            
+                            rows.append({
+                                "S.No.": count, "Type": entry_label, "Mauja": mauja, "Project": project_name, "Plot": pid, 
+                                "Customer": info.get('customer_name', 'N/A'), "Received": amt, 
+                                "Date": pmt['date'], "Gross": gross, "Discount": disc_amt, 
+                                "Net Comm": net_comm, "TDS": tds, "In Hand": in_hand
+                            })
+                            count += 1
+    
+    df = pd.DataFrame(rows)
+    totals = {
+        "S.No.": "TOTAL", "Type": "", "Mauja": "", "Project": "", "Plot": "", "Customer": "", "Date": "",
+        "Received": df['Received'].sum() if not df.empty else 0, 
+        "Gross": df['Gross'].sum() if not df.empty else 0, 
+        "Discount": df['Discount'].sum() if not df.empty else 0, 
+        "Net Comm": df['Net Comm'].sum() if not df.empty else 0, 
+        "TDS": df['TDS'].sum() if not df.empty else 0, 
+        "In Hand": df['In Hand'].sum() if not df.empty else 0
+    }
+    df = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
+    st.session_state.df_view = df
+    st.session_state.meta = {"exec": search_exec, "start": start, "end": end, "type": comm_type}
+
+# 5. Display Render
+if 'df_view' in st.session_state and st.session_state.df_view is not None:
+    df = st.session_state.df_view
+    meta = st.session_state.meta
+    
+    st.markdown("<div class='a4-container'>", unsafe_allow_html=True)
+    st.markdown(f"""<div class='header'>
+        {logo_html}
+        <h1 class='title'>FIRSTCHOICE INFRA</h1>
+        <p style='margin: 5px 0;'><i>Symbol Of Trust...</i></p>
+        <p style='font-size:12px; margin: 0;'>Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034</p>
+    </div>
+    <h3 style='text-align:center; margin-top:0;'>Executive Commission Statement</h3>
+    <div style='margin-bottom:10px; font-size:13px;'>
+        <b>Partner:</b> {meta['exec']} &nbsp;&nbsp;|&nbsp;&nbsp; 
+        <b>Type:</b> {meta['type']} 
+        <span style="float:right;"><b>Period:</b> {meta['start']} to {meta['end']}</span>
+    </div>""", unsafe_allow_html=True)
+    
+    html_table = df.to_html(classes='data-table', index=False, float_format="%.2f")
+    st.markdown(html_table, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # 6. Active Print Button
+    components.html(
+        """
+        <style>@media print { body { display: none !important; } }</style>
+        <div style="text-align:center; margin-top:20px;">
+            <button onclick="window.parent.print()" style="padding:12px 30px; background-color:#1e3a8a; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold; font-size:16px; font-family:sans-serif;">
+                🖨️ Print Final Document
+            </button>
+        </div>
+        """,
+        height=80
+    )
+
