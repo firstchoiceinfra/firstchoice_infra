@@ -24,7 +24,8 @@ logo_html = f"<img src='data:image/jpeg;base64,{logo_base64}' style='position:ab
 
 # 2. CSS - Layout & Table Formatting
 st.markdown("""<style>
-    .block-container { padding-top: 0rem !important; margin-top: -60px !important; padding-bottom: 1rem !important; max-width: 100% !important; }
+    /* यहाँ मैंने स्पेसिंग ठीक कर दी है ताकि हरा बॉक्स कटे नहीं */
+    .block-container { padding-top: 2rem !important; margin-top: 0px !important; padding-bottom: 1rem !important; max-width: 100% !important; }
     [data-testid="stHeader"] { display: none !important; height: 0 !important; }
 
     div[class^="viewerBadge"], div[class*="viewerBadge"], #viewerBadge_container__1QSob, a[href*="streamlit.io/cloud"], #Manage-app { 
@@ -76,7 +77,7 @@ def get_downline_team(target_user, exec_data):
                         queue.append(sub_exec)
     return team
 
-# 3. 100% BULLETPROOF AUTOMATIC SECURITY LOGIC (कोई मैन्युअल इनपुट नहीं)
+# 3. 100% BULLETPROOF AUTOMATIC SECURITY LOGIC
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
 logged_in_user = ""
@@ -90,7 +91,7 @@ for k, v in st.session_state.items():
     if k_low in ['username', 'user', 'logged_in_user', 'name', 'current_user'] and isinstance(v, str):
         logged_in_user = v.strip()
 
-# स्मार्ट बैकएंड ऑटो-डिटेक्शन (ताकि एडमिन कभी ब्लॉक न हो)
+# स्मार्ट बैकएंड ऑटो-डिटेक्शन 
 all_exec_names = [str(k).strip().lower() for k in exec_data_root.keys()]
 if not logged_in_user:
     for k, v in st.session_state.items():
@@ -111,7 +112,7 @@ if not logged_in_user and not is_admin:
 
 # रोल के हिसाब से ड्रॉपडाउन दिखाना (हार्ड-लॉक्ड)
 if is_admin:
-    st.success("👑 **Admin Panel:** लॉग-इन: **Boss (Admin)**")
+    st.success("👑 **Admin Panel:** लॉग-इन: **Boss (Admin)** - सभी का एक्सेस चालू है।")
     all_execs = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
     search_exec = st.selectbox("🔎 Select Business Partner", all_execs)
 else:
