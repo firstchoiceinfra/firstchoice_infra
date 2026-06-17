@@ -4,6 +4,7 @@ import database
 import pandas as pd
 import base64
 import os
+import re
 
 # 1. Page Config
 st.set_page_config(layout="wide", page_title="Firstchoice Infra - Statement", initial_sidebar_state="collapsed")
@@ -13,9 +14,11 @@ db_data = st.session_state.db_projects
 # स्मार्ट तरीके से executives का डेटा ढूँढना
 exec_data_root = {}
 for k, v in db_data.items():
-    if str(k).strip().lower() == 'executives':
-        exec_data_root = v
-        break
+    k_low = str(k).strip().lower()
+    if k_low in ['executives', 'executive', 'partners', 'partner', 'associates']:
+        if isinstance(v, dict):
+            exec_data_root = v
+            break
 
 # लोगो फंक्शन
 def get_image_base64(image_path):
@@ -69,7 +72,13 @@ def safe_float(val):
     try: return float(str(val).strip() or 0)
     except: return 0.0
 
-# 🛠️ स्मार्ट ट्री बिल्डर
+# 🛠️ स्पेलिंग और स्पेस की गलतियों को ठीक करने वाला टूल
+def get_clean_id(name):
+    if isinstance(name, dict):
+        name = name.get('name', name.get('label', str(name)))
+    return re.sub(r'[^a-z0-9]', '', str(name).lower())
+
+# 🛠️ स्मार्ट ट्री बिल्डर (पार्टनर मैनेजमेंट से डाटा लेकर)
 def build_exec_tree(exec_data):
     norm_data = {}
     for k, v in exec_data.items():
@@ -77,23 +86,25 @@ def build_exec_tree(exec_data):
             sp = ""
             pct = 0.0
             for key, val in v.items():
-                k_low = str(key).strip().lower()
-                if k_low in ['sponsor', 'sponsor_name', 'sponsor name']:
-                    sp = str(val).strip().lower()
-                elif k_low in ['percentage_exec', 'percentage', 'pct', 'commission']:
+                k_low = re.sub(r'[^a-z0-9]', '', str(key).lower())
+                if k_low in ['sponsor', 'sponsorname', 'upline']:
+                    sp = get_clean_id(val)
+                elif k_low in ['percentageexec', 'percentage', 'pct', 'commission', 'commissionpercentage']:
                     pct = safe_float(val)
             
-            norm_data[str(k).strip().lower()] = {
-                'name': str(k),
-                'sponsor': sp,
-                'pct': pct
-            }
+            clean_k = get_clean_id(k)
+            if clean_k:
+                norm_data[clean_k] = {
+                    'original_name': str(k),
+                    'sponsor': sp,
+                    'pct': pct
+                }
     return norm_data
 
-# 🛠️ पूरी डाउनलाइन ढूँढने वाला स्कैनर
-def get_downline_set(target_norm, norm_data):
+# 🛠️ पूरी डाउनलाइन (चेन) ढूँढने वाला स्कैनर
+def get_downline_set(target_clean, norm_data):
     team = set()
-    queue = [target_norm]
+    queue = [target_clean]
     while queue:
         curr = queue.pop(0)
         for k, v in norm_data.items():
@@ -103,19 +114,20 @@ def get_downline_set(target_norm, norm_data):
     return team
 
 # 🛠️ असली डिफरेंस कमीशन कैलकुलेटर
-def get_diff_pct(target_norm, plot_exec_norm, norm_data):
-    target_pct = norm_data.get(target_norm, {}).get('pct', 0.0)
-    if target_norm == plot_exec_norm:
+def get_diff_pct(target_clean, plot_exec_clean, norm_data):
+    target_pct = norm_data.get(target_clean, {}).get('pct', 0.0)
+    if target_clean == plot_exec_clean:
         return target_pct
     
-    curr = plot_exec_norm
+    curr = plot_exec_clean
     child_of_target = None
     visited = set()
     
-    while curr and curr in norm_data and curr != target_norm:
+    # नीचे से ऊपर की तरफ स्पॉन्सर चेक करते जाना
+    while curr and curr in norm_data and curr != target_clean:
         visited.add(curr)
-        sp = norm_data[curr]['sponsor']
-        if sp == target_norm:
+        sp = norm_data[curr].get('sponsor', '')
+        if sp == target_clean:
             child_of_target = curr
             break
         if sp in visited or not sp:
@@ -126,10 +138,10 @@ def get_diff_pct(target_norm, plot_exec_norm, norm_data):
         child_pct = norm_data.get(child_of_target, {}).get('pct', 0.0)
         return max(0.0, target_pct - child_pct)
     else:
-        plot_exec_pct = norm_data.get(plot_exec_norm, {}).get('pct', 0.0)
+        plot_exec_pct = norm_data.get(plot_exec_clean, {}).get('pct', 0.0)
         return max(0.0, target_pct - plot_exec_pct)
 
-# 3. 100% BULLETPROOF AUTOMATIC SECURITY LOGIC
+# 3. SECURITY LOGIC
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
 logged_in_user = ""
@@ -143,13 +155,13 @@ for k, v in st.session_state.items():
         logged_in_user = v.strip()
 
 norm_exec_data = build_exec_tree(exec_data_root)
-all_exec_names = list(norm_exec_data.keys())
+all_exec_clean_ids = list(norm_exec_data.keys())
 
 if not logged_in_user:
     for k, v in st.session_state.items():
         if isinstance(v, str):
-            v_clean = v.strip().lower()
-            if v_clean in all_exec_names:
+            v_clean = get_clean_id(v)
+            if v_clean in all_exec_clean_ids:
                 logged_in_user = v.strip()
             elif v_clean == 'admin':
                 user_role = 'admin'
@@ -163,17 +175,17 @@ if not logged_in_user and not is_admin:
 
 if is_admin:
     st.success("👑 **Admin Panel:** लॉग-इन: **Boss (Admin)** - सभी का एक्सेस चालू है।")
-    all_execs = [v['name'] for v in norm_exec_data.values()]
+    all_execs = [v['original_name'] for v in norm_exec_data.values()]
     search_exec = st.selectbox("🔎 Select Business Partner", all_execs)
 else:
     st.info(f"🔒 **Executive View:** लॉग-इन आईडी - **{logged_in_user}** (आपका और आपकी पूरी टीम का एक्सेस)")
-    target_norm = logged_in_user.lower()
-    my_downline = get_downline_set(target_norm, norm_exec_data)
+    target_clean = get_clean_id(logged_in_user)
+    my_downline = get_downline_set(target_clean, norm_exec_data)
     
     allowed_options = []
     for k, v in norm_exec_data.items():
-        if k == target_norm or k in my_downline:
-            allowed_options.append(v['name'])
+        if k == target_clean or k in my_downline:
+            allowed_options.append(v['original_name'])
             
     if allowed_options:
         search_exec = st.selectbox("🔎 Select Business Partner (Your Team Only)", allowed_options)
@@ -192,9 +204,9 @@ st.markdown('</div>', unsafe_allow_html=True)
 if btn_generate and search_exec: 
     rows = []
     count = 1
-    target_norm = str(search_exec).strip().lower()
+    target_clean = get_clean_id(search_exec)
     
-    selected_user_downline = get_downline_set(target_norm, norm_exec_data)
+    selected_user_downline = get_downline_set(target_clean, norm_exec_data)
     mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
     
     for project_name, p_info in db_data.items():
@@ -211,17 +223,18 @@ if btn_generate and search_exec:
                 ex_name = ""
                 sp_name = ""
                 for key, val in info.items():
-                    k_low = str(key).strip().lower()
-                    if k_low in ['executive_name', 'executive', 'exec_name']:
-                        ex_name = str(val).strip().lower()
-                    elif k_low in ['sponsor_name', 'sponsor']:
-                        sp_name = str(val).strip().lower()
+                    k_low = re.sub(r'[^a-z0-9]', '', str(key).lower())
+                    if k_low in ['executivename', 'executive', 'execname', 'partnername', 'agentname']:
+                        ex_name = str(val)
+                    elif k_low in ['sponsorname', 'sponsor', 'upline']:
+                        sp_name = str(val)
                 
-                exec_in_db = ex_name
-                sponsor_in_db = sp_name
+                exec_clean_id = get_clean_id(ex_name)
+                sponsor_clean_id = get_clean_id(sp_name)
                 
-                is_self = (exec_in_db == target_norm)
-                is_group = (exec_in_db in selected_user_downline) or (sponsor_in_db == target_norm)
+                is_self = (exec_clean_id == target_clean)
+                # अगर प्लॉट बेचने वाला डाउनलाइन में है, या स्पॉन्सर सीधा टारगेट है
+                is_group = (exec_clean_id in selected_user_downline) or (sponsor_clean_id == target_clean)
                 
                 is_valid = False
                 if comm_type == "Self": is_valid = is_self
@@ -240,12 +253,13 @@ if btn_generate and search_exec:
                     if comp_rate <= 0: comp_rate = 650 
                     discount_sqft = safe_float(info.get('discount', 0))
                     
-                    applicable_pct = get_diff_pct(target_norm, exec_in_db, norm_exec_data)
+                    # 🎯 'डिफरेंस कमीशन' लागू
+                    applicable_pct = get_diff_pct(target_clean, exec_clean_id, norm_exec_data)
                     
                     if is_self:
                         entry_label = "Self"
                     else:
-                        orig_seller_name = norm_exec_data.get(exec_in_db, {}).get('name', exec_in_db.title())
+                        orig_seller_name = norm_exec_data.get(exec_clean_id, {}).get('original_name', str(ex_name).title())
                         if not orig_seller_name:
                             orig_seller_name = "Team"
                         entry_label = f"Group ({orig_seller_name})"
