@@ -76,42 +76,42 @@ def get_downline_team(target_user, exec_data):
                         queue.append(sub_exec)
     return team
 
-# 3. 100% PERFECT SECURITY LOGIC (एडमिन के लिए फुल एक्सेस)
+# 3. 100% BULLETPROOF SECURITY & RECOVERY LOGIC
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
-user_role = str(st.session_state.get('role', '')).strip().lower()
+# 1. पहले चेक करें कि क्या लॉगिन पेज से डेटा आया है?
 logged_in_user = str(st.session_state.get('username', '')).strip()
+user_role = str(st.session_state.get('role', '')).strip().lower()
 
-# चेक: क्या लॉग-इन करने वाला व्यक्ति 'Admin' है?
-is_admin = (user_role == 'admin' or logged_in_user.lower() == 'admin')
+# 2. अगर डेटा नहीं आया (लॉगिन पेज ने नाम नहीं भेजा), तो ब्लॉक करने के बजाय मैनुअल बॉक्स दिखाएं!
+if not logged_in_user:
+    st.warning("⚠️ सिस्टम को आपका लॉगिन डेटा नहीं मिला। कृपया नीचे अपना नाम या ID डालें:")
+    manual_user = st.text_input("Enter your ID / Name (Type 'admin' for full access):", key="manual_login")
+    
+    if manual_user:
+        logged_in_user = manual_user.strip()
+        if logged_in_user.lower() == 'admin':
+            user_role = 'admin'
+        else:
+            user_role = 'executive'
+    else:
+        st.stop() # जब तक नाम नहीं डालेंगे, पेज यहीं रुका रहेगा
 
-if is_admin:
-    # 👑 एडमिन पैनल: एडमिन को बिना किसी शर्त के सबके नाम दिखेंगे!
+# 3. अब चेक करें कि एडमिन है या एग्जीक्यूटिव
+if user_role == 'admin' or logged_in_user.lower() == 'admin':
     st.success("👑 **Admin Panel:** सभी पार्टनर्स का एक्सेस चालू है।")
     all_execs = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
-    if all_execs:
-        search_exec = st.selectbox("🔎 Select Business Partner", all_execs)
-    else:
-        st.warning("डेटाबेस में कोई पार्टनर नहीं मिला।")
-        search_exec = None
-
-elif logged_in_user:
-    # 🔒 एग्जीक्यूटिव पैनल: सिर्फ अपना और अपनी डाउनलाइन का एक्सेस!
+    search_exec = st.selectbox("🔎 Select Business Partner", all_execs)
+else:
     st.info(f"🔒 **Executive View:** लॉग-इन आईडी - **{logged_in_user}** (सिर्फ आपका और आपकी टीम का डेटा)")
-    
     my_downline = get_downline_team(logged_in_user, exec_data_root)
     allowed_options = [k for k in exec_data_root.keys() if str(k).strip().lower() == logged_in_user.lower() or str(k).strip().lower() in my_downline]
     
     if allowed_options:
         search_exec = st.selectbox("🔎 Select Business Partner (Your Team Only)", allowed_options)
     else:
-        st.warning("आपके आईडी पर कोई डेटा नहीं मिला।")
+        st.warning(f"'{logged_in_user}' नाम से डेटाबेस में कोई पार्टनर या टीम नहीं मिली। कृपया सही नाम टाइप करें।")
         search_exec = None
-
-else:
-    # 🚫 कोई बाहरी व्यक्ति: बिना लॉग-इन के एक्सेस ब्लॉक!
-    st.error("🚫 Access Denied! कृपया पहले अपने आईडी-पासवर्ड से लॉगिन करें।")
-    st.stop()
 
 comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
 
