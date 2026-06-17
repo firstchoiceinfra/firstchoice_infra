@@ -76,34 +76,35 @@ def get_downline_team(target_user, exec_data):
                         queue.append(sub_exec)
     return team
 
-# 3. SMART SECURITY LOGIC
+# 3. 100% BULLETPROOF SECURITY LOGIC
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
-# सेशन स्टेट से डेटा लें
-raw_role = st.session_state.get('role', '') 
-raw_user = st.session_state.get('username', '')
+# लॉगिन पेज से सेशन स्टेट में जो डेटा आया है, उसे ही लेंगे (कोई डिफ़ॉल्ट बाय-पास नहीं)
+user_role = str(st.session_state.get('role', '')).strip().lower()
+logged_in_user = str(st.session_state.get('username', '')).strip()
 
-user_role = str(raw_role).strip().lower()
-logged_in_user = str(raw_user).strip()
+# 🚨 हार्ड-लॉक: अगर कोई बिना लॉगिन के इस पेज पर आ गया, तो पेज यहीं ब्लॉक हो जाएगा!
+if not logged_in_user:
+    st.error("🚫 Access Denied! (सुरक्षा अलर्ट): कृपया पहले अपने आईडी-पासवर्ड से लॉगिन करें। बिना लॉगिन के आप स्टेटमेंट नहीं देख सकते।")
+    st.stop() # यह कमांड कोड को यहीं रोक देगा, आगे का कुछ भी रन नहीं होगा।
 
-# एडमिन पहचानने का स्मार्ट तरीका
-is_admin = (user_role == 'admin' or logged_in_user.lower() == 'admin' or (not raw_role and not raw_user))
-
-if is_admin:
-    # अगर एडमिन है, तो पूरी कंपनी के लोग दिखेंगे
-    st.info("👑 **Admin View:** Welcome Boss! Viewing all Partners.")
+# अगर एडमिन है, तभी पूरी लिस्ट दिखेगी
+if user_role == 'admin' or logged_in_user.lower() == 'admin':
+    st.success("👑 **Admin Panel:** सभी पार्टनर्स का एक्सेस चालू है।")
     all_execs = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
     search_exec = st.selectbox("🔎 Select Business Partner", all_execs)
+
+# अगर एग्जीक्यूटिव है, तो सिर्फ अपना और अपनी टीम का एक्सेस
 else:
-    # अगर कोई एग्जीक्यूटिव है, तो सिर्फ उसकी डाउनलाइन टीम दिखेगी
-    st.info(f"🔒 **Secure View:** Logged in as **{logged_in_user}** (Showing your team only)")
+    st.info(f"🔒 **Executive View:** लॉग-इन आईडी - **{logged_in_user}** (सिर्फ आपका और आपकी टीम का डेटा)")
+    
     my_downline = get_downline_team(logged_in_user, exec_data_root)
     allowed_options = [k for k in exec_data_root.keys() if str(k).strip().lower() == logged_in_user.lower() or str(k).strip().lower() in my_downline]
     
     if allowed_options:
-        search_exec = st.selectbox("🔎 Select Business Partner", allowed_options)
+        search_exec = st.selectbox("🔎 Select Business Partner (Your Team Only)", allowed_options)
     else:
-        st.warning(f"No business data found for '{logged_in_user}'.")
+        st.warning("आपके आईडी पर कोई डेटा नहीं मिला।")
         search_exec = None
 
 comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
@@ -173,7 +174,6 @@ if btn_generate and search_exec:
                             
                             entry_type = "Self" if is_self else "Group"
                             
-                            # गलती यहीं पर थी, मैंने इसे सुधार दिया है!
                             rows.append({
                                 "S.No.": count, "Type": entry_type, "Mauja": mauja, "Project": project_name, "Plot": pid, 
                                 "Customer": info.get('customer_name', 'N/A'), "Received": amt, 
