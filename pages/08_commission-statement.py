@@ -76,7 +76,7 @@ def get_downline_team(target_user, exec_data):
                         queue.append(sub_exec)
     return team
 
-# 3. SMART SECURITY LOGIC (अब एडमिन ब्लॉक नहीं होगा)
+# 3. SMART SECURITY LOGIC 
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
 # सेशन स्टेट से डेटा लें
@@ -118,14 +118,5 @@ def safe_float(val):
     except: return 0.0
 
 # 4. Calculation Logic
-if btn_generate and search_exec: 
-    rows = []
-    count = 1
-    p_profile = exec_data_root.get(search_exec, {})
-    p_pct = safe_float(p_profile.get('percentage_exec', 0))
-    mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
-    
-    selected_user_downline = get_downline_team(search_exec, exec_data_root)
-    
-    for project_name, p_info in
+if btn_generate and search_exec:
 
