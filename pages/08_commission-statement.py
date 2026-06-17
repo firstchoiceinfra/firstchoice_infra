@@ -76,26 +76,27 @@ def get_downline_team(target_user, exec_data):
                         queue.append(sub_exec)
     return team
 
-# 3. 100% BULLETPROOF SECURITY LOGIC
+# 3. 100% PERFECT SECURITY LOGIC (एडमिन के लिए फुल एक्सेस)
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
-# लॉगिन पेज से सेशन स्टेट में जो डेटा आया है, उसे ही लेंगे (कोई डिफ़ॉल्ट बाय-पास नहीं)
 user_role = str(st.session_state.get('role', '')).strip().lower()
 logged_in_user = str(st.session_state.get('username', '')).strip()
 
-# 🚨 हार्ड-लॉक: अगर कोई बिना लॉगिन के इस पेज पर आ गया, तो पेज यहीं ब्लॉक हो जाएगा!
-if not logged_in_user:
-    st.error("🚫 Access Denied! (सुरक्षा अलर्ट): कृपया पहले अपने आईडी-पासवर्ड से लॉगिन करें। बिना लॉगिन के आप स्टेटमेंट नहीं देख सकते।")
-    st.stop() # यह कमांड कोड को यहीं रोक देगा, आगे का कुछ भी रन नहीं होगा।
+# चेक: क्या लॉग-इन करने वाला व्यक्ति 'Admin' है?
+is_admin = (user_role == 'admin' or logged_in_user.lower() == 'admin')
 
-# अगर एडमिन है, तभी पूरी लिस्ट दिखेगी
-if user_role == 'admin' or logged_in_user.lower() == 'admin':
+if is_admin:
+    # 👑 एडमिन पैनल: एडमिन को बिना किसी शर्त के सबके नाम दिखेंगे!
     st.success("👑 **Admin Panel:** सभी पार्टनर्स का एक्सेस चालू है।")
     all_execs = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
-    search_exec = st.selectbox("🔎 Select Business Partner", all_execs)
+    if all_execs:
+        search_exec = st.selectbox("🔎 Select Business Partner", all_execs)
+    else:
+        st.warning("डेटाबेस में कोई पार्टनर नहीं मिला।")
+        search_exec = None
 
-# अगर एग्जीक्यूटिव है, तो सिर्फ अपना और अपनी टीम का एक्सेस
-else:
+elif logged_in_user:
+    # 🔒 एग्जीक्यूटिव पैनल: सिर्फ अपना और अपनी डाउनलाइन का एक्सेस!
     st.info(f"🔒 **Executive View:** लॉग-इन आईडी - **{logged_in_user}** (सिर्फ आपका और आपकी टीम का डेटा)")
     
     my_downline = get_downline_team(logged_in_user, exec_data_root)
@@ -106,6 +107,11 @@ else:
     else:
         st.warning("आपके आईडी पर कोई डेटा नहीं मिला।")
         search_exec = None
+
+else:
+    # 🚫 कोई बाहरी व्यक्ति: बिना लॉग-इन के एक्सेस ब्लॉक!
+    st.error("🚫 Access Denied! कृपया पहले अपने आईडी-पासवर्ड से लॉगिन करें।")
+    st.stop()
 
 comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
 
