@@ -22,9 +22,8 @@ LOGO_FILE = "logo.jpg"
 logo_base64 = get_image_base64(LOGO_FILE)
 logo_html = f"<img src='data:image/jpeg;base64,{logo_base64}' style='position:absolute; top:0px; left:15px; width:130px; height:auto; mix-blend-mode: multiply;'/>" if logo_base64 else ""
 
-# 2. CSS - Layout & Table Formatting
+# 2. CSS 
 st.markdown("""<style>
-    /* यहाँ मैंने स्पेसिंग ठीक कर दी है ताकि हरा बॉक्स कटे नहीं */
     .block-container { padding-top: 2rem !important; margin-top: 0px !important; padding-bottom: 1rem !important; max-width: 100% !important; }
     [data-testid="stHeader"] { display: none !important; height: 0 !important; }
 
@@ -49,7 +48,6 @@ st.markdown("""<style>
     .data-table th, .data-table td { border: 1px solid #000; padding: 6px; text-align: right; }
     .data-table th { background-color: #f0f0f0; text-align: center; font-weight: bold; }
     
-    /* TOTAL वाली लाइन एकदम ब्रॉड, बोल्ड और पीले रंग में हाइलाइटेड */
     .data-table tr:last-child td { 
         font-weight: 900 !important; 
         background-color: #ffeb3b !important; 
@@ -61,7 +59,7 @@ st.markdown("""<style>
     }
 </style>""", unsafe_allow_html=True)
 
-# डाउनलाइन निकालने का फंक्शन
+# 🛠️ स्मार्ट डाउनलाइन फंक्शन (रमेश -> दिनेश -> अतुल की पूरी चेन ढूँढने के लिए)
 def get_downline_team(target_user, exec_data):
     team = set()
     queue = [str(target_user).strip().lower()]
@@ -69,12 +67,18 @@ def get_downline_team(target_user, exec_data):
         curr = queue.pop(0)
         for k, v in exec_data.items():
             if isinstance(v, dict):
-                sp = str(v.get('sponsor', v.get('sponsor_name', ''))).strip().lower()
+                # डेटाबेस में स्पॉन्सर का नाम चाहे जैसे भी लिखा हो, यह ढूँढ लेगा
+                sp = ""
+                for key in ['sponsor', 'sponsor_name', 'Sponsor', 'Sponsor Name']:
+                    if key in v:
+                        sp = str(v[key]).strip().lower()
+                        break
+                
                 if sp == curr:
                     sub_exec = str(k).strip().lower()
                     if sub_exec not in team:
                         team.add(sub_exec)
-                        queue.append(sub_exec)
+                        queue.append(sub_exec) # इसके भी नीचे वालों को ढूँढने के लिए जोड़ें
     return team
 
 # 3. 100% BULLETPROOF AUTOMATIC SECURITY LOGIC
@@ -83,7 +87,7 @@ st.markdown('<div class="no-print">', unsafe_allow_html=True)
 logged_in_user = ""
 user_role = ""
 
-# आपके लॉगिन पेज के सेशन स्टेट से डेटा को सुरक्षित रूप से रीड करना
+# लॉगिन पेज का सेशन डेटा रीड करना
 for k, v in st.session_state.items():
     k_low = str(k).lower()
     if k_low in ['role', 'user_role', 'access', 'type'] and isinstance(v, str):
@@ -91,8 +95,9 @@ for k, v in st.session_state.items():
     if k_low in ['username', 'user', 'logged_in_user', 'name', 'current_user'] and isinstance(v, str):
         logged_in_user = v.strip()
 
-# स्मार्ट बैकएंड ऑटो-डिटेक्शन 
 all_exec_names = [str(k).strip().lower() for k in exec_data_root.keys()]
+
+# अगर सेशन में नाम मिसिंग है, तो बैकअप रिकवरी
 if not logged_in_user:
     for k, v in st.session_state.items():
         if isinstance(v, str):
@@ -103,27 +108,34 @@ if not logged_in_user:
                 user_role = 'admin'
                 logged_in_user = 'Admin'
 
-# फाइनल सिक्योरिटी वेरिफिकेशन
 is_admin = (user_role == 'admin' or logged_in_user.lower() == 'admin')
 
 if not logged_in_user and not is_admin:
     st.error("🚫 **Access Denied (सुरक्षा लॉक):** कोई लॉगिन सेशन डेटा नहीं मिला। कृपया मुख्य लॉगिन पेज से आएं।")
     st.stop()
 
-# रोल के हिसाब से ड्रॉपडाउन दिखाना (हार्ड-लॉक्ड)
+# ड्रॉपडाउन में नाम दिखाने का लॉजिक
 if is_admin:
     st.success("👑 **Admin Panel:** लॉग-इन: **Boss (Admin)** - सभी का एक्सेस चालू है।")
     all_execs = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
     search_exec = st.selectbox("🔎 Select Business Partner", all_execs)
 else:
-    st.info(f"🔒 **Executive View:** लॉग-इन आईडी - **{logged_in_user}** (आपका डेटा पूरी तरह सुरक्षित है)")
+    st.info(f"🔒 **Executive View:** लॉग-इन आईडी - **{logged_in_user}** (आपका और आपकी पूरी टीम का एक्सेस)")
+    
+    # रमेश की पूरी टीम (दिनेश, अतुल आदि) निकाली जा रही है
     my_downline = get_downline_team(logged_in_user, exec_data_root)
-    allowed_options = [k for k in exec_data_root.keys() if str(k).strip().lower() == logged_in_user.lower() or str(k).strip().lower() in my_downline]
+    
+    # ड्रॉपडाउन लिस्ट बनाना
+    allowed_options = []
+    for k in exec_data_root.keys():
+        k_lower = str(k).strip().lower()
+        if k_lower == logged_in_user.lower() or k_lower in my_downline:
+            allowed_options.append(k)
     
     if allowed_options:
         search_exec = st.selectbox("🔎 Select Business Partner (Your Team Only)", allowed_options)
     else:
-        st.error("डेटाबेस में आपके नाम का कोई रिकॉर्ड नहीं मिला। कृपया एडमिन से संपर्क करें।")
+        st.error("डेटाबेस में आपके नाम का कोई रिकॉर्ड नहीं मिला।")
         search_exec = None
 
 comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
