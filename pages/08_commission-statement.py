@@ -59,35 +59,73 @@ st.markdown("""<style>
     }
 </style>""", unsafe_allow_html=True)
 
-# 🛠️ स्मार्ट डाउनलाइन फंक्शन (रमेश -> दिनेश -> अतुल की पूरी चेन ढूँढने के लिए)
-def get_downline_team(target_user, exec_data):
+def safe_float(val):
+    try: return float(str(val).strip() or 0)
+    except: return 0.0
+
+# 🛠️ पार्ट-1: पार्टनर मैनेजमेंट से डेटा उठाकर स्मार्ट ट्री बनाना
+def build_exec_tree(exec_data):
+    norm_data = {}
+    for k, v in exec_data.items():
+        if isinstance(v, dict):
+            sp = ""
+            for key in ['sponsor', 'sponsor_name', 'Sponsor', 'Sponsor Name']:
+                if key in v:
+                    sp = str(v[key]).strip().lower()
+                    break
+            norm_data[str(k).strip().lower()] = {
+                'name': str(k),
+                'sponsor': sp,
+                'pct': safe_float(v.get('percentage_exec', 0))
+            }
+    return norm_data
+
+# 🛠️ पार्ट-2: पूरी डाउनलाइन (चेन) निकालना (रमेश -> दिनेश -> अतुल)
+def get_downline_set(target_norm, norm_data):
     team = set()
-    queue = [str(target_user).strip().lower()]
+    queue = [target_norm]
     while queue:
         curr = queue.pop(0)
-        for k, v in exec_data.items():
-            if isinstance(v, dict):
-                # डेटाबेस में स्पॉन्सर का नाम चाहे जैसे भी लिखा हो, यह ढूँढ लेगा
-                sp = ""
-                for key in ['sponsor', 'sponsor_name', 'Sponsor', 'Sponsor Name']:
-                    if key in v:
-                        sp = str(v[key]).strip().lower()
-                        break
-                
-                if sp == curr:
-                    sub_exec = str(k).strip().lower()
-                    if sub_exec not in team:
-                        team.add(sub_exec)
-                        queue.append(sub_exec) # इसके भी नीचे वालों को ढूँढने के लिए जोड़ें
+        for k, v in norm_data.items():
+            if v['sponsor'] == curr and k not in team:
+                team.add(k)
+                queue.append(k)
     return team
 
-# 3. 100% BULLETPROOF AUTOMATIC SECURITY LOGIC
+# 🛠️ पार्ट-3: डिफरेंस कमीशन कैलकुलेट करना (Target % - Immediate Child %)
+def get_diff_pct(target_norm, plot_exec_norm, norm_data):
+    if target_norm == plot_exec_norm:
+        return norm_data.get(target_norm, {}).get('pct', 0.0)
+    
+    curr = plot_exec_norm
+    child_of_target = None
+    visited = set()
+    
+    # चेन में ऊपर की तरफ जाना (अतुल -> दिनेश -> रमेश)
+    while curr and curr in norm_data and curr != target_norm:
+        visited.add(curr)
+        sponsor = norm_data[curr]['sponsor']
+        if sponsor == target_norm:
+            child_of_target = curr
+            break
+        if sponsor in visited or not sponsor:
+            break
+        curr = sponsor
+        
+    target_pct = norm_data.get(target_norm, {}).get('pct', 0.0)
+    if child_of_target:
+        child_pct = norm_data.get(child_of_target, {}).get('pct', 0.0)
+        return max(0.0, target_pct - child_pct)
+    else:
+        plot_exec_pct = norm_data.get(plot_exec_norm, {}).get('pct', 0.0)
+        return max(0.0, target_pct - plot_exec_pct)
+
+# 3. SECURITY & HIERARCHY LOGIC
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
 logged_in_user = ""
 user_role = ""
 
-# लॉगिन पेज का सेशन डेटा रीड करना
 for k, v in st.session_state.items():
     k_low = str(k).lower()
     if k_low in ['role', 'user_role', 'access', 'type'] and isinstance(v, str):
@@ -95,9 +133,9 @@ for k, v in st.session_state.items():
     if k_low in ['username', 'user', 'logged_in_user', 'name', 'current_user'] and isinstance(v, str):
         logged_in_user = v.strip()
 
-all_exec_names = [str(k).strip().lower() for k in exec_data_root.keys()]
+norm_exec_data = build_exec_tree(exec_data_root)
+all_exec_names = list(norm_exec_data.keys())
 
-# अगर सेशन में नाम मिसिंग है, तो बैकअप रिकवरी
 if not logged_in_user:
     for k, v in st.session_state.items():
         if isinstance(v, str):
@@ -114,24 +152,21 @@ if not logged_in_user and not is_admin:
     st.error("🚫 **Access Denied (सुरक्षा लॉक):** कोई लॉगिन सेशन डेटा नहीं मिला। कृपया मुख्य लॉगिन पेज से आएं।")
     st.stop()
 
-# ड्रॉपडाउन में नाम दिखाने का लॉजिक
+# ड्रॉपडाउन सेट करना
 if is_admin:
     st.success("👑 **Admin Panel:** लॉग-इन: **Boss (Admin)** - सभी का एक्सेस चालू है।")
-    all_execs = [k for k, v in exec_data_root.items() if isinstance(v, dict)]
+    all_execs = [v['name'] for v in norm_exec_data.values()]
     search_exec = st.selectbox("🔎 Select Business Partner", all_execs)
 else:
     st.info(f"🔒 **Executive View:** लॉग-इन आईडी - **{logged_in_user}** (आपका और आपकी पूरी टीम का एक्सेस)")
+    target_norm = logged_in_user.lower()
+    my_downline = get_downline_set(target_norm, norm_exec_data)
     
-    # रमेश की पूरी टीम (दिनेश, अतुल आदि) निकाली जा रही है
-    my_downline = get_downline_team(logged_in_user, exec_data_root)
-    
-    # ड्रॉपडाउन लिस्ट बनाना
     allowed_options = []
-    for k in exec_data_root.keys():
-        k_lower = str(k).strip().lower()
-        if k_lower == logged_in_user.lower() or k_lower in my_downline:
-            allowed_options.append(k)
-    
+    for k, v in norm_exec_data.items():
+        if k == target_norm or k in my_downline:
+            allowed_options.append(v['name'])
+            
     if allowed_options:
         search_exec = st.selectbox("🔎 Select Business Partner (Your Team Only)", allowed_options)
     else:
@@ -145,19 +180,13 @@ start, end = col1.date_input("Start Date"), col2.date_input("End Date")
 btn_generate = st.button("🚀 Generate Final Statement")
 st.markdown('</div>', unsafe_allow_html=True)
 
-def safe_float(val):
-    try: return float(str(val).strip() or 0)
-    except: return 0.0
-
-# 4. Calculation Logic
+# 4. Calculation Logic (With Difference Commission)
 if btn_generate and search_exec: 
     rows = []
     count = 1
-    p_profile = exec_data_root.get(search_exec, {})
-    p_pct = safe_float(p_profile.get('percentage_exec', 0))
+    target_norm = str(search_exec).strip().lower()
+    my_downline = get_downline_set(target_norm, norm_exec_data)
     mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
-    
-    selected_user_downline = get_downline_team(search_exec, exec_data_root)
     
     for project_name, p_info in db_data.items():
         if isinstance(p_info, dict) and 'plots' in p_info:
@@ -171,11 +200,9 @@ if btn_generate and search_exec:
                 info = info if isinstance(info, dict) else {}
                 
                 exec_in_db = str(info.get('executive_name', '')).strip().lower()
-                sponsor_in_db = str(info.get('sponsor_name', info.get('sponsor', ''))).strip().lower()
-                target_exec = str(search_exec).strip().lower()
                 
-                is_self = (exec_in_db == target_exec)
-                is_group = (exec_in_db in selected_user_downline or sponsor_in_db == target_exec)
+                is_self = (exec_in_db == target_norm)
+                is_group = (exec_in_db in my_downline)
                 
                 is_valid = False
                 if comm_type == "Self": is_valid = is_self
@@ -194,19 +221,28 @@ if btn_generate and search_exec:
                     if comp_rate <= 0: comp_rate = 650 
                     discount_sqft = safe_float(info.get('discount', 0))
                     
+                    # 🎯 यहाँ लागू होगा 'डिफरेंस कमीशन' का ब्रह्मास्त्र
+                    applicable_pct = get_diff_pct(target_norm, exec_in_db, norm_exec_data)
+                    
+                    # टेबल में दिखाने के लिए टाइप सेट करना (Self या Group + बेचने वाले का नाम)
+                    if is_self:
+                        entry_label = "Self"
+                    else:
+                        orig_seller_name = norm_exec_data.get(exec_in_db, {}).get('name', exec_in_db.title())
+                        entry_label = f"Group ({orig_seller_name})"
+                    
                     for pmt in payments:
                         amt = safe_float(pmt['amt'])
                         if amt > 0:
-                            gross = (amt * p_pct) / 100
+                            # अब ग्रॉस अमाउंट नए डिफरेंस परसेंट के हिसाब से निकलेगा
+                            gross = (amt * applicable_pct) / 100
                             disc_amt = (amt / comp_rate) * discount_sqft 
                             net_comm = gross - disc_amt
                             tds = net_comm * 0.02
                             in_hand = net_comm - tds
                             
-                            entry_type = "Self" if is_self else "Group"
-                            
                             rows.append({
-                                "S.No.": count, "Type": entry_type, "Mauja": mauja, "Project": project_name, "Plot": pid, 
+                                "S.No.": count, "Type": entry_label, "Mauja": mauja, "Project": project_name, "Plot": pid, 
                                 "Customer": info.get('customer_name', 'N/A'), "Received": amt, 
                                 "Date": pmt['date'], "Gross": gross, "Discount": disc_amt, 
                                 "Net Comm": net_comm, "TDS": tds, "In Hand": in_hand
