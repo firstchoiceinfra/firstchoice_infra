@@ -1,6 +1,5 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import database
 import pandas as pd
 import base64
 import os
@@ -8,22 +7,31 @@ import re
 
 # 1. Page Config
 st.set_page_config(layout="wide", page_title="Firstchoice Infra - Statement", initial_sidebar_state="collapsed")
-database.init_db()
-db_data = st.session_state.db_projects
 
-# 🔎 पार्टनर मैनेजमेंट के डेटाबेस से सीधा डेटा उठाने का सबसे मजबूत तरीका
+# (अगर आपके database.py में init_db है, तो उसे कॉल करें)
+try:
+    import database
+    database.init_db()
+except:
+    pass
+
+db_data = st.session_state.get('db_projects', {})
+
+# 🔎 डेटाबेस की गहराई से Executives को निकालना
 exec_data_root = {}
-for key in ['executives', 'db_executives', 'partners', 'db_partners', 'associates']:
-    if key in st.session_state and isinstance(st.session_state[key], dict) and len(st.session_state[key]) > 0:
+for key in ['executives', 'db_executives', 'partners', 'associates']:
+    if key in st.session_state and isinstance(st.session_state[key], dict) and st.session_state[key]:
         exec_data_root = st.session_state[key]
         break
 
 if not exec_data_root and isinstance(db_data, dict):
     for k, v in db_data.items():
-        if str(k).strip().lower() in ['executives', 'executive', 'partners', 'partner', 'associates']:
-            if isinstance(v, dict) and len(v) > 0:
+        if str(k).strip().lower() in ['executives', 'executive', 'partners', 'associates']:
+            if isinstance(v, dict):
                 exec_data_root = v
-                break
+            elif isinstance(v, list):
+                exec_data_root = {str(i): item for i, item in enumerate(v) if isinstance(item, dict)}
+            break
 
 # लोगो फंक्शन
 def get_image_base64(image_path):
@@ -77,127 +85,119 @@ def safe_float(val):
     try: return float(str(val).strip() or 0)
     except: return 0.0
 
-# 🛠️ दो नामों को आपस में स्मार्ट तरीके से मैच करने वाला फ़ंक्शन (शॉर्ट नाम और फुल नाम को मिलाएगा)
-def names_match(n1, n2):
-    c1 = re.sub(r'[^a-z0-9]', '', str(n1).lower())
-    c2 = re.sub(r'[^a-z0-9]', '', str(n2).lower())
-    if not c1 or not c2:
-        return False
-    if c1 == c2 or c1 in c2 or c2 in c1:
-        return True
-    w1 = [w for w in re.split(r'[^a-z0-9]', str(n1).lower()) if len(w) > 2]
-    w2 = [w for w in re.split(r'[^a-z0-9]', str(n2).lower()) if len(w) > 2]
-    if w1 and w2 and w1[0] == w2[0]:
-        return True
-    return False
+def clean_str(s):
+    return re.sub(r'[^a-z0-9]', '', str(s).lower())
 
-# 🛠️ पूरी डाउनलाइन (सीनियर -> जूनियर -> सब-जूनियर) की चेन खोजने वाला स्कैनर
-def get_downline_team(target_user, exec_data):
+# 🛠️ पार्ट 1: डेटाबेस के अंदर से असली नाम और स्पॉन्सर निकालना (ID को इग्नोर करके)
+parsed_execs = {}
+for k, v in exec_data_root.items():
+    if isinstance(v, dict):
+        name = ""
+        sp = ""
+        pct = 0.0
+        for key, val in v.items():
+            kl = clean_str(key)
+            if kl in ['name', 'executivename', 'partnername', 'fullname']: 
+                name = str(val).strip()
+            elif kl in ['sponsor', 'sponsorname', 'upline']: 
+                sp = str(val).strip()
+            elif kl in ['percentage', 'percentageexec', 'pct', 'commission', 'commissionpercentage']: 
+                pct = safe_float(val)
+                
+        if not name: 
+            name = str(k).strip()
+            
+        parsed_execs[name] = {
+            'name': name,
+            'c_name': clean_str(name),
+            'sp': sp,
+            'c_sp': clean_str(sp),
+            'pct': pct
+        }
+
+# 🛠️ पार्ट 2: डाउनलाइन ढूँढने वाला सुपर-स्कैनर
+def get_team(target_c_name, parsed_data):
     team = set()
-    queue = [str(target_user).strip().lower()]
-    all_execs = list(exec_data.keys())
-    
+    queue = [target_c_name]
     while queue:
         curr = queue.pop(0)
-        for k in all_execs:
-            v = exec_data[k]
-            if isinstance(v, dict):
-                sp = ""
-                for key in ['sponsor', 'sponsor_name', 'Sponsor', 'Sponsor Name', 'upline', 'Upline']:
-                    if key in v:
-                        sp = str(v[key]).strip().lower()
-                        break
-                if sp and (names_match(sp, curr) or names_match(curr, sp)):
-                    k_low = str(k).strip().lower()
-                    if k_low not in team and k_low != str(target_user).strip().lower():
-                        team.add(k_low)
-                        queue.append(k_low)
+        if not curr: continue
+        for k, v in parsed_data.items():
+            csp = v['c_sp']
+            cnm = v['c_name']
+            # अगर करेंट पर्सन स्पॉन्सर के नाम में मैच हो जाए
+            if csp and (curr in csp or csp in curr):
+                if cnm not in team and cnm != target_c_name:
+                    team.add(cnm)
+                    queue.append(cnm)
     return team
 
-# 🛠️ कट-टू-कट डिफरेंस कमीशन कैलकुलेटर
-def get_diff_pct(target_user, plot_exec, exec_data):
-    target_pct = 0.0
-    target_low = str(target_user).strip().lower()
-    for k, v in exec_data.items():
-        if names_match(k, target_low) or names_match(target_low, k):
-            for key, val in v.items():
-                if str(key).strip().lower() in ['percentage_exec', 'percentage', 'pct', 'commission']:
-                    target_pct = safe_float(val)
-                    break
-            break
-            
-    if names_match(target_user, plot_exec) or names_match(plot_exec, target_user):
-        return target_pct
-        
-    curr = str(plot_exec).strip().lower()
-    child_of_target = None
+# 🛠️ पार्ट 3: कट-टू-कट डिफरेंस कमीशन कैलकुलेटर
+def get_diff(target_c, plot_c, parsed_data):
+    t_pct = 0.0
+    p_pct = 0.0
+    for v in parsed_data.values():
+        if target_c == v['c_name'] or target_c in v['c_name'] or v['c_name'] in target_c: 
+            t_pct = v['pct']
+        if plot_c == v['c_name'] or plot_c in v['c_name'] or v['c_name'] in plot_c: 
+            p_pct = v['pct']
+
+    if not plot_c or target_c == plot_c or plot_c in target_c or target_c in plot_c:
+        return t_pct
+
+    curr = plot_c
     visited = set()
-    
+    child_pct = 0.0
+
     while curr and curr not in visited:
         visited.add(curr)
-        curr_sponsor = ""
-        for k, v in exec_data.items():
-            if names_match(k, curr) or names_match(curr, k):
-                for key, val in v.items():
-                    if str(key).strip().lower() in ['sponsor', 'sponsor_name', 'sponsor name', 'upline']:
-                        curr_sponsor = str(val).strip().lower()
+        found_parent = False
+        for v in parsed_data.values():
+            if v['c_name'] == curr or curr in v['c_name']:
+                csp = v['c_sp']
+                if csp:
+                    if target_c == csp or target_c in csp or csp in target_c:
+                        child_pct = v['pct']
+                        return max(0.0, t_pct - child_pct)
+                    else:
+                        curr = csp
+                        found_parent = True
                         break
-                break
-                
-        if not curr_sponsor:
+        if not found_parent:
             break
-        if names_match(curr_sponsor, target_low) or names_match(target_low, curr_sponsor):
-            child_of_target = curr
-            break
-        curr = curr_sponsor
-        
-    if child_of_target:
-        child_pct = 0.0
-        for k, v in exec_data.items():
-            if names_match(k, child_of_target) or names_match(child_of_target, k):
-                for key, val in v.items():
-                    if str(key).strip().lower() in ['percentage_exec', 'percentage', 'pct', 'commission']:
-                        child_pct = safe_float(val)
-                        break
-                break
-        return max(0.0, target_pct - child_pct)
-    else:
-        plot_exec_pct = 0.0
-        for k, v in exec_data.items():
-            if names_match(k, plot_exec) or names_match(plot_exec, k):
-                for key, val in v.items():
-                    if str(key).strip().lower() in ['percentage_exec', 'percentage', 'pct', 'commission']:
-                        plot_exec_pct = safe_float(val)
-                        break
-                break
-        return max(0.0, target_pct - plot_exec_pct)
+            
+    return max(0.0, t_pct - p_pct)
 
-# 3. SECURITY LOGIC
+# 3. 100% SECURE LOGIN LOGIC
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
 user_role = str(st.session_state.get('role', '')).strip().lower()
 logged_in_user = str(st.session_state.get('username', '')).strip()
+c_logged = clean_str(logged_in_user)
 
-is_admin = (user_role == 'admin' or logged_in_user.lower() == 'admin' or (not user_role and not logged_in_user))
+is_admin = (user_role == 'admin' or c_logged == 'admin')
+
+if not c_logged and not is_admin:
+    st.error("🚫 **Access Denied (सुरक्षा लॉक):** कोई लॉगिन सेशन डेटा नहीं मिला। कृपया मुख्य लॉगिन पेज से आएं।")
+    st.stop()
 
 if is_admin:
-    st.success(f"👑 **Admin Panel:** Active (Connected to Partner Management: Loaded {len(exec_data_root)} Partners)")
-    all_execs = list(exec_data_root.keys())
+    st.success(f"👑 **Admin Panel:** Active (Connected to Database - {len(parsed_execs)} Partners Found)")
+    all_execs = [v['name'] for v in parsed_execs.values()]
     search_exec = st.selectbox("🔎 Select Business Partner", all_execs)
 else:
-    target_low = logged_in_user.lower()
-    my_downline = get_downline_team(target_low, exec_data_root)
-    
-    allowed_options = [logged_in_user]
-    for k in exec_data_root.keys():
-        if str(k).strip().lower() in my_downline and str(k).strip().lower() != target_low:
-            allowed_options.append(str(k))
-            
     st.info(f"🔒 **Executive View:** Logged in as **{logged_in_user}**")
-    if allowed_options:
-        search_exec = st.selectbox("🔎 Select Business Partner (Your Team Only)", allowed_options)
-    else:
-        search_exec = logged_in_user
+    my_team = get_team(c_logged, parsed_execs)
+    
+    allowed_options = []
+    for v in parsed_execs.values():
+        if v['c_name'] == c_logged or v['c_name'] in my_team:
+            allowed_options.append(v['name'])
+            
+    if not allowed_options:
+        allowed_options = [logged_in_user]
+        
+    search_exec = st.selectbox("🔎 Select Business Partner (Your Team Only)", allowed_options)
 
 comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
 
@@ -210,8 +210,8 @@ st.markdown('</div>', unsafe_allow_html=True)
 if btn_generate and search_exec: 
     rows = []
     count = 1
-    target_low = str(search_exec).strip().lower()
-    selected_user_downline = get_downline_team(target_low, exec_data_root)
+    target_c = clean_str(search_exec)
+    selected_downline = get_team(target_c, parsed_execs)
     mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
     
     for project_name, p_info in db_data.items():
@@ -226,23 +226,23 @@ if btn_generate and search_exec:
                 info = info if isinstance(info, dict) else {}
                 
                 ex_name = ""
-                sp_name = ""
                 for key, val in info.items():
-                    k_l = str(key).strip().lower()
-                    if k_l in ['executivename', 'executive', 'execname', 'partnername', 'executive_name']:
-                        ex_name = str(val).strip().lower()
-                    elif k_l in ['sponsorname', 'sponsor', 'upline', 'sponsor_name']:
-                        sp_name = str(val).strip().lower()
-                
-                is_self = names_match(ex_name, target_low) or names_match(target_low, ex_name)
-                
-                is_in_downline = False
-                for dl_member in selected_user_downline:
-                    if names_match(ex_name, dl_member) or names_match(dl_member, ex_name):
-                        is_in_downline = True
-                        break
+                    kl = clean_str(key)
+                    if kl in ['executivename', 'executive', 'execname', 'partnername']:
+                        ex_name = str(val).strip()
                         
-                is_group = is_in_downline or names_match(sp_name, target_low) or names_match(target_low, sp_name)
+                plot_c = clean_str(ex_name)
+                
+                is_self = False
+                if target_c == plot_c or plot_c in target_c or target_c in plot_c:
+                    is_self = True
+                
+                is_group = False
+                if not is_self:
+                    for dl in selected_downline:
+                        if dl == plot_c or plot_c in dl or dl in plot_c:
+                            is_group = True
+                            break
                 
                 is_valid = False
                 if comm_type == "Self": is_valid = is_self
@@ -261,22 +261,23 @@ if btn_generate and search_exec:
                     if comp_rate <= 0: comp_rate = 650 
                     discount_sqft = safe_float(info.get('discount', 0))
                     
-                    applicable_pct = get_diff_pct(search_exec, ex_name, exec_data_root)
+                    # 🎯 डिफरेंस लागू
+                    diff_pct = get_diff(target_c, plot_c, parsed_execs)
                     
                     if is_self:
                         entry_label = "Self"
                     else:
-                        orig_seller_name = str(ex_name).title()
-                        for k in exec_data_root.keys():
-                            if names_match(k, ex_name) or names_match(ex_name, k):
-                                orig_seller_name = str(k)
+                        orig_name = str(ex_name).title()
+                        for v in parsed_execs.values():
+                            if v['c_name'] == plot_c or plot_c in v['c_name']:
+                                orig_name = v['name']
                                 break
-                        entry_label = f"Group ({orig_seller_name})"
+                        entry_label = f"Group ({orig_name})"
                     
                     for pmt in payments:
                         amt = safe_float(pmt['amt'])
                         if amt > 0:
-                            gross = (amt * applicable_pct) / 100
+                            gross = (amt * diff_pct) / 100
                             disc_amt = (amt / comp_rate) * discount_sqft 
                             net_comm = gross - disc_amt
                             tds = net_comm * 0.02
