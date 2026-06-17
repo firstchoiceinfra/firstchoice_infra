@@ -76,13 +76,21 @@ def get_downline_team(target_user, exec_data):
                         queue.append(sub_exec)
     return team
 
-# 3. 100% Smart Security & Login Logic
+# 3. 100% STRICT SECURITY & HARD LOCK
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
-# आपके लॉगिन पेज से जो भी डाटा आएगा, उसे हम स्मॉल लेटर्स (lower) में बदल देंगे ताकि कोई एरर न आए
-raw_role = st.session_state.get('role', 'admin') # अगर कुछ नहीं मिला तो बाय-डिफ़ॉल्ट admin मान लेंगे
+# सबसे बड़ी गलती सुधार दी गई: अब डिफ़ॉल्ट 'executive' रहेगा, 'admin' नहीं। 
+# इससे कोई भी बिना एडमिन परमिशन के दूसरों का डेटा नहीं देख पाएगा।
+raw_role = st.session_state.get('role', 'executive') 
 user_role = str(raw_role).strip().lower() 
+
+# लॉग इन करने वाले का नाम
 logged_in_user = str(st.session_state.get('username', '')).strip()
+
+# अगर यूजर का नाम ही नहीं है (यानी बिना लॉगिन के सीधा पेज खोला है)
+if not logged_in_user:
+    st.error("🚫 Access Denied! Please login first to view your statement.")
+    st.stop() # सिस्टम को यहीं रोक दो, आगे कुछ मत दिखाओ
 
 if user_role == 'admin':
     # एडमिन को 100% सभी एग्जीक्यूटिव दिखेंगे
@@ -95,10 +103,11 @@ else:
     allowed_options = [k for k in exec_data_root.keys() if str(k).strip().lower() == logged_in_user.lower() or str(k).strip().lower() in my_downline]
     
     st.info(f"🔒 **Secure View:** Logged in as **{logged_in_user}** (Showing your team only)")
+    
     if allowed_options:
         search_exec = st.selectbox("🔎 Select Business Partner", allowed_options)
     else:
-        st.warning("No data found. Please check your login ID.")
+        st.warning("No business data found for your ID.")
         search_exec = None
 
 comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
