@@ -9,7 +9,13 @@ import os
 st.set_page_config(layout="wide", page_title="Firstchoice Infra - Statement", initial_sidebar_state="collapsed")
 database.init_db()
 db_data = st.session_state.db_projects
-exec_data_root = db_data.get('executives', {})
+
+# स्मार्ट तरीके से executives का डेटा ढूँढना
+exec_data_root = {}
+for k, v in db_data.items():
+    if str(k).strip().lower() == 'executives':
+        exec_data_root = v
+        break
 
 # लोगो फंक्शन
 def get_image_base64(image_path):
@@ -63,24 +69,30 @@ def safe_float(val):
     try: return float(str(val).strip() or 0)
     except: return 0.0
 
-# 🛠️ पार्ट-1: पार्टनर मैनेजमेंट से डेटा उठाकर स्मार्ट ट्री बनाना
+# 🛠️ स्मार्ट ट्री बिल्डर (स्पेलिंग की गलतियों को इग्नोर करके चेन जोड़ेगा)
 def build_exec_tree(exec_data):
     norm_data = {}
     for k, v in exec_data.items():
         if isinstance(v, dict):
             sp = ""
-            for key in ['sponsor', 'sponsor_name', 'Sponsor', 'Sponsor Name']:
-                if key in v:
-                    sp = str(v[key]).strip().lower()
-                    break
+            pct = 0.0
+            for key, val in v.items():
+                k_low = str(key).strip().lower()
+                # स्पॉन्सर का नाम किसी भी तरह लिखा हो, यह पकड़ लेगा
+                if k_low in ['sponsor', 'sponsor_name', 'sponsor name']:
+                    sp = str(val).strip().lower()
+                # परसेंटेज किसी भी तरह लिखा हो, यह पकड़ लेगा
+                elif k_low in ['percentage_exec', 'percentage', 'pct', 'commission']:
+                    pct = safe_float(val)
+            
             norm_data[str(k).strip().lower()] = {
                 'name': str(k),
                 'sponsor': sp,
-                'pct': safe_float(v.get('percentage_exec', 0))
+                'pct': pct
             }
     return norm_data
 
-# 🛠️ पार्ट-2: पूरी डाउनलाइन (चेन) निकालना (रमेश -> दिनेश -> अतुल)
+# 🛠️ पूरी डाउनलाइन ढूँढने वाला स्कैनर (रमेश -> दिनेश -> अतुल)
 def get_downline_set(target_norm, norm_data):
     team = set()
     queue = [target_norm]
@@ -92,27 +104,27 @@ def get_downline_set(target_norm, norm_data):
                 queue.append(k)
     return team
 
-# 🛠️ पार्ट-3: डिफरेंस कमीशन कैलकुलेट करना (Target % - Immediate Child %)
+# 🛠️ असली डिफरेंस कमीशन कैलकुलेटर
 def get_diff_pct(target_norm, plot_exec_norm, norm_data):
+    target_pct = norm_data.get(target_norm, {}).get('pct', 0.0)
     if target_norm == plot_exec_norm:
-        return norm_data.get(target_norm, {}).get('pct', 0.0)
+        return target_pct
     
     curr = plot_exec_norm
     child_of_target = None
     visited = set()
     
-    # चेन में ऊपर की तरफ जाना (अतुल -> दिनेश -> रमेश)
+    # चेन में नीचे से ऊपर की तरफ जाना (अतुल -> दिनेश -> रमेश)
     while curr and curr in norm_data and curr != target_norm:
         visited.add(curr)
-        sponsor = norm_data[curr]['sponsor']
-        if sponsor == target_norm:
+        sp = norm_data[curr]['sponsor']
+        if sp == target_norm:
             child_of_target = curr
             break
-        if sponsor in visited or not sponsor:
+        if sp in visited or not sp:
             break
-        curr = sponsor
+        curr = sp
         
-    target_pct = norm_data.get(target_norm, {}).get('pct', 0.0)
     if child_of_target:
         child_pct = norm_data.get(child_of_target, {}).get('pct', 0.0)
         return max(0.0, target_pct - child_pct)
@@ -120,7 +132,7 @@ def get_diff_pct(target_norm, plot_exec_norm, norm_data):
         plot_exec_pct = norm_data.get(plot_exec_norm, {}).get('pct', 0.0)
         return max(0.0, target_pct - plot_exec_pct)
 
-# 3. SECURITY & HIERARCHY LOGIC
+# 3. 100% BULLETPROOF AUTOMATIC SECURITY LOGIC
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
 logged_in_user = ""
@@ -152,7 +164,6 @@ if not logged_in_user and not is_admin:
     st.error("🚫 **Access Denied (सुरक्षा लॉक):** कोई लॉगिन सेशन डेटा नहीं मिला। कृपया मुख्य लॉगिन पेज से आएं।")
     st.stop()
 
-# ड्रॉपडाउन सेट करना
 if is_admin:
     st.success("👑 **Admin Panel:** लॉग-इन: **Boss (Admin)** - सभी का एक्सेस चालू है।")
     all_execs = [v['name'] for v in norm_exec_data.values()]
@@ -180,12 +191,14 @@ start, end = col1.date_input("Start Date"), col2.date_input("End Date")
 btn_generate = st.button("🚀 Generate Final Statement")
 st.markdown('</div>', unsafe_allow_html=True)
 
-# 4. Calculation Logic (With Difference Commission)
+# 4. Calculation Logic
 if btn_generate and search_exec: 
     rows = []
     count = 1
     target_norm = str(search_exec).strip().lower()
-    my_downline = get_downline_set(target_norm, norm_exec_data)
+    
+    # सिलेक्ट किए गए पार्टनर की डाउनलाइन ढूँढना
+    selected_user_downline = get_downline_set(target_norm, norm_exec_data)
     mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
     
     for project_name, p_info in db_data.items():
@@ -199,10 +212,22 @@ if btn_generate and search_exec:
             for pid, info in plot_items:
                 info = info if isinstance(info, dict) else {}
                 
-                exec_in_db = str(info.get('executive_name', '')).strip().lower()
+                # प्लॉट डेटा से स्पॉन्सर और एग्जीक्यूटिव का नाम निकालना
+                ex_name = ""
+                sp_name = ""
+                for key, val in info.items():
+                    k_low = str(key).strip().lower()
+                    if k_low in ['executive_name', 'executive', 'exec_name']:
+                        ex_name = str(val).strip().lower()
+                    elif k_low in ['sponsor_name', 'sponsor']:
+                        sp_name = str(val).strip().lower()
+                
+                exec_in_db = ex_name
+                sponsor_in_db = sp_name
                 
                 is_self = (exec_in_db == target_norm)
-                is_group = (exec_in_db in my_downline)
+                # अगर प्लॉट बेचने वाला डाउनलाइन में है, या प्लॉट का डायरेक्ट स्पॉन्सर टारगेट यूजर है
+                is_group = (exec_in_db in selected_user_downline) or (sponsor_in_db == target_norm)
                 
                 is_valid = False
                 if comm_type == "Self": is_valid = is_self
@@ -221,81 +246,13 @@ if btn_generate and search_exec:
                     if comp_rate <= 0: comp_rate = 650 
                     discount_sqft = safe_float(info.get('discount', 0))
                     
-                    # 🎯 यहाँ लागू होगा 'डिफरेंस कमीशन' का ब्रह्मास्त्र
+                    # 🎯 'डिफरेंस कमीशन' लागू
                     applicable_pct = get_diff_pct(target_norm, exec_in_db, norm_exec_data)
                     
-                    # टेबल में दिखाने के लिए टाइप सेट करना (Self या Group + बेचने वाले का नाम)
+                    # टेबल में बेचने वाले का नाम दिखाने का लेबल
                     if is_self:
                         entry_label = "Self"
                     else:
                         orig_seller_name = norm_exec_data.get(exec_in_db, {}).get('name', exec_in_db.title())
-                        entry_label = f"Group ({orig_seller_name})"
-                    
-                    for pmt in payments:
-                        amt = safe_float(pmt['amt'])
-                        if amt > 0:
-                            # अब ग्रॉस अमाउंट नए डिफरेंस परसेंट के हिसाब से निकलेगा
-                            gross = (amt * applicable_pct) / 100
-                            disc_amt = (amt / comp_rate) * discount_sqft 
-                            net_comm = gross - disc_amt
-                            tds = net_comm * 0.02
-                            in_hand = net_comm - tds
-                            
-                            rows.append({
-                                "S.No.": count, "Type": entry_label, "Mauja": mauja, "Project": project_name, "Plot": pid, 
-                                "Customer": info.get('customer_name', 'N/A'), "Received": amt, 
-                                "Date": pmt['date'], "Gross": gross, "Discount": disc_amt, 
-                                "Net Comm": net_comm, "TDS": tds, "In Hand": in_hand
-                            })
-                            count += 1
-    
-    df = pd.DataFrame(rows)
-    totals = {
-        "S.No.": "TOTAL", "Type": "", "Mauja": "", "Project": "", "Plot": "", "Customer": "", "Date": "",
-        "Received": df['Received'].sum() if not df.empty else 0, 
-        "Gross": df['Gross'].sum() if not df.empty else 0, 
-        "Discount": df['Discount'].sum() if not df.empty else 0, 
-        "Net Comm": df['Net Comm'].sum() if not df.empty else 0, 
-        "TDS": df['TDS'].sum() if not df.empty else 0, 
-        "In Hand": df['In Hand'].sum() if not df.empty else 0
-    }
-    df = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
-    st.session_state.df_view = df
-    st.session_state.meta = {"exec": search_exec, "start": start, "end": end, "type": comm_type}
-
-# 5. Display Render
-if 'df_view' in st.session_state and st.session_state.df_view is not None:
-    df = st.session_state.df_view
-    meta = st.session_state.meta
-    
-    st.markdown("<div class='a4-container'>", unsafe_allow_html=True)
-    st.markdown(f"""<div class='header'>
-        {logo_html}
-        <h1 class='title'>FIRSTCHOICE INFRA</h1>
-        <p style='margin: 5px 0;'><i>Symbol Of Trust...</i></p>
-        <p style='font-size:12px; margin: 0;'>Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034</p>
-    </div>
-    <h3 style='text-align:center; margin-top:0;'>Executive Commission Statement</h3>
-    <div style='margin-bottom:10px; font-size:13px;'>
-        <b>Partner:</b> {meta['exec']} &nbsp;&nbsp;|&nbsp;&nbsp; 
-        <b>Type:</b> {meta['type']} 
-        <span style="float:right;"><b>Period:</b> {meta['start']} to {meta['end']}</span>
-    </div>""", unsafe_allow_html=True)
-    
-    html_table = df.to_html(classes='data-table', index=False, float_format="%.2f")
-    st.markdown(html_table, unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    # 6. Active Print Button
-    components.html(
-        """
-        <style>@media print { body { display: none !important; } }</style>
-        <div style="text-align:center; margin-top:20px;">
-            <button onclick="window.parent.print()" style="padding:12px 30px; background-color:#1e3a8a; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold; font-size:16px; font-family:sans-serif;">
-                🖨️ Print Final Document
-            </button>
-        </div>
-        """,
-        height=80
-    )
-
+                        if not orig_seller_name:
+                            orig_seller_name = "Team
