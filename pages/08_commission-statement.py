@@ -21,8 +21,13 @@ def get_image_base64(image_path):
     return ""
 
 def safe_float(val):
-    try: return float(str(val).strip() or 0)
-    except: return 0.0
+    """अमाउंट में से कॉमा (,) और अक्षरों को हटाकर सुरक्षित रूप से नंबर में बदलता है"""
+    try: 
+        # "1,50,000" या "Rs. 1500" को 150000.0 में कन्वर्ट करेगा
+        clean_str = re.sub(r'[^\d.]', '', str(val))
+        return float(clean_str) if clean_str else 0.0
+    except: 
+        return 0.0
 
 def clean_txt(s):
     return re.sub(r'[^a-z0-9]', '', str(s).lower()).strip()
@@ -35,57 +40,44 @@ def parse_date(date_str):
 # 3. CSS & PRINT LAYOUT
 # ==========================================
 st.markdown("""<style>
-    /* Print Layout - Hides UI elements when printing */
     @media print {
         @page { margin: 10mm; size: A4 portrait; }
         [data-testid="stSidebar"], .stAppHeader, .no-print, div.stButton, div[data-testid="stSelectbox"] { display: none !important; }
         .block-container { padding: 0 !important; max-width: 100% !important; }
         body, .stApp { background: white !important; color: black !important; }
     }
-    
-    /* Filter Box Styling */
     .filter-box { background-color: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #ddd; margin-bottom: 20px; }
-    
-    /* Statement Document Styling */
     .statement-container { background: white; color: black; max-width: 900px; margin: auto; padding: 20px; border: 1px solid #eee; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
     .header-table { width: 100%; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
     .header-table td { vertical-align: middle; }
     .company-name { font-size: 28px; font-weight: bold; color: #000; text-transform: uppercase; margin: 0; text-align: center; }
     .slogan { font-size: 14px; font-style: italic; margin: 5px 0; text-align: center; }
     .address { font-size: 12px; margin: 0; text-align: center; }
-    
     .info-section { display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 14px; font-weight: bold; }
-    
-    /* Data Table Styling */
     .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
     .data-table th, .data-table td { border: 1px solid #000; padding: 8px; text-align: right; }
     .data-table th { background-color: #f0f0f0; text-align: center; font-weight: bold; }
-    .data-table td:nth-child(2), .data-table td:nth-child(3) { text-align: left; } /* Name and Plot left align */
+    .data-table td:nth-child(2), .data-table td:nth-child(3) { text-align: left; }
     .data-table tr.total-row td { font-weight: 900 !important; background-color: #e0e0e0 !important; font-size: 14px; border-top: 2px solid #000; border-bottom: 2px solid #000; }
 </style>""", unsafe_allow_html=True)
 
 # ==========================================
 # 4. SYNC DATA FROM MASTER DATABASE
 # ==========================================
-# Sync with Inventory Dashboard
 db_projects = st.session_state.get('db_projects', {})
 
-# Robust Partner Sync Logic 
 partner_db = {}
 for key in ['executives', 'db_executives', 'partners', 'associates']:
     if key in st.session_state and isinstance(st.session_state[key], dict) and st.session_state[key]:
         partner_db = st.session_state[key]
         break
 
-# Fallback:
 if not partner_db and isinstance(db_projects, dict):
     for k, v in db_projects.items():
         if str(k).strip().lower() in ['executives', 'executive', 'partners', 'associates']:
             if isinstance(v, dict): 
-                partner_db = v
-                break
+                partner_db = v; break
 
-# Build Hierarchy Tree
 parents_tree = {}  
 partner_rates = {}  
 real_names = {}
@@ -94,17 +86,14 @@ for key_id, info in partner_db.items():
     if isinstance(info, dict):
         exec_name = info.get('name', info.get('executivename', info.get('partnername', key_id)))
         sponsor_name = info.get('sponsor', info.get('sponsorname', info.get('upline', '')))
-        
         pct_val = safe_float(info.get('percentage', info.get('commission', info.get('pct', 0))))
         
         c_exec = clean_txt(exec_name)
         if c_exec:
             partner_rates[c_exec] = pct_val
             real_names[c_exec] = exec_name
-            if sponsor_name:
-                parents_tree[c_exec] = clean_txt(sponsor_name)
+            if sponsor_name: parents_tree[c_exec] = clean_txt(sponsor_name)
 
-# Hierarchy Logic (Group Check & Difference)
 def is_downline(boss, seller):
     curr = seller
     visited = set()
@@ -151,14 +140,15 @@ exec_options = list(real_names.values())
 if exec_options:
     search_exec = st.selectbox("👤 Select Executive", options=exec_options, index=0)
 else:
-    st.warning("⚠️ सिस्टम में कोई एग्जीक्यूटिव नहीं मिला। कृपया पहले 'Partner Management' में जाकर डेटा चेक करें।")
+    st.warning("⚠️ सिस्टम में कोई एग्जीक्यूटिव नहीं मिला।")
     search_exec = None
 
 col1, col2, col3 = st.columns(3)
 with col1:
     comm_type = st.radio("📑 Statement Type", ["Self", "Group", "All (Self + Group)"])
 with col2:
-    start_date = st.date_input("📅 Start Date", pd.to_datetime("today").replace(day=1))
+    # ⚠️ यहाँ ध्यान दें: Start Date को डिफ़ॉल्ट रूप से इस साल का पहला दिन रखा गया है
+    start_date = st.date_input("📅 Start Date", pd.to_datetime("today").replace(month=1, day=1))
 with col3:
     end_date = st.date_input("📅 End Date", pd.to_datetime("today"))
 
@@ -166,7 +156,7 @@ btn_get_statement = st.button("🚀 Get Statement", type="primary", use_containe
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
-# 6. PROCESS STATEMENT DATA (🔥 ERROR FIXED HERE)
+# 6. PROCESS STATEMENT DATA (🔥 EXHAUSTIVE SCANNER)
 # ==========================================
 if btn_get_statement and search_exec:
     rows = []
@@ -174,25 +164,32 @@ if btn_get_statement and search_exec:
     target_clean = clean_txt(search_exec)
     boss_pct = partner_rates.get(target_clean, 0.0)
     
-    # Loop through Inventory Master
     for proj_name, p_info in db_projects.items():
         if isinstance(p_info, dict) and 'plots' in p_info:
             b_rate = safe_float(p_info.get('base_rate', 650))
             
-            # 🛠️ ERROR FIX: Handle both Dictionary and List
             plots_data = p_info['plots']
-            if isinstance(plots_data, dict):
-                plot_loop = plots_data.items()
-            elif isinstance(plots_data, list):
-                plot_loop = enumerate(plots_data)
-            else:
-                plot_loop = []
+            if isinstance(plots_data, dict): plot_loop = plots_data.items()
+            elif isinstance(plots_data, list): plot_loop = enumerate(plots_data)
+            else: plot_loop = []
             
             for pid, info in plot_loop:
                 if isinstance(info, dict):
-                    e_name = info.get('executive_name', info.get('executive', ''))
-                    seller_clean = resolve_clean_id(e_name)
+                    e_name, cust_name = "", "N/A"
+                    tok_amt, tok_date = 0.0, ""
+                    c_rate, disc_sqft = b_rate, 0.0
                     
+                    # 🔎 100% Safe Dictionary Scanning (ब्रह्मास्त्र)
+                    for k, v in info.items():
+                        kl = clean_txt(k)
+                        if kl in ['executivename', 'executive', 'partnername', 'agentname']: e_name = str(v)
+                        elif kl in ['customername', 'customer']: cust_name = str(v)
+                        elif kl in ['tokenamount', 'token', 'bookingamount']: tok_amt = safe_float(v)
+                        elif kl in ['bookingdate', 'tokendate', 'date']: tok_date = str(v)
+                        elif kl in ['companyrate', 'crate']: c_rate = safe_float(v)
+                        elif kl in ['discount', 'disc']: disc_sqft = safe_float(v)
+                    
+                    seller_clean = resolve_clean_id(e_name)
                     is_self = (seller_clean == target_clean)
                     is_group = is_downline(target_clean, seller_clean) if not is_self else False
                                 
@@ -201,23 +198,27 @@ if btn_get_statement and search_exec:
                                (comm_type == "All (Self + Group)" and (is_self or is_group))
                                
                     if is_valid:
-                        # Fetch all payments (Token + Partials)
-                        payments = [{'amt': safe_float(info.get('token_amount', 0)), 'date': info.get('booking_date', '')}]
-                        pp_data = info.get('partial_payments', [])
+                        # Add Token Payment
+                        payments = [{'amt': tok_amt, 'date': tok_date}]
+                        
+                        # Add Partial Payments Safely
+                        pp_data = info.get('partial_payments', info.get('partialpayments', []))
                         if isinstance(pp_data, dict): pp_data = list(pp_data.values())
-                        payments.extend([{'amt': safe_float(pmt.get('amount', 0)), 'date': pmt.get('date', '')} for pmt in pp_data if isinstance(pmt, dict)])
+                        if isinstance(pp_data, list):
+                            for pmt in pp_data:
+                                if isinstance(pmt, dict):
+                                    # Handle different possible keys for amount/date inside partial payments
+                                    p_amt = safe_float(pmt.get('amount', pmt.get('amt', 0)))
+                                    p_date = str(pmt.get('date', pmt.get('payment_date', '')))
+                                    payments.append({'amt': p_amt, 'date': p_date})
                         
-                        c_rate = safe_float(info.get('company_rate', b_rate))
                         if c_rate <= 0: c_rate = 650 
-                        disc_sqft = safe_float(info.get('discount', 0))
-                        
                         diff_pct = get_diff_rate(target_clean, seller_clean, boss_pct)
                         
                         for pmt in payments:
                             amt = safe_float(pmt['amt'])
                             pmt_date_parsed = parse_date(pmt['date'])
                             
-                            # Date Filter check
                             date_in_range = True
                             if pmt_date_parsed:
                                 if pmt_date_parsed < start_date or pmt_date_parsed > end_date:
@@ -232,7 +233,7 @@ if btn_get_statement and search_exec:
                                 
                                 rows.append({
                                     "S.No.": count,
-                                    "Customer Name": str(info.get('customer_name', 'N/A')).title(),
+                                    "Customer Name": cust_name.title(),
                                     "Plot No.": str(pid).upper(),
                                     "Received Amount": amt,
                                     "Received Date": pmt['date'],
@@ -246,7 +247,6 @@ if btn_get_statement and search_exec:
 
     df = pd.DataFrame(rows)
     
-    # Calculate Totals Row
     if not df.empty:
         totals = {
             "S.No.": "TOTAL", "Customer Name": "", "Plot No.": "", 
@@ -257,7 +257,7 @@ if btn_get_statement and search_exec:
         }
         df = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
     else:
-        st.warning(f"⚠️ इस तारीख के बीच {search_exec} के लिए कोई डेटा नहीं मिला।")
+        st.warning(f"⚠️ {search_exec} के लिए कोई डेटा नहीं मिला। कृपया 'Start Date' को और पुराना (जैसे जनवरी 2025) करके देखें।")
 
     st.session_state.statement_data = df
     st.session_state.statement_meta = {"exec": search_exec, "start": start_date, "end": end_date}
@@ -272,7 +272,6 @@ if 'statement_data' in st.session_state and not st.session_state.statement_data.
     logo_b64 = get_image_base64('logo.jpg')
     img_tag = f"<img src='data:image/jpeg;base64,{logo_b64}' width='120'/>" if logo_b64 else "<b>[LOGO]</b>"
     
-    # Generate Printable HTML Format
     st.markdown(f"""
     <div class='statement-container'>
         <table class='header-table'>
@@ -295,10 +294,8 @@ if 'statement_data' in st.session_state and not st.session_state.statement_data.
     </div>
     """, unsafe_allow_html=True)
     
-    # JavaScript logic to dynamically apply "total-row" class only to the last row
     components.html("""
         <script>
-            // Clean up Pandas table rendering for total row
             const tables = window.parent.document.querySelectorAll('.data-table');
             tables.forEach(table => {
                 const rows = table.querySelectorAll('tr');
