@@ -4,347 +4,289 @@ import pandas as pd
 import base64
 import os
 import re
+from datetime import datetime
 
 # ==========================================
-# 1. PAGE SETUP & CONFIGURATION
+# 1. PAGE CONFIGURATION
 # ==========================================
-st.set_page_config(layout="wide", page_title="Firstchoice Infra - Statement", initial_sidebar_state="collapsed")
-
-# Initialize DB (if module exists)
-try:
-    import database
-    database.init_db()
-except ImportError:
-    pass
+st.set_page_config(layout="wide", page_title="Commission Statement", initial_sidebar_state="collapsed")
 
 # ==========================================
-# 2. UTILITY FUNCTIONS
+# 2. HELPER FUNCTIONS
 # ==========================================
 def get_image_base64(image_path):
-    """लोगो इमेज को Base64 में कन्वर्ट करने के लिए"""
     if os.path.exists(image_path):
         with open(image_path, "rb") as img_file: 
             return base64.b64encode(img_file.read()).decode()
     return ""
 
 def safe_float(val):
-    """स्ट्रिंग या खाली वैल्यू को सुरक्षित रूप से float में बदलने के लिए"""
-    try: 
-        return float(str(val).strip() or 0)
-    except Exception: 
-        return 0.0
+    try: return float(str(val).strip() or 0)
+    except: return 0.0
 
 def clean_txt(s):
-    """नामों को मैच करने के लिए स्पेशल कैरेक्टर्स और स्पेस हटाना"""
     return re.sub(r'[^a-z0-9]', '', str(s).lower()).strip()
 
-# ==========================================
-# 3. CSS & PRINT FORMATTING
-# ==========================================
-def load_custom_css():
-    st.markdown("""<style>
-        /* General App Styling */
-        .block-container { padding-top: 2rem !important; padding-bottom: 1rem !important; max-width: 100% !important; }
-        [data-testid="stHeader"], #Manage-app { display: none !important; }
-        
-        /* Print Specific Styling */
-        @media print {
-            @page { margin-top: 0mm !important; margin-bottom: 5mm !important; }
-            [data-testid="stSidebar"], .stAppHeader, div.stButton, div[data-testid="stSelectbox"], 
-            div[role="radiogroup"], .no-print, details { display: none !important; }
-            body, html, .stApp, main { background: white !important; padding: 0 !important; margin: 0 !important; }
-            .block-container { padding-top: 0 !important; margin-top: 0 !important; }
-        }
-        
-        /* Document Styling */
-        .a4-container { background: white; color: black; max-width: 1000px; margin: auto; padding: 5px 20px; }
-        .header { position: relative; text-align: center; border-bottom: 2px solid #000; padding-bottom: 5px; margin-bottom: 15px; }
-        .title { font-size: 30px; font-weight: bold; margin: 0; color: #000; text-transform: uppercase; }
-        
-        /* Table Styling */
-        .data-table { width: 100%; border-collapse: collapse; font-size: 11px; }
-        .data-table th, .data-table td { border: 1px solid #000; padding: 6px; text-align: right; }
-        .data-table th { background-color: #f0f0f0; text-align: center; font-weight: bold; }
-        .data-table tr:last-child td { 
-            font-weight: 900 !important; background-color: #ffeb3b !important; 
-            color: #000 !important; font-size: 14px !important; padding: 10px 6px !important; 
-            border-top: 3px solid #000 !important; border-bottom: 3px solid #000 !important; 
-        }
-    </style>""", unsafe_allow_html=True)
+def parse_date(date_str):
+    try: return pd.to_datetime(date_str, format='mixed', dayfirst=True).date()
+    except: return None
 
 # ==========================================
-# 4. DATA LOADING & TREE BUILDING
+# 3. CSS & PRINT LAYOUT
 # ==========================================
-def load_data():
-    db_projects = st.session_state.get('db_projects', {})
-    partner_db = {}
+st.markdown("""<style>
+    /* Print Layout - Hides UI elements when printing */
+    @media print {
+        @page { margin: 10mm; size: A4 portrait; }
+        [data-testid="stSidebar"], .stAppHeader, .no-print, div.stButton, div[data-testid="stSelectbox"] { display: none !important; }
+        .block-container { padding: 0 !important; max-width: 100% !important; }
+        body, .stApp { background: white !important; color: black !important; }
+    }
     
-    # Extract partner database
-    for key in ['executives', 'db_executives', 'partners', 'associates']:
-        if key in st.session_state and isinstance(st.session_state[key], dict) and st.session_state[key]:
-            partner_db = st.session_state[key]
-            break
-
-    # Fallback to extract from projects db if not found directly
-    if not partner_db and isinstance(db_projects, dict):
-        for k, v in db_projects.items():
-            if str(k).strip().lower() in ['executives', 'executive', 'partners', 'associates']:
-                if isinstance(v, dict): 
-                    partner_db = v
-                    break
-                    
-    return db_projects, partner_db
-
-def build_partner_tree(partner_db):
-    parents = {} # child_clean -> parent_clean
-    rates = {} # member_clean -> percentage
-    names = {} # member_clean -> Display Name
+    /* Filter Box Styling */
+    .filter-box { background-color: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #ddd; margin-bottom: 20px; }
     
-    for key_id, info_dict in partner_db.items():
-        if isinstance(info_dict, dict):
-            exec_name = str(key_id).strip()
-            sponsor_name, pct_val = "", 0.0
-            
-            for k, v in info_dict.items():
-                kl = clean_txt(k)
-                if kl in ['name', 'executivename', 'partnername', 'fullname']: exec_name = str(v).strip()
-                elif kl in ['sponsor', 'sponsorname', 'upline', 'sponsor_name']: sponsor_name = str(v).strip()
-                elif kl in ['percentage', 'percentageexec', 'percentage_exec', 'pct', 'commission']: pct_val = safe_float(v)
-                    
-            c_exec = clean_txt(exec_name)
-            if c_exec:
-                rates[c_exec] = pct_val
-                names[c_exec] = exec_name
-                if sponsor_name:
-                    parents[c_exec] = clean_txt(sponsor_name)
-                    
-    return parents, rates, names
+    /* Statement Document Styling */
+    .statement-container { background: white; color: black; max-width: 900px; margin: auto; padding: 20px; border: 1px solid #eee; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    .header-table { width: 100%; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+    .header-table td { vertical-align: middle; }
+    .company-name { font-size: 28px; font-weight: bold; color: #000; text-transform: uppercase; margin: 0; text-align: center; }
+    .slogan { font-size: 14px; font-style: italic; margin: 5px 0; text-align: center; }
+    .address { font-size: 12px; margin: 0; text-align: center; }
+    
+    .info-section { display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 14px; font-weight: bold; }
+    
+    /* Data Table Styling */
+    .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .data-table th, .data-table td { border: 1px solid #000; padding: 8px; text-align: right; }
+    .data-table th { background-color: #f0f0f0; text-align: center; font-weight: bold; }
+    .data-table td:nth-child(2), .data-table td:nth-child(3) { text-align: left; } /* Name and Plot left align */
+    .data-table tr.total-row td { font-weight: 900 !important; background-color: #e0e0e0 !important; font-size: 14px; border-top: 2px solid #000; border-bottom: 2px solid #000; }
+</style>""", unsafe_allow_html=True)
 
 # ==========================================
-# 5. CORE BUSINESS LOGIC (ब्रह्मास्त्र)
+# 4. SYNC DATA FROM MASTER DATABASE
 # ==========================================
-def resolve_clean_id(raw_name, rates):
-    c_raw = clean_txt(raw_name)
-    if not c_raw: return ""
-    if c_raw in rates: return c_raw
-    for c_id in rates.keys():
-        if c_raw in c_id or c_id in c_raw: return c_id
-    return c_raw
+# Sync with Inventory Dashboard
+db_projects = st.session_state.get('db_projects', {})
 
-def is_downline(boss, seller, parents):
-    """चेक करता है कि क्या सेलर, बॉस की टीम (डाउनलाइन) में है या नहीं"""
-    if not seller or not boss or seller == boss: return False
+# Sync with Partner Management / Admin Panel
+partner_db = st.session_state.get('partners', st.session_state.get('executives', {}))
+
+# Build Hierarchy Tree
+parents_tree = {}  
+partner_rates = {}  
+real_names = {}
+
+for key_id, info in partner_db.items():
+    if isinstance(info, dict):
+        exec_name = info.get('name', key_id)
+        sponsor_name = info.get('sponsor', '')
+        # सपोर्ट्स परसेंटेज या फ्लैट रुपीस (यहाँ डिफ़ॉल्ट रूप से परसेंटेज को हैंडल किया गया है)
+        pct_val = safe_float(info.get('percentage', info.get('commission', 0)))
+        
+        c_exec = clean_txt(exec_name)
+        if c_exec:
+            partner_rates[c_exec] = pct_val
+            real_names[c_exec] = exec_name
+            if sponsor_name:
+                parents_tree[c_exec] = clean_txt(sponsor_name)
+
+# Hierarchy Logic (Group Check & Difference)
+def is_downline(boss, seller):
     curr = seller
     visited = set()
-    while curr and curr in parents:
+    while curr and curr in parents_tree:
         if curr in visited: break
         visited.add(curr)
-        parent = parents[curr]
+        parent = parents_tree[curr]
         if parent == boss: return True
         curr = parent
     return False
 
-def get_diff_rate(boss, seller, boss_pct, parents, rates):
-    """सटीक चेन-बेस्ड डिफरेंस कमीशन कैलकुलेट करता है"""
+def get_diff_rate(boss, seller, boss_pct):
     if not seller or boss == seller: return boss_pct
-    
     curr = seller
     path = [curr]
     visited = set()
-    
-    while curr and curr in parents:
+    while curr and curr in parents_tree:
         if curr in visited: break
         visited.add(curr)
-        parent = parents[curr]
+        parent = parents_tree[curr]
         if parent == boss:
             immediate_junior = path[-1]
-            junior_pct = rates.get(immediate_junior, 0.0)
-            return max(0.0, boss_pct - junior_pct)
+            return max(0.0, boss_pct - partner_rates.get(immediate_junior, 0.0))
         path.append(parent)
         curr = parent
-        
-    seller_pct = rates.get(seller, 0.0)
-    return max(0.0, boss_pct - seller_pct)
+    return max(0.0, boss_pct - partner_rates.get(seller, 0.0))
+
+def resolve_clean_id(raw_name):
+    c_raw = clean_txt(raw_name)
+    if c_raw in partner_rates: return c_raw
+    for c_id in partner_rates.keys():
+        if c_raw in c_id or c_id in c_raw: return c_id
+    return c_raw
 
 # ==========================================
-# 6. ADMIN SECURITY
+# 5. TOP UI: FILTERS & SELECTION
 # ==========================================
-def check_admin_access():
-    st.markdown('<div class="no-print">', unsafe_allow_html=True)
-    is_admin = False
+st.markdown('<div class="no-print filter-box">', unsafe_allow_html=True)
+st.subheader("📊 Executive Commission Generator")
+
+exec_options = list(real_names.values())
+search_exec = st.selectbox("👤 Select Executive", exec_options) if exec_options else None
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    comm_type = st.radio("📑 Statement Type", ["Self", "Group", "All (Self + Group)"])
+with col2:
+    start_date = st.date_input("📅 Start Date", pd.to_datetime("today").replace(day=1))
+with col3:
+    end_date = st.date_input("📅 End Date", pd.to_datetime("today"))
+
+btn_get_statement = st.button("🚀 Get Statement", type="primary", use_container_width=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ==========================================
+# 6. PROCESS STATEMENT DATA
+# ==========================================
+if btn_get_statement and search_exec:
+    rows = []
+    count = 1
+    target_clean = clean_txt(search_exec)
+    boss_pct = partner_rates.get(target_clean, 0.0)
     
-    # Check session state for admin signatures
-    for val in st.session_state.values():
-        if isinstance(val, str) and any(x in str(val).lower() for x in ['admin', 'boss', 'owner', 'firstchoice']):
-            is_admin = True; break
+    # Loop through Inventory Master
+    for proj_name, p_info in db_projects.items():
+        if isinstance(p_info, dict) and 'plots' in p_info:
+            b_rate = safe_float(p_info.get('base_rate', 650))
             
-    if st.session_state.get('force_unlock', False):
-        is_admin = True
+            for pid, info in p_info['plots'].items():
+                if isinstance(info, dict):
+                    e_name = info.get('executive_name', info.get('executive', ''))
+                    seller_clean = resolve_clean_id(e_name)
+                    
+                    is_self = (seller_clean == target_clean)
+                    is_group = is_downline(target_clean, seller_clean) if not is_self else False
+                                
+                    is_valid = (comm_type == "Self" and is_self) or \
+                               (comm_type == "Group" and is_group) or \
+                               (comm_type == "All (Self + Group)" and (is_self or is_group))
+                               
+                    if is_valid:
+                        # Fetch all payments (Token + Partials)
+                        payments = [{'amt': safe_float(info.get('token_amount', 0)), 'date': info.get('booking_date', '')}]
+                        pp_data = info.get('partial_payments', [])
+                        if isinstance(pp_data, dict): pp_data = list(pp_data.values())
+                        payments.extend([{'amt': safe_float(pmt.get('amount', 0)), 'date': pmt.get('date', '')} for pmt in pp_data if isinstance(pmt, dict)])
+                        
+                        c_rate = safe_float(info.get('company_rate', b_rate))
+                        if c_rate <= 0: c_rate = 650 
+                        disc_sqft = safe_float(info.get('discount', 0))
+                        
+                        diff_pct = get_diff_rate(target_clean, seller_clean, boss_pct)
+                        
+                        for pmt in payments:
+                            amt = safe_float(pmt['amt'])
+                            pmt_date_parsed = parse_date(pmt['date'])
+                            
+                            # Date Filter check
+                            date_in_range = True
+                            if pmt_date_parsed:
+                                if pmt_date_parsed < start_date or pmt_date_parsed > end_date:
+                                    date_in_range = False
+                            
+                            if amt > 0 and date_in_range:
+                                gross_comm = (amt * diff_pct) / 100
+                                disc_amt = (amt / c_rate) * disc_sqft 
+                                exact_comm = gross_comm - disc_amt
+                                tds = exact_comm * 0.02
+                                net_in_hand = exact_comm - tds
+                                
+                                rows.append({
+                                    "S.No.": count,
+                                    "Customer Name": str(info.get('customer_name', 'N/A')).title(),
+                                    "Plot No.": str(pid).upper(),
+                                    "Received Amount": amt,
+                                    "Received Date": pmt['date'],
+                                    "Gross Commission": gross_comm,
+                                    "Discount": disc_amt,
+                                    "Exact Commission": exact_comm,
+                                    "TDS (2%)": tds,
+                                    "Net In Hand": net_in_hand
+                                })
+                                count += 1
 
-    if not is_admin:
-        st.error("🚫 Access Denied! यह पेज सुरक्षित है और सिर्फ एडमिन के लिए उपलब्ध है।")
-        pwd = st.text_input("Admin PIN (Emergency Unlock)", type="password")
-        if st.button("🔓 Unlock Page"):
-            if pwd in ["1234", "admin123"]:
-                st.session_state.force_unlock = True
-                st.rerun()
-            else: 
-                st.error("❌ गलत पिन!")
-        st.stop()
+    df = pd.DataFrame(rows)
+    
+    # Calculate Totals Row
+    if not df.empty:
+        totals = {
+            "S.No.": "TOTAL", "Customer Name": "", "Plot No.": "", 
+            "Received Amount": df['Received Amount'].sum(), "Received Date": "", 
+            "Gross Commission": df['Gross Commission'].sum(), "Discount": df['Discount'].sum(), 
+            "Exact Commission": df['Exact Commission'].sum(), "TDS (2%)": df['TDS (2%)'].sum(), 
+            "Net In Hand": df['Net In Hand'].sum()
+        }
+        df = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
+    else:
+        st.warning(f"⚠️ इस तारीख के बीच {search_exec} के लिए कोई डेटा नहीं मिला।")
 
-    st.success("👑 **Admin Panel Active**")
-    if st.button("🔒 Lock Page", size="small"):
-        st.session_state.force_unlock = False
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.session_state.statement_data = df
+    st.session_state.statement_meta = {"exec": search_exec, "start": start_date, "end": end_date}
 
 # ==========================================
-# 7. MAIN EXECUTION & RENDER
+# 7. DISPLAY & PRINT STATEMENT
 # ==========================================
-def main():
-    load_custom_css()
-    check_admin_access()
+if 'statement_data' in st.session_state and not st.session_state.statement_data.empty:
+    df = st.session_state.statement_data
+    meta = st.session_state.statement_meta
     
-    db_projects, partner_db = load_data()
-    parents_tree, partner_rates, real_names_map = build_partner_tree(partner_db)
+    logo_b64 = get_image_base64('logo.jpg')
+    img_tag = f"<img src='data:image/jpeg;base64,{logo_b64}' width='120'/>" if logo_b64 else "<b>[LOGO]</b>"
     
-    # UI: Filters & Controls
-    st.markdown('<div class="no-print" style="padding: 15px; border-radius: 8px; background: #f8f9fa; border: 1px solid #ddd; margin-bottom: 20px;">', unsafe_allow_html=True)
-    st.subheader("⚙️ Statement Filters")
-    
-    all_options = list(real_names_map.values())
-    search_exec = st.selectbox("🔎 Select Business Partner", all_options) if all_options else None
-    comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
-    
-    col1, col2 = st.columns(2)
-    start_date = col1.date_input("📅 Start Date")
-    end_date = col2.date_input("📅 End Date")
-    
-    btn_gen = st.button("🚀 Generate Final Statement", use_container_width=True, type="primary")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # Calculate Data
-    if btn_gen and search_exec:
-        rows = []
-        count = 1
-        target_clean = clean_txt(search_exec)
-        boss_pct = partner_rates.get(target_clean, 0.0)
+    # Generate Printable HTML Format
+    st.markdown(f"""
+    <div class='statement-container'>
+        <table class='header-table'>
+            <tr>
+                <td style='width: 20%; text-align: left;'>{img_tag}</td>
+                <td style='width: 80%; text-align: center;'>
+                    <p class='company-name'>FIRSTCHOICE INFRA</p>
+                    <p class='slogan'>Symbol Of Trust...</p>
+                    <p class='address'>Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034</p>
+                </td>
+            </tr>
+        </table>
         
-        mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
-        
-        for proj_name, p_info in db_projects.items():
-            if isinstance(p_info, dict) and 'plots' in p_info:
-                mauja = p_info.get('mauja', mapping.get(proj_name.lower(), "Nagpur"))
-                b_rate = safe_float(p_info.get('base_rate', 650))
-                
-                plots_dict = p_info['plots']
-                plot_loop = plots_dict.items() if isinstance(plots_dict, dict) else enumerate(plots_dict)
-                
-                for pid, info in plot_loop:
-                    if isinstance(info, dict):
-                        e_name, s_name = "", ""
-                        for k, v in info.items():
-                            kl = clean_txt(k)
-                            if kl in ['executivename', 'executive', 'executive_name', 'partnername']: e_name = str(v).strip()
-                            elif kl in ['sponsorname', 'sponsor_name', 'sponsor', 'upline']: s_name = str(v).strip()
-                        
-                        seller_clean = resolve_clean_id(e_name, partner_rates)
-                        sponsor_clean = resolve_clean_id(s_name, partner_rates)
-                        
-                        is_self = (seller_clean == target_clean)
-                        is_group = False
-                        
-                        if not is_self:
-                            if is_downline(target_clean, seller_clean, parents_tree): is_group = True
-                            elif is_downline(target_clean, sponsor_clean, parents_tree): is_group = True
-                            elif sponsor_clean == target_clean: is_group = True
-                                        
-                        is_valid = (comm_type == "Self" and is_self) or \
-                                   (comm_type == "Group" and is_group) or \
-                                   (comm_type == "All (Self + Group)" and (is_self or is_group))
-                                   
-                        if is_valid:
-                            # Collect all payments
-                            payments = [{'amt': safe_float(info.get('token_amount', 0)), 'date': info.get('booking_date', '')}]
-                            pp_data = info.get('partial_payments', [])
-                            if isinstance(pp_data, dict): pp_data = pp_data.values()
-                            payments.extend([{'amt': safe_float(pmt.get('amount', 0)), 'date': pmt.get('date', '')} for pmt in pp_data if isinstance(pmt, dict)])
-                            
-                            c_rate = safe_float(info.get('company_rate'))
-                            if c_rate <= 0: c_rate = b_rate
-                            if c_rate <= 0: c_rate = 650 
-                            disc_sqft = safe_float(info.get('discount', 0))
-                            
-                            diff_pct = get_diff_rate(target_clean, seller_clean, boss_pct, parents_tree, partner_rates)
-                            
-                            display_seller_name = real_names_map.get(seller_clean, str(e_name).title())
-                            entry_type = "Self" if is_self else f"Group ({display_seller_name})"
-                            
-                            for pmt in payments:
-                                amt = safe_float(pmt['amt'])
-                                if amt > 0:
-                                    gross = (amt * diff_pct) / 100
-                                    disc_amt = (amt / c_rate) * disc_sqft 
-                                    net_comm = gross - disc_amt
-                                    tds = net_comm * 0.02
-                                    in_hand = net_comm - tds
-                                    
-                                    rows.append({
-                                        "S.No.": count, "Type": entry_type, "Mauja": mauja, "Project": proj_name, "Plot": pid, 
-                                        "Customer": info.get('customer_name', 'N/A'), "Received": amt, 
-                                        "Date": pmt['date'], "Gross": gross, "Discount": disc_amt, 
-                                        "Net Comm": net_comm, "TDS": tds, "In Hand": in_hand
-                                    })
-                                    count += 1
-
-        df = pd.DataFrame(rows)
-        
-        # Calculate Totals
-        totals = { "S.No.": "TOTAL", "Type": "", "Mauja": "", "Project": "", "Plot": "", "Customer": "", "Date": "",
-            "Received": df['Received'].sum() if not df.empty else 0, "Gross": df['Gross'].sum() if not df.empty else 0, 
-            "Discount": df['Discount'].sum() if not df.empty else 0, "Net Comm": df['Net Comm'].sum() if not df.empty else 0, 
-            "TDS": df['TDS'].sum() if not df.empty else 0, "In Hand": df['In Hand'].sum() if not df.empty else 0 }
-            
-        st.session_state.df_view = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
-        st.session_state.meta = {"exec": search_exec, "start": start_date, "end": end_date, "type": comm_type}
-
-    # ==========================================
-    # 8. RENDER FINAL DOCUMENT
-    # ==========================================
-    if 'df_view' in st.session_state and st.session_state.df_view is not None:
-        df, meta = st.session_state.df_view, st.session_state.meta
-        
-        logo_html = f"<img src='data:image/jpeg;base64,{get_image_base64('logo.jpg')}' style='position:absolute; top:0px; left:15px; width:130px; mix-blend-mode: multiply;'/>"
-        
-        st.markdown("<div class='a4-container'>", unsafe_allow_html=True)
-        st.markdown(f"""
-        <div class='header'>
-            {logo_html}
-            <h1 class='title'>FIRSTCHOICE INFRA</h1>
-            <p style='margin: 5px 0;'><i>Symbol Of Trust...</i></p>
-            <p style='font-size:12px; margin: 0;'>Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034</p>
+        <div class='info-section'>
+            <div>Executive: <span style='color: #1e3a8a;'>{meta['exec']}</span></div>
+            <div>Period: <span style='color: #1e3a8a;'>{meta['start'].strftime('%d %b %Y')} to {meta['end'].strftime('%d %b %Y')}</span></div>
         </div>
-        <h3 style='text-align:center; margin-top:0;'>Executive Commission Statement</h3>
-        <div style='margin-bottom:10px; font-size:13px;'>
-            <b>Partner:</b> {meta['exec']} &nbsp;&nbsp;|&nbsp;&nbsp; <b>Type:</b> {meta['type']} 
-            <span style="float:right;"><b>Period:</b> {meta['start']} to {meta['end']}</span>
+        
+        {df.to_html(classes='data-table', index=False, float_format="%.2f").replace('<tr>', '<tr class="total-row">') if not df.empty else ""}
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # JavaScript logic to dynamically apply "total-row" class only to the last row
+    components.html("""
+        <script>
+            // Clean up Pandas table rendering for total row
+            const tables = window.parent.document.querySelectorAll('.data-table');
+            tables.forEach(table => {
+                const rows = table.querySelectorAll('tr');
+                if(rows.length > 1) {
+                    rows.forEach(r => r.classList.remove('total-row'));
+                    rows[rows.length - 1].classList.add('total-row');
+                }
+            });
+        </script>
+        
+        <style>@media print { body { display: none !important; } }</style>
+        <div style="text-align:center; margin-top:30px;" class="no-print">
+            <button onclick="window.parent.print()" style="padding:12px 30px; background-color:#1e3a8a; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold; font-size:16px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">
+                🖨️ Print Statement
+            </button>
         </div>
-        """, unsafe_allow_html=True)
-        
-        # Display Table
-        st.markdown(df.to_html(classes='data-table', index=False, float_format="%.2f"), unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-        # Print Button
-        components.html("""
-            <style>@media print { body { display: none !important; } }</style>
-            <div style="text-align:center; margin-top:20px;">
-                <button onclick="window.parent.print()" style="padding:12px 30px; background-color:#1e3a8a; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold; font-size:16px;">
-                    🖨️ Print Final Document
-                </button>
-            </div>
-        """, height=80)
-
-if __name__ == "__main__":
-    main()
+    """, height=100)
 
