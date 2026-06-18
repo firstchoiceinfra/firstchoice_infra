@@ -1,99 +1,84 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
-import base64
-import os
 import re
 import datetime
 
-st.set_page_config(layout="wide", page_title="FC Infra - Commission Statement")
+st.set_page_config(layout="wide", page_title="FC Infra - Master Commission Statement")
 
-# --- Security: Only Admin Access ---
-if 'logged_in' not in st.session_state or not st.session_state.logged_in:
-    st.warning("🔒 Please login first.")
-    st.stop()
-if st.session_state.get('user_role', 'executive').lower() != 'admin':
-    st.error("🚨 ACCESS DENIED: Admin Only.")
+# --- Security: Only Admin ---
+if st.session_state.get('user_role', '').lower() != 'admin':
+    st.error("🚨 Access Restricted to Administrator Only.")
     st.stop()
 
-# --- Helper Functions ---
-def safe_float(val, default=0.0):
-    try: 
-        if val is None or str(val).strip() == "": return float(default)
-        clean_str = re.sub(r'[^\d.]', '', str(val))
-        return float(clean_str) if clean_str else float(default)
-    except: return float(default)
+# --- Functions ---
+def clean_txt(s): return re.sub(r'[^a-z0-9]', '', str(s).lower()).strip()
 
-def clean_txt(s):
-    return re.sub(r'[^a-z0-9]', '', str(s).lower()).strip()
+def safe_float(val):
+    try: return float(re.sub(r'[^\d.]', '', str(val)))
+    except: return 0.0
 
 # --- Sync Data ---
 db_data = st.session_state.get('db_projects', {})
 exec_data = db_data.get('executives', {})
-parents_tree = {}
-partner_rates = {}
-real_names = {}
+partner_rates = {clean_txt(k): safe_float(v.get('percentage_exec', 0)) for k, v in exec_data.items()}
+real_names = {clean_txt(k): v.get('name', k) for k, v in exec_data.items()}
 
-for ex_name, details in exec_data.items():
-    if isinstance(details, dict):
-        name = details.get('name', ex_name).strip()
-        senior = str(details.get('senior_name', '')).replace('Direct', '').strip()
-        pct = safe_float(details.get('percentage_exec', 0.0))
-        c_name = clean_txt(name)
-        if c_name:
-            partner_rates[c_name] = pct
-            real_names[c_name] = name
-            c_senior = clean_txt(senior)
-            if c_senior and c_senior != c_name: parents_tree[c_name] = c_senior
-
-def get_all_downlines_recursive(boss_clean):
-    downlines = []
-    for child, parent in parents_tree.items():
-        if parent == boss_clean:
-            downlines.append(child)
-            downlines.extend(get_all_downlines_recursive(child))
-    return list(set(downlines))
-
-# --- UI ---
-st.title("📊 Master Commission Statement")
-search_exec = st.selectbox("👤 Select Partner", options=sorted(list(real_names.values())))
+# --- UI Filters ---
+search_exec = st.selectbox("👤 Select Executive", options=sorted(list(real_names.values())))
 comm_type = st.radio("📑 Scope", ["Self", "Group", "All (Self + Group)"], horizontal=True)
 col1, col2 = st.columns(2)
 start_date = col1.date_input("Start Date", datetime.date(2020, 1, 1))
 end_date = col2.date_input("End Date", datetime.date.today())
 
-if st.button("🚀 Generate Statement"):
+if st.button("🚀 Generate Full Statement"):
+    rows = []
     target_clean = clean_txt(search_exec)
     boss_pct = partner_rates.get(target_clean, 0.0)
-    all_downlines = get_all_downlines_recursive(target_clean)
-    rows = []
     
     for p_name, p_info in db_data.items():
         if isinstance(p_info, dict) and 'plots' in p_info:
-            mauja = str(p_info.get('mauja', p_info.get('location', 'N/A'))).strip()
+            mauja = str(p_info.get('mauja', 'N/A'))
             plots = p_info['plots']
             if isinstance(plots, list): plots = {str(i): p for i, p in enumerate(plots) if p}
             
             for pid, info in plots.items():
                 if isinstance(info, dict) and str(info.get('status', '')).lower() == 'booked':
-                    seller_clean = clean_txt(info.get('executive_name', ''))
-                    is_valid = (comm_type == "Self" and seller_clean == target_clean) or \
-                               (comm_type == "Group" and seller_clean in all_downlines) or \
-                               (comm_type == "All (Self + Group)" and (seller_clean == target_clean or seller_clean in all_downlines))
+                    # Calculations
+                    amt = safe_float(info.get('token_amount', 0)) + sum(safe_float(p.get('amount', 0)) for p in info.get('partial_payments', []))
                     
-                    if is_valid:
-                        # Logic to calculate based on your Master Ledger engine
-                        amt = safe_float(info.get('token_amount', 0)) + sum(safe_float(p.get('amount', 0)) for p in info.get('partial_payments', []))
-                        diff_pct = boss_pct - partner_rates.get(seller_clean, 0.0)
-                        gross = (amt * diff_pct) / 100
-                        rows.append({
-                            "Customer": info.get('customer_name', 'N/A'),
-                            "Plot": pid, "Mauja": mauja, "Amount": amt,
-                            "Gross Comm": gross, "Net": gross * 0.98
-                        })
+                    # Commission Logic
+                    diff_pct = boss_pct - partner_rates.get(clean_txt(info.get('executive_name', '')), 0.0)
+                    gross = (amt * diff_pct) / 100
+                    disc = safe_float(info.get('discount', 0))
+                    net_comm = max(0, gross - disc)
+                    tds = net_comm * 0.02
+                    
+                    rows.append({
+                        "S.No.": len(rows) + 1,
+                        "Customer": info.get('customer_name', 'N/A'),
+                        "Plot": str(pid).upper(),
+                        "Mauja": mauja,
+                        "Received": amt,
+                        "Date": info.get('booking_date', 'N/A'),
+                        "Gross Comm": gross,
+                        "Discount": disc,
+                        "Net Comm": net_comm,
+                        "TDS (2%)": tds,
+                        "In Hand": net_comm - tds
+                    })
     
-    st.session_state.df = pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    # Add Total Row
+    if not df.empty:
+        totals = df.sum(numeric_only=True)
+        totals['S.No.'] = 'TOTAL'
+        df = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
+        
+    st.dataframe(df, use_container_width=True)
+    st.session_state.final_df = df
 
-if 'df' in st.session_state:
-    st.table(st.session_state.df)
+if 'final_df' in st.session_state:
+    if st.button("🖨️ Print Final Statement"):
+        st.write(st.session_state.final_df.to_html(classes='data-table'))
 
