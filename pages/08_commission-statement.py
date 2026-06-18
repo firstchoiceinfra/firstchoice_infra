@@ -123,6 +123,7 @@ def get_diff_commission(target_c, plot_c, parsed_data):
     while curr and curr not in visited:
         visited.add(curr)
         curr_sp = ""
+        # curr का स्पॉन्सर ढूँढो
         for v in parsed_data.values():
             if names_match(v['c_name'], curr):
                 curr_sp = v['c_sp']
@@ -130,6 +131,7 @@ def get_diff_commission(target_c, plot_c, parsed_data):
         
         if not curr_sp: break
         
+        # क्या यह स्पॉन्सर हमारा टारगेट (A) है?
         if names_match(curr_sp, target_c):
             child_of_target = curr
             break
@@ -142,33 +144,168 @@ def get_diff_commission(target_c, plot_c, parsed_data):
         p_pct = parsed_data.get(plot_c, {}).get('pct', 0.0)
         return max(0.0, t_pct - p_pct)
 
-
-# ==========================================================
-# 🚀 100% STRICT SECURITY - CUSTOM ADMIN LOGIN WALL
-# ==========================================================
+# 🚀 100% STRICT SECURITY - सिर्फ एडमिन (बॉस) को एक्सेस!
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
-# सेशन स्टेट में एडमिन लॉगिन वेरिफाई करने का सिस्टम
-if 'page_admin_unlocked' not in st.session_state:
-    st.session_state.page_admin_unlocked = False
+user_role = str(st.session_state.get('role', '')).strip().lower()
+logged_in_user = str(st.session_state.get('username', '')).strip()
+c_logged = clean_str(logged_in_user)
 
-# अगर पेज लॉक है, तो पहले आईडी पासवर्ड माँगेगा
-if not st.session_state.page_admin_unlocked:
-    st.markdown("""
-        <div style='background-color:#ffebee; padding:20px; border-radius:10px; border:2px solid #ef5350; text-align:center;'>
-            <h2 style='color:#c62828; margin-top:0;'>🔒 Restricted Admin Area</h2>
-            <p style='color:#b71c1c; font-size:16px;'>यह पेज सिर्फ फर्स्टचॉइस इंफ्रा के <b>Boss (Admin)</b> के लिए सुरक्षित है।<br>कृपया एक्सेस के लिए अपनी ID और Password दर्ज करें।</p>
-        </div>
-    """, unsafe_allow_html=True)
+is_admin = (user_role == 'admin' or c_logged == 'admin')
+
+if not is_admin:
+    st.error("🚫 **Access Denied!** यह पेज सुरक्षित है और सिर्फ कंपनी के एडमिन (Boss) के लिए उपलब्ध है। एग्जीक्यूटिव या पार्टनर्स को कमीशन स्टेटमेंट देखने की अनुमति नहीं है।")
+    st.stop() # एग्जीक्यूटिव का सिस्टम यहीं रुक जाएगा, आगे कुछ लोड नहीं होगा!
+
+# 👑 एडमिन पैनल (सब कुछ दिखेगा)
+st.success("👑 **Boss / Admin Panel Active:** आपको पूरी कंपनी का फुल एक्सेस है।")
+all_execs = [v['name'] for v in parsed_execs.values()]
+
+if all_execs:
+    search_exec = st.selectbox("🔎 Select Business Partner to View Statement", all_execs)
+else:
+    st.warning("⚠️ डेटाबेस में कोई पार्टनर नहीं मिला।")
+    search_exec = None
+
+comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
+
+col1, col2 = st.columns(2)
+start, end = col1.date_input("Start Date"), col2.date_input("End Date")
+btn_generate = st.button("🚀 Generate Final Statement")
+st.markdown('</div>', unsafe_allow_html=True)
+
+# 4. Calculation Logic
+if btn_generate and search_exec: 
+    rows = []
+    count = 1
+    target_c = clean_str(search_exec)
     
-    st.write("---")
-    col1, col2, col3 = st.columns([1,2,1])
-    with col2:
-        st.subheader("🔑 Admin Login")
-        login_id = st.text_input("Admin ID (उदा. admin)")
-        login_pass = st.text_input("Password", type="password")
-        
-        if st.button("🔓 Secure Login", use_container_width=True):
-            # यहाँ ID 'admin' और Password 'admin123' मैच करेगा
-            if login_
+    # A की पूरी चेन (B, C, D...) ढूँढना
+    selected_downline = get_full_downline(target_c, parsed_execs)
+    mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
+    
+    for project_name, p_info in db_data.items():
+        if isinstance(p_info, dict) and 'plots' in p_info:
+            mauja = p_info.get('mauja', mapping.get(project_name.lower(), "Nagpur"))
+            base_rate_from_db = safe_float(p_info.get('base_rate', 650))
+            
+            plots_data = p_info['plots']
+            plot_items = plots_data.items() if isinstance(plots_data, dict) else enumerate(plots_data)
+            
+            for pid, info in plot_items:
+                info = info if isinstance(info, dict) else {}
+                
+                ex_name = ""
+                for key, val in info.items():
+                    kl = clean_str(key)
+                    if kl in ['executivename', 'executive', 'execname', 'partnername']:
+                        ex_name = str(val).strip()
+                        
+                plot_c = clean_str(ex_name)
+                
+                # चेक करें कि प्लॉट किसने बेचा?
+                is_self = names_match(target_c, plot_c)
+                
+                is_group = False
+                if not is_self:
+                    for dl in selected_downline:
+                        if names_match(dl, plot_c):
+                            is_group = True
+                            break
+                
+                is_valid = False
+                if comm_type == "Self": is_valid = is_self
+                elif comm_type == "Group": is_valid = is_group
+                else: is_valid = is_self or is_group
+                
+                if is_valid:
+                    payments = [{'amt': safe_float(info.get('token_amount', 0)), 'date': info.get('booking_date', '')}]
+                    pp_data = info.get('partial_payments', [])
+                    if isinstance(pp_data, dict): pp_list = pp_data.values()
+                    else: pp_list = pp_data
+                    payments.extend([{'amt': safe_float(pmt.get('amount', 0)), 'date': pmt.get('date', '')} for pmt in pp_list if isinstance(pmt, dict)])
+                    
+                    comp_rate = safe_float(info.get('company_rate'))
+                    if comp_rate <= 0: comp_rate = base_rate_from_db
+                    if comp_rate <= 0: comp_rate = 650 
+                    discount_sqft = safe_float(info.get('discount', 0))
+                    
+                    # 🎯 डिफरेंस लागू (चाहे C ने बेचा हो, A को डिफरेंस मिलेगा)
+                    diff_pct = get_diff_commission(target_c, plot_c, parsed_execs)
+                    
+                    if is_self:
+                        entry_label = "Self"
+                    else:
+                        orig_name = str(ex_name).title()
+                        for v in parsed_execs.values():
+                            if names_match(v['c_name'], plot_c):
+                                orig_name = v['name']
+                                break
+                        entry_label = f"Group ({orig_name})"
+                    
+                    for pmt in payments:
+                        amt = safe_float(pmt['amt'])
+                        if amt > 0:
+                            gross = (amt * diff_pct) / 100
+                            disc_amt = (amt / comp_rate) * discount_sqft 
+                            net_comm = gross - disc_amt
+                            tds = net_comm * 0.02
+                            in_hand = net_comm - tds
+                            
+                            rows.append({
+                                "S.No.": count, "Type": entry_label, "Mauja": mauja, "Project": project_name, "Plot": pid, 
+                                "Customer": info.get('customer_name', 'N/A'), "Received": amt, 
+                                "Date": pmt['date'], "Gross": gross, "Discount": disc_amt, 
+                                "Net Comm": net_comm, "TDS": tds, "In Hand": in_hand
+                            })
+                            count += 1
+    
+    df = pd.DataFrame(rows)
+    totals = {
+        "S.No.": "TOTAL", "Type": "", "Mauja": "", "Project": "", "Plot": "", "Customer": "", "Date": "",
+        "Received": df['Received'].sum() if not df.empty else 0, 
+        "Gross": df['Gross'].sum() if not df.empty else 0, 
+        "Discount": df['Discount'].sum() if not df.empty else 0, 
+        "Net Comm": df['Net Comm'].sum() if not df.empty else 0, 
+        "TDS": df['TDS'].sum() if not df.empty else 0, 
+        "In Hand": df['In Hand'].sum() if not df.empty else 0
+    }
+    df = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
+    st.session_state.df_view = df
+    st.session_state.meta = {"exec": search_exec, "start": start, "end": end, "type": comm_type}
 
+# 5. Display Render
+if 'df_view' in st.session_state and st.session_state.df_view is not None:
+    df = st.session_state.df_view
+    meta = st.session_state.meta
+    
+    st.markdown("<div class='a4-container'>", unsafe_allow_html=True)
+    st.markdown(f"""<div class='header'>
+        {logo_html}
+        <h1 class='title'>FIRSTCHOICE INFRA</h1>
+        <p style='margin: 5px 0;'><i>Symbol Of Trust...</i></p>
+        <p style='font-size:12px; margin: 0;'>Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034</p>
+    </div>
+    <h3 style='text-align:center; margin-top:0;'>Executive Commission Statement</h3>
+    <div style='margin-bottom:10px; font-size:13px;'>
+        <b>Partner:</b> {meta['exec']} &nbsp;&nbsp;|&nbsp;&nbsp; 
+        <b>Type:</b> {meta['type']} 
+        <span style="float:right;"><b>Period:</b> {meta['start']} to {meta['end']}</span>
+    </div>""", unsafe_allow_html=True)
+    
+    html_table = df.to_html(classes='data-table', index=False, float_format="%.2f")
+    st.markdown(html_table, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # 6. Active Print Button
+    components.html(
+        """
+        <style>@media print { body { display: none !important; } }</style>
+        <div style="text-align:center; margin-top:20px;">
+            <button onclick="window.parent.print()" style="padding:12px 30px; background-color:#1e3a8a; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold; font-size:16px; font-family:sans-serif;">
+                🖨️ Print Final Document
+            </button>
+        </div>
+        """,
+        height=80
+    )
