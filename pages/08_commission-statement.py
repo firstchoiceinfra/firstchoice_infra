@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit st
 import streamlit.components.v1 as components
 import pandas as pd
 import base64
@@ -18,7 +18,7 @@ except:
 
 db_data = st.session_state.get('db_projects', {})
 
-# 🔎 पार्टनर मैनेजमेंट (Partner Management) के ओरिजिनल डेटाबेस को खोजना
+# 🔎 पार्टनर मैनेजमेंट का ओरिजिनल मास्टर डेटाबेस लोड करना
 partner_db = {}
 for key in ['executives', 'db_executives', 'partners', 'associates']:
     if key in st.session_state and isinstance(st.session_state[key], dict) and st.session_state[key]:
@@ -67,20 +67,15 @@ def safe_float(val):
 def clean_txt(s):
     return re.sub(r'[^a-z0-9]', '', str(s).lower()).strip()
 
-# स्मार्ट नाम मैचिंग सेंसर (टोकन और स्पेस की गलतियां सुधारेगा)
-def is_same_name(n1, n2):
-    s1, s2 = clean_txt(n1), clean_txt(n2)
-    if not s1 or not s2: return False
-    if s1 == s2 or s1 in s2 or s2 in s1: return True
-    w1, w2 = set(str(n1).lower().split()), set(str(n2).lower().split())
-    if w1 and w2 and (w1.issubset(w2) or w2.issubset(w1)): return True
-    return False
+def is_match(n1, n2):
+    return clean_txt(n1) == clean_txt(n2)
 
 # ==========================================
-# 3. PARTNER MANAGEMENT DATA EXTRACTION
+# 3. LIVE PARTNER TREE EXTRACTION
 # ==========================================
-p_management_tree = {} # सीनियर-जूनियर मैपिंग
-p_percentages = {} # किसका कितना % है
+cleaned_parents = {} # child_clean -> parent_clean
+cleaned_p_rates = {} # member_clean -> percentage
+real_names = {} # member_clean -> Display Name
 
 for key_id, info_dict in partner_db.items():
     if isinstance(info_dict, dict):
@@ -90,62 +85,64 @@ for key_id, info_dict in partner_db.items():
         
         for k, v in info_dict.items():
             kl = clean_txt(k)
-            if kl in ['name', 'executivename', 'partnername', 'fullname']: 
-                exec_name = str(v).strip()
-            elif kl in ['sponsor', 'sponsorname', 'upline', 'sponsor_name']: 
-                sponsor_name = str(v).strip()
-            elif kl in ['percentage', 'percentageexec', 'percentage_exec', 'pct', 'commission']: 
-                pct_val = safe_float(v)
+            if kl in ['name', 'executivename', 'partnername', 'fullname']: exec_name = str(v).strip()
+            elif kl in ['sponsor', 'sponsorname', 'upline', 'sponsor_name']: sponsor_name = str(v).strip()
+            elif kl in ['percentage', 'percentageexec', 'percentage_exec', 'pct', 'commission']: pct_val = safe_float(v)
                 
         c_exec = clean_txt(exec_name)
         if c_exec:
-            p_percentages[c_exec] = pct_val
+            cleaned_p_rates[c_exec] = pct_val
+            real_names[c_exec] = exec_name
             if sponsor_name:
-                p_management_tree[c_exec] = clean_txt(sponsor_name)
+                cleaned_parents[c_exec] = clean_txt(sponsor_name)
 
-def get_canonical_id(raw_name):
+def resolve_to_clean_id(raw_name):
     c_raw = clean_txt(raw_name)
-    for c_id in p_percentages.keys():
-        if c_raw == c_id or c_raw in c_id or c_id in c_raw:
-            return c_id
+    if not c_raw: return ""
+    if c_raw in cleaned_p_rates: return c_raw
+    for c_id in cleaned_p_rates.keys():
+        if c_raw in c_id or c_id in c_raw: return c_id
     return c_raw
 
-# 🛠️ असीमित गहराई (Infinite Downline) खोजने वाला लूप स्कैनर
-def build_infinite_downline(target_id):
-    downline = set()
-    queue = [target_id]
-    while queue:
-        curr = queue.pop(0)
-        for child, parent in p_management_tree.items():
-            if parent == curr or is_same_name(parent, curr):
-                if child not in downline and child != target_id:
-                    downline.add(child)
-                    queue.append(child)
-    return downline
+# 🛠️ ब्रह्मास्त्र 1: रिवर्स-चेन स्कैनर (नीचे से ऊपर सीनियर की तरफ चेक करेगा)
+def is_downline_recursive(boss_clean, seller_clean):
+    if not seller_clean or not boss_clean or seller_clean == boss_clean:
+        return False
+    curr = seller_clean
+    visited = set()
+    while curr and curr in cleaned_parents:
+        if curr in visited: break
+        visited.add(curr)
+        parent = cleaned_parents[curr]
+        if parent == boss_clean:
+            return True
+        curr = parent
+    return False
 
-# 🛠️ सटीक ट्री-बेस्ड डिफरेंस कमीशन कैलकुलेटर
-def calculate_differential_pct(target_id, seller_id):
-    target_pct = p_percentages.get(target_id, 0.0)
-    if target_id == seller_id or not seller_id:
-        return target_pct
-        
-    curr = seller_id
-    path = []
+# 🛠️ ब्रह्मास्त्र 2: सटीक चेन-बेस्ड डिफरेंस कमीशन कैलकुलेटर
+def get_differential_rate(boss_clean, seller_clean, boss_pct):
+    if not seller_clean or boss_clean == seller_clean:
+        return boss_pct
+    
+    curr = seller_clean
+    path = [curr]
     visited = set()
     
-    # नीचे से ऊपर सीनियर की तरफ ट्रैक करना
-    while curr and curr not in visited and curr != target_id:
+    while curr and curr in cleaned_parents:
+        if curr in visited: break
         visited.add(curr)
-        path.append(curr)
-        curr = p_management_tree.get(curr, "")
+        parent = cleaned_parents[curr]
+        if parent == boss_clean:
+            # टारगेट बॉस के ठीक नीचे वाला इमीडिएट जूनियर मिल गया
+            immediate_junior = path[-1]
+            junior_pct = cleaned_p_rates.get(immediate_junior, 0.0)
+            return max(0.0, boss_pct - junior_pct)
+        path.append(parent)
+        curr = parent
         
-    if curr == target_id and path:
-        immediate_junior = path[-1] # टारगेट का ठीक नीचे वाला लिंक पार्टनर
-        junior_pct = p_percentages.get(immediate_junior, 0.0)
-        return max(0.0, target_pct - junior_pct)
-    else:
-        seller_pct = p_percentages.get(seller_id, 0.0)
-        return max(0.0, target_pct - seller_pct)
+    # फॉलबैक (अगर सीधी चेन न मिले)
+    seller_pct = cleaned_p_rates.get(seller_clean, 0.0)
+    return max(0.0, boss_pct - seller_pct)
 
 # ==========================================
 # 4. TOTAL ADMIN SECURITY LOCK
@@ -155,8 +152,7 @@ is_admin_logged = False
 
 for val in st.session_state.values():
     if isinstance(val, str) and any(x in str(val).lower() for x in ['admin', 'boss', 'owner', 'firstchoice']):
-        is_admin_logged = True
-        break
+        is_admin_logged = True; break
 if 'force_unlock' in st.session_state and st.session_state.force_unlock:
     is_admin_logged = True
 
@@ -170,21 +166,12 @@ if not is_admin_logged:
         else: st.error("❌ गलत पिन!")
     st.stop()
 
-st.success("👑 **Admin Panel Active** (पार्टनर मैनेजमेंट से सफलतापूर्वक कनेक्टेड)")
+st.success("👑 **Admin Panel Active**")
 if st.button("🔒 Lock Page"):
     st.session_state.force_unlock = False
     st.rerun()
 
-# ड्रॉपडाउन में दिखाने के लिए ओरिजिनल नाम निकालना
-display_names_map = {}
-for k, v in partner_db.items():
-    if isinstance(v, dict):
-        nm = str(k).strip()
-        for sub_k, sub_v in v.items():
-            if clean_txt(sub_k) in ['name', 'executivename']: nm = str(sub_v).strip()
-        display_names_map[clean_txt(nm)] = nm
-
-all_options = list(display_names_map.values())
+all_options = list(real_names.values())
 search_exec = st.selectbox("🔎 Select Business Partner", all_options) if all_options else None
 comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
 
@@ -199,10 +186,8 @@ st.markdown('</div>', unsafe_allow_html=True)
 if btn_gen and search_exec:
     rows = []
     count = 1
-    target_id = clean_txt(search_exec)
-    
-    # लाइव चेन ढूंढना पार्टनर मैनेजमेंट के डेटा से
-    full_downline_set = build_infinite_downline(target_id)
+    target_clean = clean_txt(search_exec)
+    boss_pct = cleaned_p_rates.get(target_clean, 0.0)
     
     mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
     
@@ -222,20 +207,18 @@ if btn_gen and search_exec:
                         if kl in ['executivename', 'executive', 'executive_name', 'partnername']: e_name = str(v).strip()
                         elif kl in ['sponsorname', 'sponsor_name', 'sponsor', 'upline']: s_name = str(v).strip()
                     
-                    seller_id = clean_txt(e_name)
-                    sponsor_id = clean_txt(s_name)
+                    seller_clean = resolve_to_clean_id(e_name)
+                    sponsor_clean = resolve_to_clean_id(s_name)
                     
-                    is_self = (seller_id == target_id or is_same_name(seller_id, target_id))
+                    # चेक करें: क्या यह खुद का बिज़नेस है?
+                    is_self = (seller_clean == target_clean)
                     
+                    # चेक करें: क्या यह ग्रुप (डाउनलाइन) का बिज़नेस है?
                     is_group = False
                     if not is_self:
-                        # अगर बेचने वाला या उसका स्पॉन्सर हमारी लाइव पार्टनर ट्री डाउनलाइन में मैच हो जाए
-                        if seller_id in full_downline_set or sponsor_id == target_id or sponsor_id in full_downline_set:
-                            is_group = True
-                        else:
-                            for dl_member in full_downline_set:
-                                if is_same_name(seller_id, dl_member) or is_same_name(sponsor_id, dl_member):
-                                    is_group = True; break
+                        if is_downline_recursive(target_clean, seller_clean): is_group = True
+                        elif is_downline_recursive(target_clean, sponsor_clean): is_group = True
+                        elif sponsor_clean == target_clean: is_group = True
                                     
                     is_valid = (comm_type == "Self" and is_self) or \
                                (comm_type == "Group" and is_group) or \
@@ -253,9 +236,9 @@ if btn_gen and search_exec:
                         disc_sqft = safe_float(info.get('discount', 0))
                         
                         # 🎯 लाइव डिफरेंस कैलकुलेशन
-                        diff_pct = calculate_differential_pct(target_id, seller_id)
+                        diff_pct = get_differential_rate(target_clean, seller_clean, boss_pct)
                         
-                        display_seller_name = display_names_map.get(seller_id, str(e_name).title())
+                        display_seller_name = real_names.get(seller_clean, str(e_name).title())
                         entry_type = "Self" if is_self else f"Group ({display_seller_name})"
                         
                         for pmt in payments:
