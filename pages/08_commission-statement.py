@@ -16,7 +16,7 @@ except:
 
 db_data = st.session_state.get('db_projects', {})
 
-# 🔎 मास्टर डेटा लोड करना
+# 🔎 डेटाबेस पार्सिंग (मास्टर डेटा)
 exec_data_root = {}
 for key in ['executives', 'db_executives', 'partners', 'associates']:
     if key in st.session_state and isinstance(st.session_state[key], dict) and st.session_state[key]:
@@ -30,7 +30,6 @@ if not exec_data_root and isinstance(db_data, dict):
                 exec_data_root = v
             break
 
-# लोगो फंक्शन
 def get_image_base64(image_path):
     if os.path.exists(image_path):
         with open(image_path, "rb") as img_file:
@@ -64,28 +63,26 @@ def safe_float(val):
     try: return float(str(val).strip() or 0)
     except: return 0.0
 
-# 🛠️ नाम मैचिंग फंक्शन
+# 🛠️ बहुत ही स्मार्ट नाम स्कैनर (स्पेस, डॉट, अंडरस्कोर सब इग्नोर करेगा)
 def is_same_person(n1, n2):
-    s1 = re.sub(r'[^a-z0-9\s]', '', str(n1).lower()).strip()
-    s2 = re.sub(r'[^a-z0-9\s]', '', str(n2).lower()).strip()
+    s1 = re.sub(r'[^a-z0-9]', '', str(n1).lower())
+    s2 = re.sub(r'[^a-z0-9]', '', str(n2).lower())
     if not s1 or not s2: return False
     if s1 == s2: return True
-    w1 = set(s1.split())
-    w2 = set(s2.split())
-    if not w1 or not w2: return False
-    if w1.issubset(w2) or w2.issubset(w1): return True
+    if len(s1) >= 4 and len(s2) >= 4:
+        if s1 in s2 or s2 in s1: return True
     return False
 
-# 🛠️ डेटाबेस पार्सिंग
+# 🛠️ मास्टर डेटा लोड करना (Executive_name जैसी स्पेलिंग मिस नहीं होगी)
 exec_list = []
 for k, v in exec_data_root.items():
     if isinstance(v, dict):
         name, sp, pct = "", "", 0.0
         for key, val in v.items():
             kl = str(key).strip().lower()
-            if kl in ['name', 'executivename', 'partnername', 'fullname']: name = str(val).strip()
-            elif kl in ['sponsor', 'sponsorname', 'upline', 'sponsor_name']: sp = str(val).strip()
-            elif kl in ['percentage', 'percentageexec', 'pct', 'commission']: pct = safe_float(val)
+            if kl in ['name', 'executivename', 'executive_name', 'partnername', 'fullname']: name = str(val).strip()
+            elif kl in ['sponsor', 'sponsorname', 'sponsor_name', 'upline']: sp = str(val).strip()
+            elif kl in ['percentage', 'percentageexec', 'percentage_exec', 'pct', 'commission']: pct = safe_float(val)
         if not name: name = str(k).strip()
         exec_list.append({'name': name, 'sp': sp, 'pct': pct})
 
@@ -98,7 +95,7 @@ def resolve_name(raw_name):
         if is_same_person(raw_str, ex['name']): return ex['name']
     return raw_str
 
-# 🛠️ असीमित चेन ढूँढने का सिस्टम (A -> B -> C)
+# 🛠️ असीमित चेन ढूँढने का सिस्टम (A -> B -> C -> D)
 links = set()
 for ex in exec_list:
     if ex['name'] and ex['sp'] and not is_same_person(ex['name'], ex['sp']):
@@ -113,8 +110,8 @@ for p_info in db_data.values():
                 ex_n, sp_n = "", ""
                 for key, val in info.items():
                     kl = str(key).strip().lower()
-                    if kl in ['executivename', 'executive', 'partnername']: ex_n = str(val).strip()
-                    elif kl in ['sponsorname', 'sponsor', 'upline']: sp_n = str(val).strip()
+                    if kl in ['executivename', 'executive_name', 'executive', 'execname', 'partnername']: ex_n = str(val).strip()
+                    elif kl in ['sponsorname', 'sponsor_name', 'sponsor', 'upline']: sp_n = str(val).strip()
                 if ex_n and sp_n and not is_same_person(ex_n, sp_n):
                     links.add((resolve_name(ex_n), resolve_name(sp_n)))
 
@@ -130,7 +127,7 @@ def get_downline(target_name):
                     queue.append(child)
     return team
 
-# 🛠️ डिफरेंस कैलकुलेटर
+# 🛠️ डिफरेंस कैलकुलेटर (कट-टू-कट कमीशन)
 def get_pct(name):
     for ex in exec_list:
         if is_same_person(name, ex['name']): return ex['pct']
@@ -169,7 +166,6 @@ st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
 is_admin = False
 
-# 1. मेन पेज का डेटा चेक
 for key, val in st.session_state.items():
     if isinstance(val, str) and any(x in str(val).lower() for x in ['admin', 'boss', 'owner', 'firstchoice']):
         is_admin = True
@@ -178,11 +174,9 @@ for key, val in st.session_state.items():
         is_admin = True
         break
 
-# 2. एमरजेंसी अनलॉक चेक
 if 'force_admin_unlock' in st.session_state and st.session_state.force_admin_unlock:
     is_admin = True
 
-# 3. अगर सिस्टम भूल गया है, तो पिन डालकर खोलें
 if not is_admin:
     st.error("🚫 Access Denied! मेन पेज का लॉगिन डेटा इस पेज तक नहीं पहुँच पाया।")
     st.info("चूँकि आप कंपनी के बॉस (Admin) हैं, कृपया नीचे अपना एमरजेंसी पिन डालकर पेज को तुरंत अनलॉक करें:")
@@ -196,7 +190,7 @@ if not is_admin:
                 st.rerun()
             else:
                 st.error("❌ गलत पिन!")
-    st.stop() # एग्जीक्यूटिव के लिए यही स्क्रीन रुकी रहेगी।
+    st.stop()
 
 # ==========================================================
 # 👑 एडमिन पैनल 
@@ -241,8 +235,9 @@ if btn_generate and search_exec:
                     ex_name, sp_name = "", ""
                     for key, val in info.items():
                         kl = str(key).strip().lower()
-                        if kl in ['executivename', 'executive', 'partnername']: ex_name = str(val).strip()
-                        elif kl in ['sponsorname', 'sponsor', 'upline']: sp_name = str(val).strip()
+                        # यहाँ अंडरस्कोर वाला 'executive_name' जोड़ दिया गया है!
+                        if kl in ['executivename', 'executive_name', 'executive', 'partnername']: ex_name = str(val).strip()
+                        elif kl in ['sponsorname', 'sponsor_name', 'sponsor', 'upline']: sp_name = str(val).strip()
                             
                     r_ex = resolve_name(ex_name)
                     r_sp = resolve_name(sp_name)
