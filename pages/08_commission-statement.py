@@ -52,7 +52,7 @@ st.markdown("""<style>
         body, .stApp { background: white !important; color: black !important; }
     }
     .filter-box { background-color: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #ddd; margin-bottom: 20px; }
-    .statement-container { background: white; color: black; max-width: 900px; margin: auto; padding: 20px; border: 1px solid #eee; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    .statement-container { background: white; color: black; max-width: 1000px; margin: auto; padding: 20px; border: 1px solid #eee; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
     .header-table { width: 100%; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
     .header-table td { vertical-align: middle; }
     .company-name { font-size: 28px; font-weight: bold; color: #000; text-transform: uppercase; margin: 0; text-align: center; }
@@ -60,13 +60,11 @@ st.markdown("""<style>
     .address { font-size: 12px; margin: 0; text-align: center; }
     .info-section { display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 14px; font-weight: bold; }
     
-    /* Table styling */
     .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
     .data-table th, .data-table td { border: 1px solid #000; padding: 8px; text-align: right; }
     .data-table th { background-color: #f0f0f0; text-align: center; font-weight: bold; }
-    .data-table td:nth-child(2), .data-table td:nth-child(3) { text-align: left; }
+    .data-table td:nth-child(2), .data-table td:nth-child(3), .data-table td:nth-child(4) { text-align: left; }
     
-    /* Highlight the Total Row at the bottom */
     .data-table tbody tr:last-child td { 
         font-weight: 900 !important; 
         background-color: #e0e0e0 !important; 
@@ -97,11 +95,21 @@ parents_tree = {}
 partner_rates = {}  
 real_names = {}
 
+# 🔥 DEEP SCANNER FOR PARTNER DATA (Fixes 0.00 Commission)
 for key_id, info in partner_db.items():
     if isinstance(info, dict):
-        exec_name = info.get('name', info.get('executivename', info.get('partnername', key_id)))
-        sponsor_name = info.get('sponsor', info.get('sponsorname', info.get('upline', '')))
-        pct_val = safe_float(info.get('percentage', info.get('commission', info.get('pct', 0))))
+        exec_name, sponsor_name = key_id, ""
+        pct_val = 0.0
+        
+        for k, v in info.items():
+            kl = clean_txt(k)
+            if kl in ['name', 'executivename', 'partnername', 'fullname', 'executive']: 
+                exec_name = str(v)
+            elif kl in ['sponsor', 'sponsorname', 'upline', 'sponsor_name']: 
+                sponsor_name = str(v)
+            # यहाँ सभी संभावित कमीशन नाम जोड़े गए हैं
+            elif kl in ['percentage', 'commission', 'pct', 'percentageexec', 'percentage_exec', 'comm', 'rate', 'mycommission']: 
+                pct_val = safe_float(v)
         
         c_exec = clean_txt(exec_name)
         if c_exec:
@@ -178,9 +186,19 @@ if btn_get_statement and search_exec:
     target_clean = clean_txt(search_exec)
     boss_pct = partner_rates.get(target_clean, 0.0)
     
+    # Mauja Fallback Mapping
+    mauja_mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
+    
     for proj_name, p_info in db_projects.items():
         if isinstance(p_info, dict) and 'plots' in p_info:
             b_rate = safe_float(p_info.get('base_rate', 650))
+            
+            # 🔥 FETCH MAUJA FROM INVENTORY
+            mauja_name = ""
+            for mk in ['mauja', 'Mauja', 'location', 'village']:
+                if mk in p_info: mauja_name = str(p_info[mk])
+            if not mauja_name:
+                mauja_name = mauja_mapping.get(str(proj_name).lower().strip(), "N/A")
             
             plots_data = p_info['plots']
             if isinstance(plots_data, dict): plot_loop = plots_data.items()
@@ -196,7 +214,7 @@ if btn_get_statement and search_exec:
                     for k, v in info.items():
                         kl = clean_txt(k)
                         if kl in ['executivename', 'executive', 'partnername', 'agentname']: e_name = str(v)
-                        elif kl in ['customername', 'customer']: cust_name = str(v)
+                        elif kl in ['customername', 'customer', 'name']: cust_name = str(v)
                         elif kl in ['tokenamount', 'token', 'bookingamount']: tok_amt = safe_float(v)
                         elif kl in ['bookingdate', 'tokendate', 'date']: tok_date = str(v)
                         elif kl in ['companyrate', 'crate']: c_rate = safe_float(v)
@@ -240,74 +258,3 @@ if btn_get_statement and search_exec:
                                 exact_comm = gross_comm - disc_amt
                                 tds = exact_comm * 0.02
                                 net_in_hand = exact_comm - tds
-                                
-                                rows.append({
-                                    "S.No.": count,
-                                    "Customer Name": cust_name.title(),
-                                    "Plot No.": str(pid).upper(),
-                                    "Received Amount": amt,
-                                    "Received Date": pmt['date'] if pmt['date'] else 'N/A',
-                                    "Gross Commission": gross_comm,
-                                    "Discount": disc_amt,
-                                    "Exact Commission": exact_comm,
-                                    "TDS (2%)": tds,
-                                    "Net In Hand": net_in_hand
-                                })
-                                count += 1
-
-    df = pd.DataFrame(rows)
-    
-    if not df.empty:
-        totals = {
-            "S.No.": "TOTAL", "Customer Name": "", "Plot No.": "", 
-            "Received Amount": df['Received Amount'].sum(), "Received Date": "", 
-            "Gross Commission": df['Gross Commission'].sum(), "Discount": df['Discount'].sum(), 
-            "Exact Commission": df['Exact Commission'].sum(), "TDS (2%)": df['TDS (2%)'].sum(), 
-            "Net In Hand": df['Net In Hand'].sum()
-        }
-        df = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
-    else:
-        st.warning(f"⚠️ {search_exec} के लिए चुनी गई तारीखों के बीच कोई डेटा नहीं मिला।")
-
-    st.session_state.statement_data = df
-    st.session_state.statement_meta = {"exec": search_exec, "start": start_date, "end": end_date}
-
-# ==========================================
-# 7. DISPLAY & PRINT STATEMENT (🔥 UI FIXED)
-# ==========================================
-if 'statement_data' in st.session_state and not st.session_state.statement_data.empty:
-    df = st.session_state.statement_data
-    meta = st.session_state.statement_meta
-    
-    logo_b64 = get_image_base64('logo.jpg')
-    img_tag = f"<img src='data:image/jpeg;base64,{logo_b64}' width='120'/>" if logo_b64 else "<b>[LOGO]</b>"
-    
-    # ⚠️ फिक्स: इस टेक्स्ट के आगे कोई खाली स्पेस (indentation) नहीं होना चाहिए वरना यह कोड ब्लॉक बन जाता है
-    html_string = f"""<div class='statement-container'>
-<table class='header-table'>
-<tr>
-<td style='width: 20%; text-align: left;'>{img_tag}</td>
-<td style='width: 80%; text-align: center;'>
-<p class='company-name'>FIRSTCHOICE INFRA</p>
-<p class='slogan'>Symbol Of Trust...</p>
-<p class='address'>Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034</p>
-</td>
-</tr>
-</table>
-<div class='info-section'>
-<div>Executive: <span style='color: #1e3a8a;'>{meta['exec']}</span></div>
-<div>Period: <span style='color: #1e3a8a;'>{meta['start'].strftime('%d %b %Y')} to {meta['end'].strftime('%d %b %Y')}</span></div>
-</div>
-{df.to_html(classes='data-table', index=False, float_format="%.2f")}
-</div>"""
-
-    st.markdown(html_string, unsafe_allow_html=True)
-    
-    components.html("""
-        <style>@media print { body { display: none !important; } }</style>
-        <div style="text-align:center; margin-top:30px;" class="no-print">
-            <button onclick="window.parent.print()" style="padding:12px 30px; background-color:#1e3a8a; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold; font-size:16px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">
-                🖨️ Print Statement
-            </button>
-        </div>
-    """, height=100)
