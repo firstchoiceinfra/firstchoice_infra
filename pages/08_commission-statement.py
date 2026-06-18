@@ -8,7 +8,7 @@ import re
 # 1. Page Config
 st.set_page_config(layout="wide", page_title="Firstchoice Infra - Statement", initial_sidebar_state="collapsed")
 
-# (अगर आपके database.py में init_db है, तो उसे कॉल करें)
+# (डेटाबेस इनिशियलाइज़ेशन)
 try:
     import database
     database.init_db()
@@ -17,7 +17,7 @@ except:
 
 db_data = st.session_state.get('db_projects', {})
 
-# 🔎 डेटाबेस की गहराई से Executives को निकालना
+# 🔎 डेटाबेस से Executives का मास्टर डेटा निकालना
 exec_data_root = {}
 for key in ['executives', 'db_executives', 'partners', 'associates']:
     if key in st.session_state and isinstance(st.session_state[key], dict) and st.session_state[key]:
@@ -29,8 +29,6 @@ if not exec_data_root and isinstance(db_data, dict):
         if str(k).strip().lower() in ['executives', 'executive', 'partners', 'associates']:
             if isinstance(v, dict):
                 exec_data_root = v
-            elif isinstance(v, list):
-                exec_data_root = {str(i): item for i, item in enumerate(v) if isinstance(item, dict)}
             break
 
 # लोगो फंक्शन
@@ -48,11 +46,9 @@ logo_html = f"<img src='data:image/jpeg;base64,{logo_base64}' style='position:ab
 st.markdown("""<style>
     .block-container { padding-top: 2rem !important; margin-top: 0px !important; padding-bottom: 1rem !important; max-width: 100% !important; }
     [data-testid="stHeader"] { display: none !important; height: 0 !important; }
-
     div[class^="viewerBadge"], div[class*="viewerBadge"], #viewerBadge_container__1QSob, a[href*="streamlit.io/cloud"], #Manage-app { 
         display: none !important; visibility: hidden !important; opacity: 0 !important; height: 0 !important; width: 0 !important;
     }
-
     @media print {
         @page { margin-top: 0mm !important; margin-bottom: 5mm !important; }
         [data-testid="stHeader"], [data-testid="stDecoration"], header, .stAppHeader, [data-testid="stSidebar"], [data-testid="stToolbar"] { display: none !important; }
@@ -61,23 +57,15 @@ st.markdown("""<style>
         .block-container { padding-top: 0 !important; margin-top: 0 !important; }
         .a4-container { display: block !important; width: 100% !important; position: absolute !important; top: 0 !important; left: 0 !important; margin: 0 !important; padding: 0 !important; border: none !important; }
     }
-    
     .a4-container { background: white; color: black; max-width: 1000px; margin: auto; padding: 5px 20px; }
     .header { position: relative; text-align: center; border-bottom: 2px solid #000; padding-bottom: 5px; margin-bottom: 15px; }
     .title { font-size: 30px; font-weight: bold; margin: 0; color: #000; text-transform: uppercase; }
-    
     .data-table { width: 100%; border-collapse: collapse; font-size: 11px; }
     .data-table th, .data-table td { border: 1px solid #000; padding: 6px; text-align: right; }
     .data-table th { background-color: #f0f0f0; text-align: center; font-weight: bold; }
-    
     .data-table tr:last-child td { 
-        font-weight: 900 !important; 
-        background-color: #ffeb3b !important; 
-        color: #000 !important; 
-        font-size: 15px !important; 
-        padding: 12px 6px !important; 
-        border-top: 3px solid #000 !important; 
-        border-bottom: 3px solid #000 !important; 
+        font-weight: 900 !important; background-color: #ffeb3b !important; color: #000 !important; 
+        font-size: 15px !important; padding: 12px 6px !important; border-top: 3px solid #000 !important; border-bottom: 3px solid #000 !important; 
     }
 </style>""", unsafe_allow_html=True)
 
@@ -88,35 +76,26 @@ def safe_float(val):
 def clean_str(s):
     return re.sub(r'[^a-z0-9]', '', str(s).lower())
 
-# 🛠️ पार्ट 1: डेटाबेस के अंदर से असली नाम और स्पॉन्सर निकालना (ID को इग्नोर करके)
+def names_match(n1, n2):
+    c1, c2 = clean_str(n1), clean_str(n2)
+    if not c1 or not c2: return False
+    return c1 == c2 or c1 in c2 or c2 in c1
+
+# 🛠️ पार्ट 1: डेटाबेस पार्सिंग
 parsed_execs = {}
 for k, v in exec_data_root.items():
     if isinstance(v, dict):
-        name = ""
-        sp = ""
-        pct = 0.0
+        name, sp, pct = "", "", 0.0
         for key, val in v.items():
             kl = clean_str(key)
-            if kl in ['name', 'executivename', 'partnername', 'fullname']: 
-                name = str(val).strip()
-            elif kl in ['sponsor', 'sponsorname', 'upline']: 
-                sp = str(val).strip()
-            elif kl in ['percentage', 'percentageexec', 'pct', 'commission', 'commissionpercentage']: 
-                pct = safe_float(val)
-                
-        if not name: 
-            name = str(k).strip()
-            
-        parsed_execs[name] = {
-            'name': name,
-            'c_name': clean_str(name),
-            'sp': sp,
-            'c_sp': clean_str(sp),
-            'pct': pct
-        }
+            if kl in ['name', 'executivename', 'partnername', 'fullname']: name = str(val).strip()
+            elif kl in ['sponsor', 'sponsorname', 'upline']: sp = str(val).strip()
+            elif kl in ['percentage', 'percentageexec', 'pct', 'commission', 'commissionpercentage']: pct = safe_float(val)
+        if not name: name = str(k).strip()
+        parsed_execs[clean_str(name)] = {'name': name, 'c_name': clean_str(name), 'sp': sp, 'c_sp': clean_str(sp), 'pct': pct}
 
-# 🛠️ पार्ट 2: डाउनलाइन ढूँढने वाला सुपर-स्कैनर
-def get_team(target_c_name, parsed_data):
+# 🛠️ पार्ट 2: A -> B -> C पूरी चेन ढूँढने वाला सुपर-स्कैनर (Multi-level Downline)
+def get_full_downline(target_c_name, parsed_data):
     team = set()
     queue = [target_c_name]
     while queue:
@@ -125,50 +104,47 @@ def get_team(target_c_name, parsed_data):
         for k, v in parsed_data.items():
             csp = v['c_sp']
             cnm = v['c_name']
-            # अगर करेंट पर्सन स्पॉन्सर के नाम में मैच हो जाए
-            if csp and (curr in csp or csp in curr):
-                if cnm not in team and cnm != target_c_name:
+            if csp and names_match(csp, curr):
+                if cnm not in team and not names_match(cnm, target_c_name):
                     team.add(cnm)
-                    queue.append(cnm)
+                    queue.append(cnm) # B मिला, तो B को लूप में डाला ताकि C मिल सके!
     return team
 
 # 🛠️ पार्ट 3: कट-टू-कट डिफरेंस कमीशन कैलकुलेटर
-def get_diff(target_c, plot_c, parsed_data):
-    t_pct = 0.0
-    p_pct = 0.0
-    for v in parsed_data.values():
-        if target_c == v['c_name'] or target_c in v['c_name'] or v['c_name'] in target_c: 
-            t_pct = v['pct']
-        if plot_c == v['c_name'] or plot_c in v['c_name'] or v['c_name'] in plot_c: 
-            p_pct = v['pct']
-
-    if not plot_c or target_c == plot_c or plot_c in target_c or target_c in plot_c:
-        return t_pct
+def get_diff_commission(target_c, plot_c, parsed_data):
+    t_pct = parsed_data.get(target_c, {}).get('pct', 0.0)
+    if not plot_c or names_match(target_c, plot_c): return t_pct
 
     curr = plot_c
     visited = set()
-    child_pct = 0.0
+    child_of_target = None
 
+    # नीचे (C) से ऊपर (A) की तरफ जाना
     while curr and curr not in visited:
         visited.add(curr)
-        found_parent = False
+        curr_sp = ""
+        # curr का स्पॉन्सर ढूँढो
         for v in parsed_data.values():
-            if v['c_name'] == curr or curr in v['c_name']:
-                csp = v['c_sp']
-                if csp:
-                    if target_c == csp or target_c in csp or csp in target_c:
-                        child_pct = v['pct']
-                        return max(0.0, t_pct - child_pct)
-                    else:
-                        curr = csp
-                        found_parent = True
-                        break
-        if not found_parent:
+            if names_match(v['c_name'], curr):
+                curr_sp = v['c_sp']
+                break
+        
+        if not curr_sp: break
+        
+        # क्या यह स्पॉन्सर हमारा टारगेट (A) है?
+        if names_match(curr_sp, target_c):
+            child_of_target = curr
             break
-            
-    return max(0.0, t_pct - p_pct)
+        curr = curr_sp
+        
+    if child_of_target:
+        c_pct = parsed_data.get(child_of_target, {}).get('pct', 0.0)
+        return max(0.0, t_pct - c_pct)
+    else:
+        p_pct = parsed_data.get(plot_c, {}).get('pct', 0.0)
+        return max(0.0, t_pct - p_pct)
 
-# 3. 100% SECURE LOGIN LOGIC
+# 🚀 100% STRICT SECURITY - सिर्फ एडमिन (बॉस) को एक्सेस!
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
 user_role = str(st.session_state.get('role', '')).strip().lower()
@@ -177,27 +153,19 @@ c_logged = clean_str(logged_in_user)
 
 is_admin = (user_role == 'admin' or c_logged == 'admin')
 
-if not c_logged and not is_admin:
-    st.error("🚫 **Access Denied (सुरक्षा लॉक):** कोई लॉगिन सेशन डेटा नहीं मिला। कृपया मुख्य लॉगिन पेज से आएं।")
-    st.stop()
+if not is_admin:
+    st.error("🚫 **Access Denied!** यह पेज सुरक्षित है और सिर्फ एडमिन (Boss) के लिए उपलब्ध है। एग्जीक्यूटिव/पार्टनर्स को कमीशन देखने की अनुमति नहीं है।")
+    st.stop() # एग्जीक्यूटिव का सिस्टम यहीं रुक जाएगा, आगे कुछ लोड नहीं होगा!
 
-if is_admin:
-    st.success(f"👑 **Admin Panel:** Active (Connected to Database - {len(parsed_execs)} Partners Found)")
-    all_execs = [v['name'] for v in parsed_execs.values()]
-    search_exec = st.selectbox("🔎 Select Business Partner", all_execs)
+# 👑 एडमिन पैनल (सब कुछ दिखेगा)
+st.success("👑 **Boss / Admin Panel Active:** आपको पूरी कंपनी का फुल एक्सेस है।")
+all_execs = [v['name'] for v in parsed_execs.values()]
+
+if all_execs:
+    search_exec = st.selectbox("🔎 Select Business Partner to View Statement", all_execs)
 else:
-    st.info(f"🔒 **Executive View:** Logged in as **{logged_in_user}**")
-    my_team = get_team(c_logged, parsed_execs)
-    
-    allowed_options = []
-    for v in parsed_execs.values():
-        if v['c_name'] == c_logged or v['c_name'] in my_team:
-            allowed_options.append(v['name'])
-            
-    if not allowed_options:
-        allowed_options = [logged_in_user]
-        
-    search_exec = st.selectbox("🔎 Select Business Partner (Your Team Only)", allowed_options)
+    st.warning("⚠️ डेटाबेस में कोई पार्टनर नहीं मिला।")
+    search_exec = None
 
 comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
 
@@ -211,7 +179,9 @@ if btn_generate and search_exec:
     rows = []
     count = 1
     target_c = clean_str(search_exec)
-    selected_downline = get_team(target_c, parsed_execs)
+    
+    # A की पूरी चेन (B, C, D...) ढूँढना
+    selected_downline = get_full_downline(target_c, parsed_execs)
     mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
     
     for project_name, p_info in db_data.items():
@@ -233,14 +203,13 @@ if btn_generate and search_exec:
                         
                 plot_c = clean_str(ex_name)
                 
-                is_self = False
-                if target_c == plot_c or plot_c in target_c or target_c in plot_c:
-                    is_self = True
+                # चेक करें कि प्लॉट किसने बेचा?
+                is_self = names_match(target_c, plot_c)
                 
                 is_group = False
                 if not is_self:
                     for dl in selected_downline:
-                        if dl == plot_c or plot_c in dl or dl in plot_c:
+                        if names_match(dl, plot_c):
                             is_group = True
                             break
                 
@@ -261,15 +230,15 @@ if btn_generate and search_exec:
                     if comp_rate <= 0: comp_rate = 650 
                     discount_sqft = safe_float(info.get('discount', 0))
                     
-                    # 🎯 डिफरेंस लागू
-                    diff_pct = get_diff(target_c, plot_c, parsed_execs)
+                    # 🎯 डिफरेंस लागू (चाहे C ने बेचा हो, A को डिफरेंस मिलेगा)
+                    diff_pct = get_diff_commission(target_c, plot_c, parsed_execs)
                     
                     if is_self:
                         entry_label = "Self"
                     else:
                         orig_name = str(ex_name).title()
                         for v in parsed_execs.values():
-                            if v['c_name'] == plot_c or plot_c in v['c_name']:
+                            if names_match(v['c_name'], plot_c):
                                 orig_name = v['name']
                                 break
                         entry_label = f"Group ({orig_name})"
