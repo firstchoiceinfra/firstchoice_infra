@@ -164,4 +164,148 @@ if btn_get_statement and search_exec:
     rows = []
     count = 1
     target_clean = clean_txt(search_exec)
-    boss_pct = partner_
+    
+    # ⚠️ लाइन 167 यहाँ पूरी तरह से सुरक्षित और सही है
+    boss_pct = partner_rates.get(target_clean, 0.0)
+    
+    # Iterate through all projects in the Master Ledger
+    project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data or 'total_plots' in data)]
+    
+    for p_name in project_names:
+        p_info = db_data[p_name]
+        p_plots = p_info.get('plots', {})
+        b_rate = safe_float(p_info.get('base_rate', 650.0))
+        
+        # Smart Mauja Extraction
+        mauja_name = str(p_info.get('mauja', p_info.get('location', 'N/A'))).strip()
+        
+        # Handle List vs Dict compatibility
+        if isinstance(p_plots, list):
+            p_plots = {str(idx): p for idx, p in enumerate(p_plots) if p is not None}
+            
+        for plot_id, info in p_plots.items():
+            if isinstance(info, dict) and str(info.get('status', '')).lower() == 'booked':
+                
+                # Executive Identity
+                seller_raw = str(info.get('executive_name', '')).strip()
+                seller_clean = clean_txt(seller_raw)
+                
+                # Hierarchy Check
+                is_self = (seller_clean == target_clean)
+                is_group = is_downline(target_clean, seller_clean) if not is_self else False
+                            
+                is_valid = (comm_type == "Self" and is_self) or \
+                           (comm_type == "Group" and is_group) or \
+                           (comm_type == "All (Self + Group)" and (is_self or is_group))
+                           
+                if is_valid:
+                    cust_name = str(info.get('customer_name', 'N/A')).title()
+                    c_rate = safe_float(info.get('company_rate', b_rate))
+                    if c_rate <= 0: c_rate = 650.0 
+                    disc_sqft = safe_float(info.get('discount', 0.0))
+                    
+                    diff_pct = get_diff_rate(target_clean, seller_clean, boss_pct)
+                    
+                    # 1. Collect Token Payment
+                    payments = []
+                    tok_amt = safe_float(info.get('token_amount', info.get('received_amount', 0.0)))
+                    tok_date = str(info.get('receipt_date', info.get('booking_date', '')))
+                    if tok_amt > 0:
+                        payments.append({'amt': tok_amt, 'date': tok_date})
+                        
+                    # 2. Collect EMI Payments (Partial Payments List)
+                    partial_payments = info.get('partial_payments', [])
+                    for pmt in partial_payments:
+                        p_amt = safe_float(pmt.get('amount', 0.0))
+                        p_date = str(pmt.get('date', ''))
+                        if p_amt > 0:
+                            payments.append({'amt': p_amt, 'date': p_date})
+                    
+                    # 3. Process Payments through Date Filter & Math
+                    for pmt in payments:
+                        amt = pmt['amt']
+                        pmt_date_parsed = parse_date(pmt['date'])
+                        
+                        date_in_range = True
+                        if pmt_date_parsed:
+                            if pmt_date_parsed < start_date or pmt_date_parsed > end_date:
+                                date_in_range = False
+                        
+                        if amt > 0 and date_in_range:
+                            gross_comm = (amt * diff_pct) / 100
+                            disc_amt = (amt / c_rate) * disc_sqft 
+                            exact_comm = max(0.0, gross_comm - disc_amt)
+                            tds = exact_comm * 0.02
+                            net_in_hand = exact_comm - tds
+                            
+                            rows.append({
+                                "S.No.": count,
+                                "Customer Name": cust_name,
+                                "Plot No.": str(plot_id).upper(),
+                                "Mauja": mauja_name.title(),
+                                "Received Amount": amt,
+                                "Received Date": pmt_date_parsed.strftime('%d-%m-%Y') if pmt_date_parsed else 'N/A',
+                                "Gross Commission": gross_comm,
+                                "Discount": disc_amt,
+                                "Exact Commission": exact_comm,
+                                "TDS (2%)": tds,
+                                "Net In Hand": net_in_hand
+                            })
+                            count += 1
+
+    df = pd.DataFrame(rows)
+    
+    if not df.empty:
+        totals = {
+            "S.No.": "TOTAL", "Customer Name": "", "Plot No.": "", "Mauja": "",
+            "Received Amount": df['Received Amount'].sum(), "Received Date": "", 
+            "Gross Commission": df['Gross Commission'].sum(), "Discount": df['Discount'].sum(), 
+            "Exact Commission": df['Exact Commission'].sum(), "TDS (2%)": df['TDS (2%)'].sum(), 
+            "Net In Hand": df['Net In Hand'].sum()
+        }
+        df = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
+    else:
+        st.error(f"⚠️ No payment records found for {search_exec} within the selected date range.")
+
+    st.session_state.statement_data = df
+    st.session_state.statement_meta = {"exec": search_exec, "start": start_date, "end": end_date, "type": comm_type}
+
+# ==========================================
+# 7. PRINTABLE STATEMENT RENDERER
+# ==========================================
+if 'statement_data' in st.session_state and not st.session_state.statement_data.empty:
+    df = st.session_state.statement_data
+    meta = st.session_state.statement_meta
+    
+    logo_b64 = get_image_base64('logo.jpg')
+    img_tag = f"<img src='data:image/jpeg;base64,{logo_b64}' width='120'/>" if logo_b64 else "<b>[LOGO]</b>"
+    
+    # Important: HTML string starts without indentation to prevent markdown code-block issues
+    html_string = f"""<div class='statement-container'>
+<table class='header-table'>
+<tr>
+<td style='width: 20%; text-align: left;'>{img_tag}</td>
+<td style='width: 80%; text-align: center;'>
+<p class='company-name'>FIRSTCHOICE INFRA</p>
+<p class='slogan'>Symbol Of Trust...</p>
+<p class='address'>Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034</p>
+</td>
+</tr>
+</table>
+<div class='info-section'>
+<div>Executive Partner: <span style='color: #1e3a8a;'>{meta['exec']}</span> ({meta['type']})</div>
+<div>Statement Period: <span style='color: #1e3a8a;'>{meta['start'].strftime('%d %b %Y')} to {meta['end'].strftime('%d %b %Y')}</span></div>
+</div>
+{df.to_html(classes='data-table', index=False, float_format="%.2f")}
+</div>"""
+
+    st.markdown(html_string, unsafe_allow_html=True)
+    
+    components.html("""
+        <style>@media print { body { display: none !important; } }</style>
+        <div style="text-align:center; margin-top:30px;" class="no-print">
+            <button onclick="window.parent.print()" style="padding:14px 35px; background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%); color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold; font-size:16px; box-shadow: 0px 6px 15px rgba(59, 130, 246, 0.4);">
+                🖨️ Print Final Statement
+            </button>
+        </div>
+    """, height=100)
