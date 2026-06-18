@@ -12,7 +12,7 @@ from datetime import datetime
 st.set_page_config(layout="wide", page_title="Commission Statement", initial_sidebar_state="collapsed")
 
 # ==========================================
-# 2. HELPER FUNCTIONS (🔥 ERROR FIXED HERE)
+# 2. HELPER FUNCTIONS
 # ==========================================
 def get_image_base64(image_path):
     if os.path.exists(image_path):
@@ -31,12 +31,11 @@ def clean_txt(s):
     return re.sub(r'[^a-z0-9]', '', str(s).lower()).strip()
 
 def parse_date(date_str):
-    """तारीख को सुरक्षित रूप से चेक करने का फिक्स (NaT Error Fix)"""
     if not date_str or str(date_str).strip() in ['', 'NaT', 'nan', 'None']:
         return None
     try: 
         dt = pd.to_datetime(str(date_str), format='mixed', dayfirst=True, errors='coerce')
-        if pd.isna(dt): # अगर तारीख NaT (Not a Time) बन गई है, तो क्रैश से बचने के लिए None रिटर्न करें
+        if pd.isna(dt):
             return None
         return dt.date()
     except: 
@@ -60,11 +59,21 @@ st.markdown("""<style>
     .slogan { font-size: 14px; font-style: italic; margin: 5px 0; text-align: center; }
     .address { font-size: 12px; margin: 0; text-align: center; }
     .info-section { display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 14px; font-weight: bold; }
+    
+    /* Table styling */
     .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
     .data-table th, .data-table td { border: 1px solid #000; padding: 8px; text-align: right; }
     .data-table th { background-color: #f0f0f0; text-align: center; font-weight: bold; }
     .data-table td:nth-child(2), .data-table td:nth-child(3) { text-align: left; }
-    .data-table tr.total-row td { font-weight: 900 !important; background-color: #e0e0e0 !important; font-size: 14px; border-top: 2px solid #000; border-bottom: 2px solid #000; }
+    
+    /* Highlight the Total Row at the bottom */
+    .data-table tbody tr:last-child td { 
+        font-weight: 900 !important; 
+        background-color: #e0e0e0 !important; 
+        font-size: 14px; 
+        border-top: 2px solid #000; 
+        border-bottom: 2px solid #000; 
+    }
 </style>""", unsafe_allow_html=True)
 
 # ==========================================
@@ -220,8 +229,6 @@ if btn_get_statement and search_exec:
                             amt = safe_float(pmt['amt'])
                             pmt_date_parsed = parse_date(pmt['date'])
                             
-                            # अगर डेट पार्स नहीं हो पाई, तो डिफ़ॉल्ट रूप से हम उसे स्टेटमेंट में शामिल करेंगे 
-                            # (ताकि पैसा मिस न हो) लेकिन अगर पार्स हो गई, तो ही डेट फिल्टर लगाएंगे।
                             date_in_range = True
                             if pmt_date_parsed:
                                 if pmt_date_parsed < start_date or pmt_date_parsed > end_date:
@@ -266,7 +273,7 @@ if btn_get_statement and search_exec:
     st.session_state.statement_meta = {"exec": search_exec, "start": start_date, "end": end_date}
 
 # ==========================================
-# 7. DISPLAY & PRINT STATEMENT
+# 7. DISPLAY & PRINT STATEMENT (🔥 UI FIXED)
 # ==========================================
 if 'statement_data' in st.session_state and not st.session_state.statement_data.empty:
     df = st.session_state.statement_data
@@ -275,40 +282,28 @@ if 'statement_data' in st.session_state and not st.session_state.statement_data.
     logo_b64 = get_image_base64('logo.jpg')
     img_tag = f"<img src='data:image/jpeg;base64,{logo_b64}' width='120'/>" if logo_b64 else "<b>[LOGO]</b>"
     
-    st.markdown(f"""
-    <div class='statement-container'>
-        <table class='header-table'>
-            <tr>
-                <td style='width: 20%; text-align: left;'>{img_tag}</td>
-                <td style='width: 80%; text-align: center;'>
-                    <p class='company-name'>FIRSTCHOICE INFRA</p>
-                    <p class='slogan'>Symbol Of Trust...</p>
-                    <p class='address'>Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034</p>
-                </td>
-            </tr>
-        </table>
-        
-        <div class='info-section'>
-            <div>Executive: <span style='color: #1e3a8a;'>{meta['exec']}</span></div>
-            <div>Period: <span style='color: #1e3a8a;'>{meta['start'].strftime('%d %b %Y')} to {meta['end'].strftime('%d %b %Y')}</span></div>
-        </div>
-        
-        {df.to_html(classes='data-table', index=False, float_format="%.2f").replace('<tr>', '<tr class="total-row">') if not df.empty else ""}
-    </div>
-    """, unsafe_allow_html=True)
+    # ⚠️ फिक्स: इस टेक्स्ट के आगे कोई खाली स्पेस (indentation) नहीं होना चाहिए वरना यह कोड ब्लॉक बन जाता है
+    html_string = f"""<div class='statement-container'>
+<table class='header-table'>
+<tr>
+<td style='width: 20%; text-align: left;'>{img_tag}</td>
+<td style='width: 80%; text-align: center;'>
+<p class='company-name'>FIRSTCHOICE INFRA</p>
+<p class='slogan'>Symbol Of Trust...</p>
+<p class='address'>Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034</p>
+</td>
+</tr>
+</table>
+<div class='info-section'>
+<div>Executive: <span style='color: #1e3a8a;'>{meta['exec']}</span></div>
+<div>Period: <span style='color: #1e3a8a;'>{meta['start'].strftime('%d %b %Y')} to {meta['end'].strftime('%d %b %Y')}</span></div>
+</div>
+{df.to_html(classes='data-table', index=False, float_format="%.2f")}
+</div>"""
+
+    st.markdown(html_string, unsafe_allow_html=True)
     
     components.html("""
-        <script>
-            const tables = window.parent.document.querySelectorAll('.data-table');
-            tables.forEach(table => {
-                const rows = table.querySelectorAll('tr');
-                if(rows.length > 1) {
-                    rows.forEach(r => r.classList.remove('total-row'));
-                    rows[rows.length - 1].classList.add('total-row');
-                }
-            });
-        </script>
-        
         <style>@media print { body { display: none !important; } }</style>
         <div style="text-align:center; margin-top:30px;" class="no-print">
             <button onclick="window.parent.print()" style="padding:12px 30px; background-color:#1e3a8a; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold; font-size:16px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">
