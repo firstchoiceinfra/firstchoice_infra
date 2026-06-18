@@ -70,8 +70,20 @@ st.markdown("""<style>
 # Sync with Inventory Dashboard
 db_projects = st.session_state.get('db_projects', {})
 
-# Sync with Partner Management / Admin Panel
-partner_db = st.session_state.get('partners', st.session_state.get('executives', {}))
+# Robust Partner Sync Logic (यह हर जगह से डेटा ढूंढेगा)
+partner_db = {}
+for key in ['executives', 'db_executives', 'partners', 'associates']:
+    if key in st.session_state and isinstance(st.session_state[key], dict) and st.session_state[key]:
+        partner_db = st.session_state[key]
+        break
+
+# Fallback: अगर डेटाबेस 'db_projects' के अंदर नेस्टेड है
+if not partner_db and isinstance(db_projects, dict):
+    for k, v in db_projects.items():
+        if str(k).strip().lower() in ['executives', 'executive', 'partners', 'associates']:
+            if isinstance(v, dict): 
+                partner_db = v
+                break
 
 # Build Hierarchy Tree
 parents_tree = {}  
@@ -80,10 +92,11 @@ real_names = {}
 
 for key_id, info in partner_db.items():
     if isinstance(info, dict):
-        exec_name = info.get('name', key_id)
-        sponsor_name = info.get('sponsor', '')
-        # सपोर्ट्स परसेंटेज या फ्लैट रुपीस (यहाँ डिफ़ॉल्ट रूप से परसेंटेज को हैंडल किया गया है)
-        pct_val = safe_float(info.get('percentage', info.get('commission', 0)))
+        exec_name = info.get('name', info.get('executivename', info.get('partnername', key_id)))
+        sponsor_name = info.get('sponsor', info.get('sponsorname', info.get('upline', '')))
+        
+        # परसेंटेज या फ्लैट रुपीस
+        pct_val = safe_float(info.get('percentage', info.get('commission', info.get('pct', 0))))
         
         c_exec = clean_txt(exec_name)
         if c_exec:
@@ -122,6 +135,7 @@ def get_diff_rate(boss, seller, boss_pct):
 
 def resolve_clean_id(raw_name):
     c_raw = clean_txt(raw_name)
+    if not c_raw: return ""
     if c_raw in partner_rates: return c_raw
     for c_id in partner_rates.keys():
         if c_raw in c_id or c_id in c_raw: return c_id
@@ -134,7 +148,13 @@ st.markdown('<div class="no-print filter-box">', unsafe_allow_html=True)
 st.subheader("📊 Executive Commission Generator")
 
 exec_options = list(real_names.values())
-search_exec = st.selectbox("👤 Select Executive", exec_options) if exec_options else None
+
+# Fix: अब बॉक्स हमेशा दिखेगा। अगर डेटा नहीं है, तो वार्निंग देगा।
+if exec_options:
+    search_exec = st.selectbox("👤 Select Executive", options=exec_options, index=0)
+else:
+    st.warning("⚠️ सिस्टम में कोई एग्जीक्यूटिव नहीं मिला। कृपया पहले 'Partner Management' में जाकर डेटा चेक करें।")
+    search_exec = None
 
 col1, col2, col3 = st.columns(3)
 with col1:
