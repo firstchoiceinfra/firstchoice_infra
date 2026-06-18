@@ -1,67 +1,169 @@
 import streamlit as st
 import pandas as pd
+import database
 import datetime
 
-# 1. डेटा सिंक का पक्का तरीका
-db_data = st.session_state.get('db_projects', {})
-exec_data = db_data.get('executives', {})
+# =========================
+# PAGE CONFIG
+# =========================
+st.set_page_config(page_title="Commission Statement", layout="wide")
 
-# 2. UI - सारे फिल्टर एक साथ
-st.title("📊 Commission Statement")
-c1, c2 = st.columns(2)
-search_exec = c1.selectbox("👤 Select Partner", options=sorted(list(exec_data.keys())))
-scope = c2.radio("📑 Scope", ["Self", "Group", "All"], horizontal=True)
+# =========================
+# SECURITY CHECK
+# =========================
+if not st.session_state.get("logged_in", False):
+    st.warning("🔒 Please login first")
+    st.stop()
 
-d1, d2 = st.columns(2)
-start_d = d1.date_input("📅 Start Date", datetime.date(2020, 1, 1))
-end_d = d2.date_input("📅 End Date", datetime.date.today())
+user_role = st.session_state.get("user_role", "executive")
+current_user = st.session_state.get("current_user_name", "")
 
-if st.button("🚀 Generate Statement"):
-    rows = []
-    # यहाँ से डेटा प्रोसेस हो रहा है
-    for p_name, p_info in db_data.items():
-        # Mauza (Z) ढूँढने का पक्का लॉजिक
-        mauza = next((str(v) for k, v in p_info.items() if k.lower() == 'mauza'), "N/A")
-        
-        # प्लॉट का डेटा
-        plots = p_info.get('plots', {})
-        for pid, info in (plots.items() if isinstance(plots, dict) else enumerate(plots)):
-            if isinstance(info, dict) and str(info.get('status', '')).lower() == 'booked':
-                # (यहाँ आपकी कैलकुलेशन Logic रहेगी)
-                # ...
-                rows.append({
-                    "S.No.": len(rows)+1, "Customer": info.get('customer_name', 'N/A'),
-                    "Plot": str(pid), "Mauza": mauza, "Received": 10000, 
-                    "Date": "2026-06-18", "Gross": 500, "Disc": 50, "Net": 450, "TDS": 9, "In Hand": 441
-                })
+# =========================
+# DB LOAD
+# =========================
+database.init_db()
+db_data = st.session_state.db_projects
+exec_data = db_data.get("executives", {})
 
-    if rows:
-        df = pd.DataFrame(rows)
-        # TOTAL को अलग से दिखाना है ताकि टेबल न बिगड़े
-        st.table(df)
-        
-        # Grand Total Calculation
-        total_data = df.sum(numeric_only=True)
-        st.write("---")
-        st.subheader("GRAND TOTALS")
-        st.table(pd.DataFrame(total_data).transpose())
-        
-        st.session_state.final_df = df
-        st.session_state.totals = total_data
+# =========================
+# THEME (optional)
+# =========================
+st.title("💰 Commission Statement Dashboard")
+st.markdown("---")
 
-# 3. प्रोफेशनल प्रिंट लेआउट
-if 'final_df' in st.session_state:
-    if st.button("🖨️ Print Final A4"):
-        # यहाँ साफ़ HTML रेंडरिंग है
-        html = f"""
-        <style>
-            .ftable {{ width: 100%; border-collapse: collapse; font-family: Arial; }}
-            .ftable th, .ftable td {{ border: 1px solid #000; padding: 8px; text-align: center; }}
-        </style>
-        <h2>FIRSTCHOICE INFRA</h2>
-        <p>Commission Report: {search_exec}</p>
-        {st.session_state.final_df.to_html(classes='ftable', index=False)}
-        <script>window.print();</script>
-        """
-        st.components.v1.html(html, height=800)
+# =========================
+# HELPER FUNCTIONS
+# =========================
+def safe_float(v):
+    try:
+        return float(v)
+    except:
+        return 0.0
 
+def get_downlines(manager):
+    manager = manager.lower().strip()
+    down = []
+    for ex, data in exec_data.items():
+        if str(data.get("senior_name","")).lower().strip() == manager:
+            down.append(ex)
+            down.extend(get_downlines(ex))
+    return list(set(down))
+
+# =========================
+# INPUT FILTER
+# =========================
+col1, col2 = st.columns(2)
+
+with col1:
+    selected_exec = st.selectbox(
+        "Select Executive",
+        ["All"] + list(exec_data.keys())
+    )
+
+with col2:
+    selected_project = st.selectbox(
+        "Select Project",
+        ["All"] + [p for p in db_data.keys() if isinstance(db_data[p], dict)]
+    )
+
+# =========================
+# MAIN CALCULATION ENGINE
+# =========================
+commission_rows = []
+total_commission = 0.0
+
+for p_name, p_info in db_data.items():
+    if not isinstance(p_info, dict) or "plots" not in p_info:
+        continue
+
+    plots = p_info.get("plots", {})
+
+    if isinstance(plots, list):
+        plots = {str(i): v for i, v in enumerate(plots)}
+
+    for plot_id, plot in plots.items():
+        if not isinstance(plot, dict):
+            continue
+
+        if plot.get("status") != "Booked":
+            continue
+
+        exec_name = plot.get("executive_name", "Direct")
+        if selected_exec != "All" and exec_name != selected_exec:
+            continue
+
+        if selected_project != "All" and p_name != selected_project:
+            continue
+
+        # =========================
+        # VALUE CALCULATION
+        # =========================
+        area = safe_float(plot.get("plot_area", 0))
+        rate = safe_float(plot.get("selling_rate", 0))
+
+        if rate > 100000:
+            total_value = rate
+        else:
+            total_value = area * rate
+
+        token = safe_float(plot.get("token_amount", 0))
+
+        emi = sum(safe_float(p.get("amount", 0)) for p in plot.get("partial_payments", []))
+
+        collected = token + emi
+
+        # =========================
+        # COMMISSION LOGIC
+        # =========================
+        exec_info = exec_data.get(exec_name, {})
+        percent = safe_float(exec_info.get("percentage_exec", 0))
+        fixed = safe_float(exec_info.get("rupees_exec", 0))
+
+        commission = (total_value * percent / 100) + fixed
+
+        total_commission += commission
+
+        commission_rows.append({
+            "Project": p_name,
+            "Plot": plot_id,
+            "Customer": plot.get("customer_name", "N/A"),
+            "Executive": exec_name,
+            "Total Value": total_value,
+            "Collected": collected,
+            "Commission %": percent,
+            "Fixed Commission": fixed,
+            "Total Commission": commission
+        })
+
+# =========================
+# DASHBOARD
+# =========================
+if commission_rows:
+    df = pd.DataFrame(commission_rows)
+
+    st.subheader("📊 Commission Summary")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Records", len(df))
+    c2.metric("Total Commission", f"₹ {total_commission:,.2f}")
+    c3.metric("Avg Commission", f"₹ {df['Total Commission'].mean():,.2f}")
+
+    st.write("---")
+
+    st.subheader("📋 Detailed Statement")
+    st.dataframe(df, use_container_width=True)
+
+    # =========================
+    # DOWNLOAD
+    # =========================
+    csv = df.to_csv(index=False).encode("utf-8-sig")
+
+    st.download_button(
+        "📥 Download Commission Report",
+        data=csv,
+        file_name=f"commission_statement_{datetime.date.today()}.csv",
+        mime="text/csv"
+    )
+
+else:
+    st.info("No commission data found for selected filters.")
