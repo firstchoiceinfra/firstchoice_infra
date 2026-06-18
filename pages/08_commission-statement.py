@@ -81,7 +81,7 @@ def names_match(n1, n2):
     if not c1 or not c2: return False
     return c1 == c2 or c1 in c2 or c2 in c1
 
-# 🛠️ पार्ट 1: डेटाबेस पार्सिंग
+# 🛠️ पार्ट 1: पार्टनर मैनेजमेंट से बेस डेटा निकालना
 parsed_execs = {}
 for k, v in exec_data_root.items():
     if isinstance(v, dict):
@@ -94,74 +94,21 @@ for k, v in exec_data_root.items():
         if not name: name = str(k).strip()
         parsed_execs[clean_str(name)] = {'name': name, 'c_name': clean_str(name), 'sp': sp, 'c_sp': clean_str(sp), 'pct': pct}
 
-# 🛠️ पार्ट 2: A -> B -> C पूरी चेन ढूँढने वाला सुपर-स्कैनर
-def get_full_downline(target_c_name, parsed_data):
-    team = set()
-    queue = [target_c_name]
-    while queue:
-        curr = queue.pop(0)
-        if not curr: continue
-        for k, v in parsed_data.items():
-            csp = v['c_sp']
-            cnm = v['c_name']
-            if csp and names_match(csp, curr):
-                if cnm not in team and not names_match(cnm, target_c_name):
-                    team.add(cnm)
-                    queue.append(cnm) 
-    return team
-
-# 🛠️ पार्ट 3: कट-टू-कट डिफरेंस कमीशन कैलकुलेटर
-def get_diff_commission(target_c, plot_c, parsed_data):
-    t_pct = parsed_data.get(target_c, {}).get('pct', 0.0)
-    if not plot_c or names_match(target_c, plot_c): return t_pct
-
-    curr = plot_c
-    visited = set()
-    child_of_target = None
-
-    while curr and curr not in visited:
-        visited.add(curr)
-        curr_sp = ""
-        for v in parsed_data.values():
-            if names_match(v['c_name'], curr):
-                curr_sp = v['c_sp']
-                break
-        
-        if not curr_sp: break
-        
-        if names_match(curr_sp, target_c):
-            child_of_target = curr
-            break
-        curr = curr_sp
-        
-    if child_of_target:
-        c_pct = parsed_data.get(child_of_target, {}).get('pct', 0.0)
-        return max(0.0, t_pct - c_pct)
-    else:
-        p_pct = parsed_data.get(plot_c, {}).get('pct', 0.0)
-        return max(0.0, t_pct - p_pct)
-
 # ==========================================================
-# 🚀 100% STRICT SECURITY - 'SUPER SENSOR'
+# 🚀 100% STRICT SECURITY - 'SUPER SENSOR' (सिर्फ एडमिन के लिए)
 # ==========================================================
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
 is_admin = False
-
-# पूरे बैकएंड (Session State) को स्कैन करने वाला 'सुपर-सेंसर'
 for key, val in st.session_state.items():
     val_str = str(val).strip().lower()
     key_str = str(key).strip().lower()
-    
-    # अगर किसी भी वैल्यू में 'admin', 'boss', 'owner' या 'firstchoice' है
     if isinstance(val, str) and any(x in val_str for x in ['admin', 'boss', 'owner', 'firstchoice']):
         is_admin = True
         break
-    # अगर किसी की (key) में admin है और उसकी वैल्यू True है
     if isinstance(val, bool) and val == True and 'admin' in key_str:
         is_admin = True
         break
-    # अगर डिक्शनरी के अंदर डेटा है
     if isinstance(val, dict):
         for k2, v2 in val.items():
             if isinstance(v2, str) and any(x in str(v2).lower() for x in ['admin', 'boss', 'owner', 'firstchoice']):
@@ -170,18 +117,10 @@ for key, val in st.session_state.items():
 
 if not is_admin:
     st.error("🚫 **Access Denied!** यह पेज सुरक्षित है और सिर्फ कंपनी के बॉस (Admin) के लिए उपलब्ध है।")
-    st.info("आपने मेन पेज पर एग्जीक्यूटिव के रूप में लॉगिन किया है, या आपका लॉगिन सेशन खत्म हो गया है। कृपया मेन पेज से 'Admin' के रूप में लॉगिन करें।")
-    
-    # ⚠️ यह डीबगिंग टूल आपकी मदद के लिए है!
-    with st.expander("🛠️ System Info (For Debugging - अगर आप बॉस हैं फिर भी यह एरर आ रही है, तो इसे खोलें)"):
-        st.write("**बैकएंड में यह डेटा आ रहा है:**", st.session_state)
-        st.warning("अगर आपको इसके अंदर आपका नाम दिख रहा है, तो मुझे इसकी फोटो खींचकर भेजें। मैं तुरंत सिस्टम को ठीक कर दूँगा।")
-    
-    st.stop() # एग्जीक्यूटिव का सिस्टम यहीं रुक जाएगा!
+    st.info("आपने मेन पेज पर एग्जीक्यूटिव के रूप में लॉगिन किया है। कृपया मेन पेज से 'Admin' के रूप में लॉगिन करें।")
+    st.stop() 
 
-# ==========================================================
-# 👑 एडमिन पैनल (सिर्फ बॉस के लिए)
-# ==========================================================
+# 👑 एडमिन पैनल 
 st.success("👑 **Boss / Admin Panel Active:** (मेन पेज से सुरक्षित लॉगिन प्रमाणित)")
 
 all_execs = [v['name'] for v in parsed_execs.values()]
@@ -199,13 +138,56 @@ start, end = col1.date_input("Start Date"), col2.date_input("End Date")
 btn_generate = st.button("🚀 Generate Final Statement")
 st.markdown('</div>', unsafe_allow_html=True)
 
+
+# 🛠️ पार्ट 2: मास्टर ट्री स्कैनर (यह पार्टनर और प्लॉट दोनों को स्कैन करके यूनिवर्सल चेन बनाएगा)
+def get_universal_downline(target_c_name, db_data, parsed_execs):
+    # 1. पूरे डेटाबेस से सारे रिश्ते (Links) निकालो
+    links = []
+    
+    # Partner Management से रिश्ते निकालो
+    for v in parsed_execs.values():
+        if v['c_name'] and v['c_sp']:
+            links.append((v['c_name'], v['c_sp']))
+            
+    # Plot Booking से रिश्ते निकालो (ताकि कोई छूट न जाए)
+    for project_name, p_info in db_data.items():
+        if isinstance(p_info, dict) and 'plots' in p_info:
+            plots_data = p_info['plots']
+            plot_items = plots_data.items() if isinstance(plots_data, dict) else enumerate(plots_data)
+            for pid, info in plot_items:
+                if isinstance(info, dict):
+                    ex_name, sp_name = "", ""
+                    for key, val in info.items():
+                        kl = clean_str(key)
+                        if kl in ['executivename', 'executive', 'execname', 'partnername']: ex_name = str(val).strip()
+                        elif kl in ['sponsorname', 'sponsor', 'upline']: sp_name = str(val).strip()
+                    cx = clean_str(ex_name)
+                    cs = clean_str(sp_name)
+                    if cx and cs:
+                        links.append((cx, cs))
+                        
+    # 2. अब इस मास्टर लिस्ट से चेन बनाओ (A -> B -> C)
+    team = set()
+    queue = [target_c_name]
+    while queue:
+        curr = queue.pop(0)
+        if not curr: continue
+        for child, parent in links:
+            if names_match(parent, curr):
+                if child not in team and not names_match(child, target_c_name):
+                    team.add(child)
+                    queue.append(child)
+    return team
+
 # 4. Calculation Logic
 if btn_generate and search_exec: 
     rows = []
     count = 1
     target_c = clean_str(search_exec)
     
-    selected_downline = get_full_downline(target_c, parsed_execs)
+    # 🎯 ब्रह्मास्त्र: A की पूरी मल्टी-लेवल डाउनलाइन (B, C, D) ढूँढना
+    selected_downline = get_universal_downline(target_c, db_data, parsed_execs)
+    
     mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
     
     for project_name, p_info in db_data.items():
@@ -220,21 +202,31 @@ if btn_generate and search_exec:
                 info = info if isinstance(info, dict) else {}
                 
                 ex_name = ""
+                sp_name = ""
                 for key, val in info.items():
                     kl = clean_str(key)
                     if kl in ['executivename', 'executive', 'execname', 'partnername']:
                         ex_name = str(val).strip()
+                    elif kl in ['sponsorname', 'sponsor', 'upline']:
+                        sp_name = str(val).strip()
                         
                 plot_c = clean_str(ex_name)
+                plot_sp_c = clean_str(sp_name)
                 
+                # चेक करें: सेल्फ या ग्रुप?
                 is_self = names_match(target_c, plot_c)
                 
                 is_group = False
                 if not is_self:
-                    for dl in selected_downline:
-                        if names_match(dl, plot_c):
-                            is_group = True
-                            break
+                    # क्या स्पॉन्सर डायरेक्ट टारगेट (A) है?
+                    if names_match(target_c, plot_sp_c):
+                        is_group = True
+                    else:
+                        # क्या ये एग्जीक्यूटिव या स्पॉन्सर डाउनलाइन (B, C) में है?
+                        for dl in selected_downline:
+                            if names_match(dl, plot_c) or names_match(dl, plot_sp_c):
+                                is_group = True
+                                break
                 
                 is_valid = False
                 if comm_type == "Self": is_valid = is_self
@@ -253,9 +245,26 @@ if btn_generate and search_exec:
                     if comp_rate <= 0: comp_rate = 650 
                     discount_sqft = safe_float(info.get('discount', 0))
                     
-                    # 🎯 डिफरेंस लागू
-                    diff_pct = get_diff_commission(target_c, plot_c, parsed_execs)
+                    # 🎯 डिफरेंस कमीशन लॉजिक
+                    # बॉस का कुल % (A)
+                    t_pct = 0.0
+                    for k, v in parsed_execs.items():
+                        if names_match(k, target_c):
+                            t_pct = v['pct']
+                            break
                     
+                    # डिफरेंस = (A का %) - (डायरेक्ट बेचने वाले का %)
+                    c_pct = 0.0
+                    for k, v in parsed_execs.items():
+                        if names_match(k, plot_c):
+                            c_pct = v['pct']
+                            break
+                            
+                    diff_pct = t_pct
+                    if not is_self:
+                        diff_pct = max(0.0, t_pct - c_pct)
+                    
+                    # नाम सेट करना
                     if is_self:
                         entry_label = "Self"
                     else:
