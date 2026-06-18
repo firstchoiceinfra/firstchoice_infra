@@ -6,7 +6,7 @@ import os
 import re
 
 # ==========================================
-# 1. PAGE SETUP & DATABASE
+# 1. PAGE SETUP & MASTER DATABASE CONNECT
 # ==========================================
 st.set_page_config(layout="wide", page_title="Firstchoice Infra - Statement", initial_sidebar_state="collapsed")
 
@@ -18,19 +18,21 @@ except:
 
 db_data = st.session_state.get('db_projects', {})
 
-# मास्टर डेटा ढूँढना
-exec_data_root = {}
+# 🔎 पार्टनर मैनेजमेंट (Partner Management) के ओरिजिनल डेटाबेस को खोजना
+partner_db = {}
 for key in ['executives', 'db_executives', 'partners', 'associates']:
     if key in st.session_state and isinstance(st.session_state[key], dict) and st.session_state[key]:
-        exec_data_root = st.session_state[key]
+        partner_db = st.session_state[key]
         break
-if not exec_data_root and isinstance(db_data, dict):
+
+if not partner_db and isinstance(db_data, dict):
     for k, v in db_data.items():
         if str(k).strip().lower() in ['executives', 'executive', 'partners', 'associates']:
-            if isinstance(v, dict): exec_data_root = v
-            break
+            if isinstance(v, dict): 
+                partner_db = v
+                break
 
-# लोगो
+# लोगो फंक्शन
 def get_image_base64(image_path):
     if os.path.exists(image_path):
         with open(image_path, "rb") as img_file: return base64.b64encode(img_file.read()).decode()
@@ -45,7 +47,7 @@ st.markdown("""<style>
     [data-testid="stHeader"], #Manage-app { display: none !important; }
     @media print {
         @page { margin-top: 0mm !important; margin-bottom: 5mm !important; }
-        [data-testid="stSidebar"], .stAppHeader, div.stButton, div[data-testid="stSelectbox"], div[role="radiogroup"], .no-print { display: none !important; }
+        [data-testid="stSidebar"], .stAppHeader, div.stButton, div[data-testid="stSelectbox"], div[role="radiogroup"], .no-print, details { display: none !important; }
         body, html, .stApp, main { background: white !important; padding: 0 !important; margin: 0 !important; }
         .block-container { padding-top: 0 !important; margin-top: 0 !important; }
     }
@@ -55,89 +57,111 @@ st.markdown("""<style>
     .data-table { width: 100%; border-collapse: collapse; font-size: 11px; }
     .data-table th, .data-table td { border: 1px solid #000; padding: 6px; text-align: right; }
     .data-table th { background-color: #f0f0f0; text-align: center; font-weight: bold; }
-    .data-table tr:last-child td { font-weight: 900 !important; background-color: #ffeb3b !important; color: #000 !important; font-size: 15px !important; }
+    .data-table tr:last-child td { font-weight: 900 !important; background-color: #ffeb3b !important; color: #000 !important; font-size: 15px !important; padding: 12px 6px !important; border-top: 3px solid #000 !important; border-bottom: 3px solid #000 !important; }
 </style>""", unsafe_allow_html=True)
 
 def safe_float(val):
     try: return float(str(val).strip() or 0)
     except: return 0.0
 
-# ==========================================
-# 3. SMART NAME MATCHING (दमदार और सिंपल)
-# ==========================================
-def clean_n(name):
-    return re.sub(r'[^a-z0-9]', '', str(name).lower())
+def clean_txt(s):
+    return re.sub(r'[^a-z0-9]', '', str(s).lower()).strip()
 
-def is_match(n1, n2):
-    s1, s2 = clean_n(n1), clean_n(n2)
+# स्मार्ट नाम मैचिंग सेंसर (टोकन और स्पेस की गलतियां सुधारेगा)
+def is_same_name(n1, n2):
+    s1, s2 = clean_txt(n1), clean_txt(n2)
     if not s1 or not s2: return False
     if s1 == s2 or s1 in s2 or s2 in s1: return True
+    w1, w2 = set(str(n1).lower().split()), set(str(n2).lower().split())
+    if w1 and w2 and (w1.issubset(w2) or w2.issubset(w1)): return True
     return False
 
 # ==========================================
-# 4. BUILD MASTER DATA (बिना किसी कचरे के)
+# 3. PARTNER MANAGEMENT DATA EXTRACTION
 # ==========================================
-exec_list = []
-for k, v in exec_data_root.items():
-    if isinstance(v, dict):
-        name, sp, pct = str(k).strip(), "", 0.0
-        for key, val in v.items():
-            kl = clean_n(key)
-            if kl in ['name', 'executivename', 'partnername']: name = str(val).strip()
-            elif kl in ['sponsor', 'sponsorname', 'upline']: sp = str(val).strip()
-            elif kl in ['percentage', 'pct', 'commission', 'percentageexec']: pct = safe_float(val)
-        exec_list.append({'name': name, 'sp': sp, 'pct': pct})
+p_management_tree = {} # सीनियर-जूनियर मैपिंग
+p_percentages = {} # किसका कितना % है
 
-def get_pct(target_name):
-    for ex in exec_list:
-        if is_match(ex['name'], target_name): return ex['pct']
-    return 0.0
+for key_id, info_dict in partner_db.items():
+    if isinstance(info_dict, dict):
+        exec_name = str(key_id).strip()
+        sponsor_name = ""
+        pct_val = 0.0
+        
+        for k, v in info_dict.items():
+            kl = clean_txt(k)
+            if kl in ['name', 'executivename', 'partnername', 'fullname']: 
+                exec_name = str(v).strip()
+            elif kl in ['sponsor', 'sponsorname', 'upline', 'sponsor_name']: 
+                sponsor_name = str(v).strip()
+            elif kl in ['percentage', 'percentageexec', 'percentage_exec', 'pct', 'commission']: 
+                pct_val = safe_float(v)
+                
+        c_exec = clean_txt(exec_name)
+        if c_exec:
+            p_percentages[c_exec] = pct_val
+            if sponsor_name:
+                p_management_tree[c_exec] = clean_txt(sponsor_name)
 
-# चेन (Network) बनाना
-links = []
-for ex in exec_list:
-    if ex['name'] and ex['sp'] and not is_match(ex['name'], ex['sp']):
-        links.append((ex['name'], ex['sp']))
+def get_canonical_id(raw_name):
+    c_raw = clean_txt(raw_name)
+    for c_id in p_percentages.keys():
+        if c_raw == c_id or c_raw in c_id or c_id in c_raw:
+            return c_id
+    return c_raw
 
-# प्लॉट से भी चेन जोड़ना (ताकि कोई जूनियर छूटे नहीं)
-for p_info in db_data.values():
-    if isinstance(p_info, dict) and 'plots' in p_info:
-        for pid, info in (p_info['plots'].items() if isinstance(p_info['plots'], dict) else enumerate(p_info['plots'])):
-            if isinstance(info, dict):
-                en, sn = "", ""
-                for k, v in info.items():
-                    kl = clean_n(k)
-                    if kl in ['executivename', 'executive', 'partnername']: en = str(v).strip()
-                    elif kl in ['sponsorname', 'sponsor', 'upline']: sn = str(v).strip()
-                if en and sn and not is_match(en, sn):
-                    links.append((en, sn))
-
-def get_full_team(boss_name):
-    team = set()
-    queue = [boss_name]
+# 🛠️ असीमित गहराई (Infinite Downline) खोजने वाला लूप स्कैनर
+def build_infinite_downline(target_id):
+    downline = set()
+    queue = [target_id]
     while queue:
         curr = queue.pop(0)
-        for child, parent in links:
-            if is_match(parent, curr) and not is_match(child, boss_name) and child not in team:
-                team.add(child)
-                queue.append(child)
-    return team
+        for child, parent in p_management_tree.items():
+            if parent == curr or is_same_name(parent, curr):
+                if child not in downline and child != target_id:
+                    downline.add(child)
+                    queue.append(child)
+    return downline
+
+# 🛠️ सटीक ट्री-बेस्ड डिफरेंस कमीशन कैलकुलेटर
+def calculate_differential_pct(target_id, seller_id):
+    target_pct = p_percentages.get(target_id, 0.0)
+    if target_id == seller_id or not seller_id:
+        return target_pct
+        
+    curr = seller_id
+    path = []
+    visited = set()
+    
+    # नीचे से ऊपर सीनियर की तरफ ट्रैक करना
+    while curr and curr not in visited and curr != target_id:
+        visited.add(curr)
+        path.append(curr)
+        curr = p_management_tree.get(curr, "")
+        
+    if curr == target_id and path:
+        immediate_junior = path[-1] # टारगेट का ठीक नीचे वाला लिंक पार्टनर
+        junior_pct = p_percentages.get(immediate_junior, 0.0)
+        return max(0.0, target_pct - junior_pct)
+    else:
+        seller_pct = p_percentages.get(seller_id, 0.0)
+        return max(0.0, target_pct - seller_pct)
 
 # ==========================================
-# 5. SECURITY LOCK (सिर्फ बॉस के लिए)
+# 4. TOTAL ADMIN SECURITY LOCK
 # ==========================================
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
-is_admin = False
+is_admin_logged = False
 
 for val in st.session_state.values():
     if isinstance(val, str) and any(x in str(val).lower() for x in ['admin', 'boss', 'owner', 'firstchoice']):
-        is_admin = True; break
-
+        is_admin_logged = True
+        break
 if 'force_unlock' in st.session_state and st.session_state.force_unlock:
-    is_admin = True
+    is_admin_logged = True
 
-if not is_admin:
-    st.error("🚫 Access Denied! यह पेज सिर्फ एडमिन के लिए है।")
+if not is_admin_logged:
+    st.error("🚫 Access Denied! यह पेज सुरक्षित है और सिर्फ एडमिन के लिए उपलब्ध है।")
     pwd = st.text_input("Admin PIN (Emergency Unlock)", type="password")
     if st.button("🔓 Unlock Page"):
         if pwd == "1234" or pwd == "admin123":
@@ -146,13 +170,22 @@ if not is_admin:
         else: st.error("❌ गलत पिन!")
     st.stop()
 
-st.success("👑 **Admin Panel Active**")
+st.success("👑 **Admin Panel Active** (पार्टनर मैनेजमेंट से सफलतापूर्वक कनेक्टेड)")
 if st.button("🔒 Lock Page"):
     st.session_state.force_unlock = False
     st.rerun()
 
-all_names = [ex['name'] for ex in exec_list if ex['name']]
-search_exec = st.selectbox("🔎 Select Business Partner", all_names) if all_names else None
+# ड्रॉपडाउन में दिखाने के लिए ओरिजिनल नाम निकालना
+display_names_map = {}
+for k, v in partner_db.items():
+    if isinstance(v, dict):
+        nm = str(k).strip()
+        for sub_k, sub_v in v.items():
+            if clean_txt(sub_k) in ['name', 'executivename']: nm = str(sub_v).strip()
+        display_names_map[clean_txt(nm)] = nm
+
+all_options = list(display_names_map.values())
+search_exec = st.selectbox("🔎 Select Business Partner", all_options) if all_options else None
 comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self + Group)"], horizontal=True)
 
 col1, col2 = st.columns(2)
@@ -161,13 +194,15 @@ btn_gen = st.button("🚀 Generate Final Statement")
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
-# 6. COMMISSION LOGIC (फ्रेश और कट-टू-कट)
+# 5. STATEMENT CALCULATION LOGIC
 # ==========================================
-if btn_gen and search_exec: 
+if btn_gen and search_exec:
     rows = []
     count = 1
-    my_team = get_full_team(search_exec)
-    boss_pct = get_pct(search_exec)
+    target_id = clean_txt(search_exec)
+    
+    # लाइव चेन ढूंढना पार्टनर मैनेजमेंट के डेटा से
+    full_downline_set = build_infinite_downline(target_id)
     
     mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
     
@@ -176,26 +211,36 @@ if btn_gen and search_exec:
             mauja = p_info.get('mauja', mapping.get(proj_name.lower(), "Nagpur"))
             b_rate = safe_float(p_info.get('base_rate', 650))
             
-            for pid, info in (p_info['plots'].items() if isinstance(p_info['plots'], dict) else enumerate(p_info['plots'])):
+            plots_dict = p_info['plots']
+            plot_loop = plots_dict.items() if isinstance(plots_dict, dict) else enumerate(plots_dict)
+            
+            for pid, info in plot_loop:
                 if isinstance(info, dict):
                     e_name, s_name = "", ""
                     for k, v in info.items():
-                        kl = clean_n(k)
-                        if kl in ['executivename', 'executive']: e_name = str(v).strip()
-                        elif kl in ['sponsorname', 'sponsor']: s_name = str(v).strip()
+                        kl = clean_txt(k)
+                        if kl in ['executivename', 'executive', 'executive_name', 'partnername']: e_name = str(v).strip()
+                        elif kl in ['sponsorname', 'sponsor_name', 'sponsor', 'upline']: s_name = str(v).strip()
                     
-                    is_self = is_match(e_name, search_exec)
+                    seller_id = clean_txt(e_name)
+                    sponsor_id = clean_txt(s_name)
+                    
+                    is_self = (seller_id == target_id or is_same_name(seller_id, target_id))
+                    
                     is_group = False
-                    
                     if not is_self:
-                        if is_match(s_name, search_exec): is_group = True
+                        # अगर बेचने वाला या उसका स्पॉन्सर हमारी लाइव पार्टनर ट्री डाउनलाइन में मैच हो जाए
+                        if seller_id in full_downline_set or sponsor_id == target_id or sponsor_id in full_downline_set:
+                            is_group = True
                         else:
-                            for member in my_team:
-                                if is_match(e_name, member) or is_match(s_name, member):
+                            for dl_member in full_downline_set:
+                                if is_same_name(seller_id, dl_member) or is_same_name(sponsor_id, dl_member):
                                     is_group = True; break
-                    
-                    is_valid = (comm_type == "Self" and is_self) or (comm_type == "Group" and is_group) or (comm_type == "All (Self + Group)" and (is_self or is_group))
-                    
+                                    
+                    is_valid = (comm_type == "Self" and is_self) or \
+                               (comm_type == "Group" and is_group) or \
+                               (comm_type == "All (Self + Group)" and (is_self or is_group))
+                               
                     if is_valid:
                         payments = [{'amt': safe_float(info.get('token_amount', 0)), 'date': info.get('booking_date', '')}]
                         pp_data = info.get('partial_payments', [])
@@ -207,14 +252,11 @@ if btn_gen and search_exec:
                         if c_rate <= 0: c_rate = 650 
                         disc_sqft = safe_float(info.get('discount', 0))
                         
-                        # 🎯 डायरेक्ट डिफरेंस कैलकुलेशन
-                        diff_pct = boss_pct
-                        if not is_self:
-                            # अगर ग्रुप का है, तो जिसने बेचा है उसका % माइनस करो
-                            child_pct = get_pct(e_name)
-                            diff_pct = max(0.0, boss_pct - child_pct)
+                        # 🎯 लाइव डिफरेंस कैलकुलेशन
+                        diff_pct = calculate_differential_pct(target_id, seller_id)
                         
-                        entry_type = "Self" if is_self else f"Group ({e_name.title()})"
+                        display_seller_name = display_names_map.get(seller_id, str(e_name).title())
+                        entry_type = "Self" if is_self else f"Group ({display_seller_name})"
                         
                         for pmt in payments:
                             amt = safe_float(pmt['amt'])
@@ -232,18 +274,18 @@ if btn_gen and search_exec:
                                     "Net Comm": net_comm, "TDS": tds, "In Hand": in_hand
                                 })
                                 count += 1
-                                
+
     df = pd.DataFrame(rows)
     totals = { "S.No.": "TOTAL", "Type": "", "Mauja": "", "Project": "", "Plot": "", "Customer": "", "Date": "",
         "Received": df['Received'].sum() if not df.empty else 0, "Gross": df['Gross'].sum() if not df.empty else 0, 
         "Discount": df['Discount'].sum() if not df.empty else 0, "Net Comm": df['Net Comm'].sum() if not df.empty else 0, 
         "TDS": df['TDS'].sum() if not df.empty else 0, "In Hand": df['In Hand'].sum() if not df.empty else 0 }
-    
+        
     st.session_state.df_view = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
     st.session_state.meta = {"exec": search_exec, "start": start_date, "end": end_date, "type": comm_type}
 
 # ==========================================
-# 7. DISPLAY FINAL STATEMENT
+# 6. DISPLAY FINAL STATEMENT
 # ==========================================
 if 'df_view' in st.session_state and st.session_state.df_view is not None:
     df, meta = st.session_state.df_view, st.session_state.meta
