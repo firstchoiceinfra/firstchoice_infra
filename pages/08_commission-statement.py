@@ -95,21 +95,23 @@ parents_tree = {}
 partner_rates = {}  
 real_names = {}
 
-# 🔥 DEEP SCANNER FOR PARTNER DATA (Fixes 0.00 Commission)
+# 🔥 SAFE SCANNER: सिर्फ भरी हुई वैल्यूज़ ही उठाएगा
 for key_id, info in partner_db.items():
     if isinstance(info, dict):
-        exec_name, sponsor_name = key_id, ""
+        exec_name, sponsor_name = str(key_id), ""
         pct_val = 0.0
         
         for k, v in info.items():
             kl = clean_txt(k)
-            if kl in ['name', 'executivename', 'partnername', 'fullname', 'executive']: 
-                exec_name = str(v)
-            elif kl in ['sponsor', 'sponsorname', 'upline', 'sponsor_name']: 
-                sponsor_name = str(v)
-            # यहाँ सभी संभावित कमीशन नाम जोड़े गए हैं
+            val_str = str(v).strip()
+            # खाली वैल्यूज़ को इग्नोर करो ताकि सही डेटा मिटे नहीं
+            if kl in ['name', 'executivename', 'partnername', 'fullname', 'executive'] and val_str: 
+                exec_name = val_str
+            elif kl in ['sponsor', 'sponsorname', 'upline', 'sponsor_name'] and val_str: 
+                sponsor_name = val_str
             elif kl in ['percentage', 'commission', 'pct', 'percentageexec', 'percentage_exec', 'comm', 'rate', 'mycommission']: 
-                pct_val = safe_float(v)
+                if safe_float(v) > 0:
+                    pct_val = safe_float(v)
         
         c_exec = clean_txt(exec_name)
         if c_exec:
@@ -170,9 +172,10 @@ col1, col2, col3 = st.columns(3)
 with col1:
     comm_type = st.radio("📑 Statement Type", ["Self", "Group", "All (Self + Group)"])
 with col2:
-    start_date = st.date_input("📅 Start Date", pd.to_datetime("today").replace(month=1, day=1))
+    # ⚠️ फिक्स: डिफ़ॉल्ट Start Date 2020 कर दी गई है ताकि पुराना डेटा छूटे नहीं
+    start_date = st.date_input("📅 Start Date", pd.to_datetime("2020-01-01").date())
 with col3:
-    end_date = st.date_input("📅 End Date", pd.to_datetime("today"))
+    end_date = st.date_input("📅 End Date", pd.to_datetime("today").date())
 
 btn_get_statement = st.button("🚀 Get Statement", type="primary", use_container_width=True)
 st.markdown('</div>', unsafe_allow_html=True)
@@ -186,17 +189,17 @@ if btn_get_statement and search_exec:
     target_clean = clean_txt(search_exec)
     boss_pct = partner_rates.get(target_clean, 0.0)
     
-    # Mauja Fallback Mapping
     mauja_mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
     
     for proj_name, p_info in db_projects.items():
         if isinstance(p_info, dict) and 'plots' in p_info:
             b_rate = safe_float(p_info.get('base_rate', 650))
             
-            # 🔥 FETCH MAUJA FROM INVENTORY
+            # Fetch Mauja
             mauja_name = ""
             for mk in ['mauja', 'Mauja', 'location', 'village']:
-                if mk in p_info: mauja_name = str(p_info[mk])
+                if mk in p_info and str(p_info[mk]).strip(): 
+                    mauja_name = str(p_info[mk]).strip()
             if not mauja_name:
                 mauja_name = mauja_mapping.get(str(proj_name).lower().strip(), "N/A")
             
@@ -211,14 +214,23 @@ if btn_get_statement and search_exec:
                     tok_amt, tok_date = 0.0, ""
                     c_rate, disc_sqft = b_rate, 0.0
                     
+                    # 🔥 SAFE SCANNER FOR INVENTORY
                     for k, v in info.items():
                         kl = clean_txt(k)
-                        if kl in ['executivename', 'executive', 'partnername', 'agentname']: e_name = str(v)
-                        elif kl in ['customername', 'customer', 'name']: cust_name = str(v)
-                        elif kl in ['tokenamount', 'token', 'bookingamount']: tok_amt = safe_float(v)
-                        elif kl in ['bookingdate', 'tokendate', 'date']: tok_date = str(v)
-                        elif kl in ['companyrate', 'crate']: c_rate = safe_float(v)
-                        elif kl in ['discount', 'disc']: disc_sqft = safe_float(v)
+                        val_str = str(v).strip()
+                        
+                        if kl in ['executivename', 'executive', 'partnername', 'agentname', 'bookedby'] and val_str: 
+                            e_name = val_str
+                        elif kl in ['customername', 'customer', 'name'] and val_str: 
+                            cust_name = val_str
+                        elif kl in ['tokenamount', 'token', 'bookingamount'] and safe_float(v) > 0: 
+                            tok_amt = safe_float(v)
+                        elif kl in ['bookingdate', 'tokendate', 'date'] and val_str: 
+                            tok_date = val_str
+                        elif kl in ['companyrate', 'crate'] and safe_float(v) > 0: 
+                            c_rate = safe_float(v)
+                        elif kl in ['discount', 'disc'] and safe_float(v) > 0: 
+                            disc_sqft = safe_float(v)
                     
                     seller_clean = resolve_clean_id(e_name)
                     is_self = (seller_clean == target_clean)
@@ -258,3 +270,74 @@ if btn_get_statement and search_exec:
                                 exact_comm = gross_comm - disc_amt
                                 tds = exact_comm * 0.02
                                 net_in_hand = exact_comm - tds
+                                
+                                rows.append({
+                                    "S.No.": count,
+                                    "Customer Name": cust_name.title(),
+                                    "Plot No.": str(pid).upper(),
+                                    "Mauja": mauja_name.title(),
+                                    "Received Amount": amt,
+                                    "Received Date": pmt['date'] if pmt['date'] else 'N/A',
+                                    "Gross Commission": gross_comm,
+                                    "Discount": disc_amt,
+                                    "Exact Commission": exact_comm,
+                                    "TDS (2%)": tds,
+                                    "Net In Hand": net_in_hand
+                                })
+                                count += 1
+
+    df = pd.DataFrame(rows)
+    
+    if not df.empty:
+        totals = {
+            "S.No.": "TOTAL", "Customer Name": "", "Plot No.": "", "Mauja": "",
+            "Received Amount": df['Received Amount'].sum(), "Received Date": "", 
+            "Gross Commission": df['Gross Commission'].sum(), "Discount": df['Discount'].sum(), 
+            "Exact Commission": df['Exact Commission'].sum(), "TDS (2%)": df['TDS (2%)'].sum(), 
+            "Net In Hand": df['Net In Hand'].sum()
+        }
+        df = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
+    else:
+        st.warning(f"⚠️ {search_exec} के लिए कोई डेटा नहीं मिला।")
+
+    st.session_state.statement_data = df
+    st.session_state.statement_meta = {"exec": search_exec, "start": start_date, "end": end_date}
+
+# ==========================================
+# 7. DISPLAY & PRINT STATEMENT
+# ==========================================
+if 'statement_data' in st.session_state and not st.session_state.statement_data.empty:
+    df = st.session_state.statement_data
+    meta = st.session_state.statement_meta
+    
+    logo_b64 = get_image_base64('logo.jpg')
+    img_tag = f"<img src='data:image/jpeg;base64,{logo_b64}' width='120'/>" if logo_b64 else "<b>[LOGO]</b>"
+    
+    html_string = f"""<div class='statement-container'>
+<table class='header-table'>
+<tr>
+<td style='width: 20%; text-align: left;'>{img_tag}</td>
+<td style='width: 80%; text-align: center;'>
+<p class='company-name'>FIRSTCHOICE INFRA</p>
+<p class='slogan'>Symbol Of Trust...</p>
+<p class='address'>Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034</p>
+</td>
+</tr>
+</table>
+<div class='info-section'>
+<div>Executive: <span style='color: #1e3a8a;'>{meta['exec']}</span></div>
+<div>Period: <span style='color: #1e3a8a;'>{meta['start'].strftime('%d %b %Y')} to {meta['end'].strftime('%d %b %Y')}</span></div>
+</div>
+{df.to_html(classes='data-table', index=False, float_format="%.2f")}
+</div>"""
+
+    st.markdown(html_string, unsafe_allow_html=True)
+    
+    components.html("""
+        <style>@media print { body { display: none !important; } }</style>
+        <div style="text-align:center; margin-top:30px;" class="no-print">
+            <button onclick="window.parent.print()" style="padding:12px 30px; background-color:#1e3a8a; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold; font-size:16px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);">
+                🖨️ Print Statement
+            </button>
+        </div>
+    """, height=100)
