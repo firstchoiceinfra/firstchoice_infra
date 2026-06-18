@@ -73,117 +73,39 @@ def safe_float(val):
     try: return float(str(val).strip() or 0)
     except: return 0.0
 
-def clean_str(s):
-    return re.sub(r'[^a-z0-9]', '', str(s).lower())
-
-# 🛠️ दो शॉर्ट/फुल नामों को आपस में मैच करने वाला स्मार्ट सेंसर
+# 🛠️ दो शॉर्ट/फुल नामों को आपस में मैच करने वाला स्मार्ट सेंसर (टोकन आधारित)
 def names_match(n1, n2):
-    c1, c2 = clean_str(n1), clean_str(n2)
-    if not c1 or not c2: return False
-    if c1 == c2 or c1 in c2 or c2 in c1: return True
-    w1 = [w for w in re.split(r'[^a-z0-9]', str(n1).lower()) if len(w) > 2]
-    w2 = [w for w in re.split(r'[^a-z0-9]', str(n2).lower()) if len(w) > 2]
-    if w1 and w2 and w1[0] == w2[0]: return True
-    return False
+    s1 = re.sub(r'[^a-z0-9\s]', '', str(n1).lower()).strip()
+    s2 = re.sub(r'[^a-z0-9\s]', '', str(n2).lower()).strip()
+    if not s1 or not s2: return False
+    if s1 == s2: return True
+    w1 = s1.split()
+    w2 = s2.split()
+    if not w1 or not w2: return False
+    if w1[0] != w2[0]: return False
+    if len(w1) == 1 or len(w2) == 1: return True
+    return bool(set(w1[1:]).intersection(set(w2[1:])))
 
-# 🛠️ पार्ट 1: डेटाबेस पार्सिंग और नाम क्लीनिंग
+# 🛠️ पार्ट 1: पार्टनर मैनेजमेंट से बेस डेटा निकालना
 parsed_execs = {}
-for k, v in exec_data_root.items():
-    if isinstance(v, dict):
-        name, sp, pct = "", "", 0.0
-        for key, val in v.items():
-            kl = clean_str(key)
-            if kl in ['name', 'executivename', 'partnername', 'fullname']: name = str(val).strip()
-            elif kl in ['sponsor', 'sponsorname', 'upline']: sp = str(val).strip()
-            elif kl in ['percentage', 'percentageexec', 'pct', 'commission', 'commissionpercentage']: pct = safe_float(val)
-        if not name: name = str(k).strip()
-        
-        parsed_execs[clean_str(name)] = {
-            'name': name,
-            'c_name': clean_str(name),
-            'sp': sp,
-            'c_sp': clean_str(sp),
-            'pct': pct
-        }
+if isinstance(exec_data_root, dict):
+    for k, v in exec_data_root.items():
+        if isinstance(v, dict):
+            name, sp, pct = "", "", 0.0
+            for key, val in v.items():
+                kl = str(key).strip().lower()
+                if kl in ['name', 'executivename', 'partnername', 'fullname']: name = str(val).strip()
+                elif kl in ['sponsor', 'sponsorname', 'upline', 'sponsor_name']: sp = str(val).strip()
+                elif kl in ['percentage', 'percentageexec', 'pct', 'commission', 'commissionpercentage']: pct = safe_float(val)
+            if not name: name = str(k).strip()
+            parsed_execs[name] = {'name': name, 'sp': sp, 'pct': pct}
 
-# 🛠️ नाम को उसकी सही कैनोनिकल ID में बदलने का फंक्शन
-def resolve_to_clean_id(raw_name, parsed_data):
-    c_raw = clean_str(raw_name)
-    if not c_raw: return ""
-    if c_raw in parsed_data: return c_raw
-    for k, v in parsed_data.items():
-        if c_raw in v['c_name'] or v['c_name'] in c_raw:
-            return v['c_name']
-    w_raw = [w for w in re.split(r'[^a-z0-9]', str(raw_name).lower()) if len(w) > 2]
-    for k, v in parsed_data.items():
-        w_exec = [w for w in re.split(r'[^a-z0-9]', v['name'].lower()) if len(w) > 2]
-        if w_raw and w_exec and w_raw[0] == w_exec[0]:
-            return v['c_name']
-    return c_raw
-
-# 🛠️ पार्ट 2: असीमित चेन स्कैनर (A -> B -> C -> D पूरी गहराई तक खोजेगा)
-def build_master_tree(parsed_data, db_data):
-    tree = {}
-    # पहले पार्टनर मैनेजमेंट से रिश्ते जोड़ो
-    for v in parsed_data.values():
-        if v['c_name']:
-            tree[v['c_name']] = v['c_sp']
-            
-    # फिर बुकिंग डेटा से छूटे हुए रिश्ते जोड़ो
-    for project_name, p_info in db_data.items():
-        if isinstance(p_info, dict) and 'plots' in p_info:
-            plots_data = p_info['plots']
-            plot_items = plots_data.items() if isinstance(plots_data, dict) else enumerate(plots_data)
-            for pid, info in plot_items:
-                if isinstance(info, dict):
-                    ex_n, sp_n = "", ""
-                    for key, val in info.items():
-                        kl = clean_str(key)
-                        if kl in ['executivename', 'executive', 'execname', 'partnername']: ex_n = str(val).strip()
-                        elif kl in ['sponsorname', 'sponsor', 'upline']: sp_n = str(val).strip()
-                    cx = resolve_to_clean_id(ex_n, parsed_data)
-                    cs = resolve_to_clean_id(sp_n, parsed_data)
-                    if cx and cs and cx != cs:
-                        if cx not in tree or not tree[cx]:
-                            tree[cx] = cs
-    return tree
-
-def get_infinite_downline(target_clean, tree):
-    downline = set()
-    queue = [target_clean]
-    while queue:
-        curr = queue.pop(0)
-        if not curr: continue
-        for child, parent in tree.items():
-            if parent == curr or names_match(parent, curr):
-                if child not in downline and child != target_clean:
-                    downline.add(child)
-                    queue.append(child) # चेन को अगली गहराई (C, D...) तक ले जाने के लिए
-    return downline
-
-# 🛠️ पार्ट 3: ट्री-आधारित कट-टू-कट डिफरेंस कमीशन कैलकुलेटर
-def calculate_tree_diff(target_clean, plot_exec_clean, parsed_data, tree):
-    t_pct = parsed_data.get(target_clean, {}).get('pct', 0.0)
-    if not plot_exec_clean or target_clean == plot_exec_clean:
-        return t_pct
-        
-    # प्लॉट बेचने वाले से ऊपर की तरफ टारगेट तक रास्ता (Path) ट्रेस करना
-    path = []
-    curr = plot_exec_clean
-    visited = set()
-    while curr and curr in tree and curr != target_clean and curr not in visited:
-        visited.add(curr)
-        path.append(curr)
-        curr = tree[curr]
-        
-    # अगर चेन टारगेट तक पहुँचती है, तो टारगेट का ठीक निचला जूनियर ढूंढो
-    if curr == target_clean and path:
-        immediate_child = path[-1]
-        child_pct = parsed_data.get(immediate_child, {}).get('pct', 0.0)
-        return max(0.0, t_pct - child_pct)
-    else:
-        p_pct = parsed_data.get(plot_exec_clean, {}).get('pct', 0.0)
-        return max(0.0, t_pct - p_pct)
+# 🛠️ किसी भी कच्चे नाम को पार्टनर मैनेजमेंट वाले सही नाम में बदलना
+def get_canonical_name(raw_name, parsed_data):
+    for name_key in parsed_data.keys():
+        if names_match(raw_name, name_key):
+            return name_key
+    return str(raw_name).strip()
 
 # ==========================================================
 # 🚀 100% STRICT SECURITY - 'SUPER SENSOR' (सिर्फ बॉस के लिए)
@@ -203,17 +125,88 @@ for key, val in st.session_state.items():
 
 if not is_admin:
     st.error("🚫 **Access Denied!** यह पेज सुरक्षित है और सिर्फ कंपनी के बॉस (Admin) के लिए उपलब्ध है।")
-    st.info("कृपया मुख्य लॉगिन पेज से 'Admin' के रूप में लॉगिन करें।")
     st.stop() 
 
 st.success("👑 **Boss / Admin Panel Active:** (सुरक्षित लॉगिन प्रमाणित)")
 
-# मास्टर ट्री का निर्माण
-master_tree = build_master_tree(parsed_execs, db_data)
-all_execs = [v['name'] for v in parsed_execs.values()]
+# 🛠️ पार्ट 2: मास्टर पैरेंट-चाइल्ड रिलेशनशिप ट्री का निर्माण (पार्टनर + प्लॉट दोनों से)
+parent_map = {}
+for v in parsed_execs.values():
+    if v['name'] and v['sp'] and not names_match(v['name'], v['sp']):
+        parent_map[v['name']] = get_canonical_name(v['sp'], parsed_execs)
 
-if all_execs:
-    search_exec = st.selectbox("🔎 Select Business Partner to View Statement", all_execs)
+for project_name, p_info in db_data.items():
+    if isinstance(p_info, dict) and 'plots' in p_info:
+        plots_data = p_info['plots']
+        plot_items = plots_data.items() if isinstance(plots_data, dict) else enumerate(plots_data)
+        for pid, info in plot_items:
+            if isinstance(info, dict):
+                ex_n, sp_n = "", ""
+                for key, val in info.items():
+                    kl = str(key).strip().lower()
+                    if kl in ['executivename', 'executive', 'execname', 'partnername']: ex_n = str(val).strip()
+                    elif kl in ['sponsorname', 'sponsor', 'upline']: sp_n = str(val).strip()
+                if ex_n and sp_n and not names_match(ex_n, sp_n):
+                    c_ex = get_canonical_name(ex_n, parsed_execs)
+                    c_sp = get_canonical_name(sp_n, parsed_execs)
+                    if c_ex not in parent_map:
+                        parent_map[c_ex] = c_sp
+
+# 🛠️ पार्ट 3: असीमित मल्टी-लेवल डाउनलाइन खोजने वाला लूप (A -> B -> C -> D)
+def get_infinite_downline(target_canonical, p_map):
+    downline = set()
+    queue = [target_canonical]
+    while queue:
+        curr = queue.pop(0)
+        for child, parent in p_map.items():
+            if names_match(parent, curr):
+                if child not in downline and not names_match(child, target_canonical):
+                    downline.add(child)
+                    queue.append(child)
+    return downline
+
+# 🛠️ पार्ट 4: ट्री आधारित सटीक डिफरेंस कमीशन कैलकुलेटर
+def calculate_tree_diff(target_canonical, plot_exec_canonical, parsed_data, p_map):
+    t_pct = 0.0
+    for k, v in parsed_data.items():
+        if names_match(k, target_canonical):
+            t_pct = v['pct']
+            break
+    if names_match(target_canonical, plot_exec_canonical):
+        return t_pct
+        
+    curr = plot_exec_canonical
+    path = []
+    visited = set()
+    while curr and curr not in visited and not names_match(curr, target_canonical):
+        visited.add(curr)
+        path.append(curr)
+        next_parent = ""
+        for child, parent in p_map.items():
+            if names_match(child, curr):
+                next_parent = parent
+                break
+        curr = next_parent
+        
+    if curr and names_match(curr, target_canonical) and path:
+        immediate_child = path[-1]
+        child_pct = 0.0
+        for k, v in parsed_data.items():
+            if names_match(k, immediate_child):
+                child_pct = v['pct']
+                break
+        return max(0.0, t_pct - child_pct)
+    else:
+        p_pct = 0.0
+        for k, v in parsed_data.items():
+            if names_match(k, plot_exec_canonical):
+                p_pct = v['pct']
+                break
+        return max(0.0, t_pct - p_pct)
+
+all_execs_list = list(parsed_execs.keys())
+if all_execs_list:
+    search_exec = st.selectbox("🔎 Select Business Partner to View Statement", all_execs_list)
 else:
     st.warning("⚠️ डेटाबेस में कोई पार्टनर नहीं मिला।")
     search_exec = None
@@ -225,14 +218,14 @@ start, end = col1.date_input("Start Date"), col2.date_input("End Date")
 btn_generate = st.button("🚀 Generate Final Statement")
 st.markdown('</div>', unsafe_allow_html=True)
 
-# 4. Calculation Logic
+# 5. Calculation Logic
 if btn_generate and search_exec: 
     rows = []
     count = 1
-    target_clean = resolve_to_clean_id(search_exec, parsed_execs)
+    target_canonical = get_canonical_name(search_exec, parsed_execs)
     
-    # 🎯 ब्रह्मास्त्र: A की असीमित मल्टी-लेवल चेन (B, C, D...) खोजना
-    selected_downline = get_infinite_downline(target_clean, master_tree)
+    # 🎯 पूरी मल्टी-लेवल चेन खोजना
+    selected_downline = get_infinite_downline(target_canonical, parent_map)
     mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
     
     for project_name, p_info in db_data.items():
@@ -248,19 +241,24 @@ if btn_generate and search_exec:
                 
                 ex_name, sp_name = "", ""
                 for key, val in info.items():
-                    kl = clean_str(key)
+                    kl = str(key).strip().lower()
                     if kl in ['executivename', 'executive', 'execname', 'partnername']: ex_name = str(val).strip()
                     elif kl in ['sponsorname', 'sponsor', 'upline']: sp_name = str(val).strip()
                         
-                plot_exec_clean = resolve_to_clean_id(ex_name, parsed_execs)
-                plot_sponsor_clean = resolve_to_clean_id(sp_name, parsed_execs)
+                plot_exec_canonical = get_canonical_name(ex_name, parsed_execs)
+                plot_sponsor_canonical = get_canonical_name(sp_name, parsed_execs)
                 
-                is_self = (plot_exec_clean == target_clean)
+                is_self = names_match(plot_exec_canonical, target_canonical)
                 
-                # चेक करें कि क्या बेचने वाला या स्पॉन्सर हमारी पूरी असीमित डाउनलाइन लिस्ट में है?
                 is_group = False
                 if not is_self:
-                    if plot_exec_clean in selected_downline or plot_sponsor_clean == target_clean or plot_sponsor_clean in selected_downline:
+                    # क्या बेचने वाला या स्पॉन्सर हमारी डाउनline चेन का हिस्सा है?
+                    in_dl = False
+                    for dl_member in selected_downline:
+                        if names_match(dl_member, plot_exec_canonical) or names_match(dl_member, plot_sponsor_canonical):
+                            in_dl = True
+                            break
+                    if in_dl or names_match(plot_sponsor_canonical, target_canonical):
                         is_group = True
                 
                 is_valid = False
@@ -280,17 +278,17 @@ if btn_generate and search_exec:
                     if comp_rate <= 0: comp_rate = 650 
                     discount_sqft = safe_float(info.get('discount', 0))
                     
-                    # 🎯 परफेक्ट हाइएरेर्की डिफरेंस लागू
-                    diff_pct = calculate_tree_diff(target_clean, plot_exec_clean, parsed_execs, master_tree)
+                    # 🎯 सटीक हाइएरेर्की डिफरेंस लागू
+                    diff_pct = calculate_tree_diff(target_canonical, plot_exec_canonical, parsed_execs, parent_map)
                     
                     if is_self:
                         entry_label = "Self"
                     else:
-                        display_seller = parsed_execs.get(plot_exec_clean, {}).get('name', str(ex_name).title())
-                        entry_label = f"Group ({display_seller})"
+                        display_name = parsed_execs.get(plot_exec_canonical, {}).get('name', str(ex_name).title())
+                        entry_label = f"Group ({display_name})"
                     
                     for pmt in payments:
-                        amt = safe_float(PMT_AMT := pmt['amt'])
+                        amt = safe_float(pmt['amt'])
                         if amt > 0:
                             gross = (amt * diff_pct) / 100
                             disc_amt = (amt / comp_rate) * discount_sqft 
