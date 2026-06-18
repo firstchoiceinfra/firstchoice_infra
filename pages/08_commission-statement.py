@@ -17,7 +17,7 @@ except:
 
 db_data = st.session_state.get('db_projects', {})
 
-# 🔎 डेटाबेस से Executives का मास्टर डेटा निकालना
+# 🔎 पार्टनर मैनेजमेंट से मास्टर एग्जीक्यूटिव डेटा लोड करना
 exec_data_root = {}
 for key in ['executives', 'db_executives', 'partners', 'associates']:
     if key in st.session_state and isinstance(st.session_state[key], dict) and st.session_state[key]:
@@ -42,7 +42,7 @@ LOGO_FILE = "logo.jpg"
 logo_base64 = get_image_base64(LOGO_FILE)
 logo_html = f"<img src='data:image/jpeg;base64,{logo_base64}' style='position:absolute; top:0px; left:15px; width:130px; height:auto; mix-blend-mode: multiply;'/>" if logo_base64 else ""
 
-# 2. CSS 
+# 2. CSS
 st.markdown("""<style>
     .block-container { padding-top: 2rem !important; margin-top: 0px !important; padding-bottom: 1rem !important; max-width: 100% !important; }
     [data-testid="stHeader"] { display: none !important; height: 0 !important; }
@@ -76,12 +76,17 @@ def safe_float(val):
 def clean_str(s):
     return re.sub(r'[^a-z0-9]', '', str(s).lower())
 
+# 🛠️ दो शॉर्ट/फुल नामों को आपस में मैच करने वाला स्मार्ट सेंसर
 def names_match(n1, n2):
     c1, c2 = clean_str(n1), clean_str(n2)
     if not c1 or not c2: return False
-    return c1 == c2 or c1 in c2 or c2 in c1
+    if c1 == c2 or c1 in c2 or c2 in c1: return True
+    w1 = [w for w in re.split(r'[^a-z0-9]', str(n1).lower()) if len(w) > 2]
+    w2 = [w for w in re.split(r'[^a-z0-9]', str(n2).lower()) if len(w) > 2]
+    if w1 and w2 and w1[0] == w2[0]: return True
+    return False
 
-# 🛠️ पार्ट 1: पार्टनर मैनेजमेंट से बेस डेटा निकालना
+# 🛠️ पार्ट 1: डेटाबेस पार्सिंग और नाम क्लीनिंग
 parsed_execs = {}
 for k, v in exec_data_root.items():
     if isinstance(v, dict):
@@ -92,10 +97,96 @@ for k, v in exec_data_root.items():
             elif kl in ['sponsor', 'sponsorname', 'upline']: sp = str(val).strip()
             elif kl in ['percentage', 'percentageexec', 'pct', 'commission', 'commissionpercentage']: pct = safe_float(val)
         if not name: name = str(k).strip()
-        parsed_execs[clean_str(name)] = {'name': name, 'c_name': clean_str(name), 'sp': sp, 'c_sp': clean_str(sp), 'pct': pct}
+        
+        parsed_execs[clean_str(name)] = {
+            'name': name,
+            'c_name': clean_str(name),
+            'sp': sp,
+            'c_sp': clean_str(sp),
+            'pct': pct
+        }
+
+# 🛠️ नाम को उसकी सही कैनोनिकल ID में बदलने का फंक्शन
+def resolve_to_clean_id(raw_name, parsed_data):
+    c_raw = clean_str(raw_name)
+    if not c_raw: return ""
+    if c_raw in parsed_data: return c_raw
+    for k, v in parsed_data.items():
+        if c_raw in v['c_name'] or v['c_name'] in c_raw:
+            return v['c_name']
+    w_raw = [w for w in re.split(r'[^a-z0-9]', str(raw_name).lower()) if len(w) > 2]
+    for k, v in parsed_data.items():
+        w_exec = [w for w in re.split(r'[^a-z0-9]', v['name'].lower()) if len(w) > 2]
+        if w_raw and w_exec and w_raw[0] == w_exec[0]:
+            return v['c_name']
+    return c_raw
+
+# 🛠️ पार्ट 2: असीमित चेन स्कैनर (A -> B -> C -> D पूरी गहराई तक खोजेगा)
+def build_master_tree(parsed_data, db_data):
+    tree = {}
+    # पहले पार्टनर मैनेजमेंट से रिश्ते जोड़ो
+    for v in parsed_data.values():
+        if v['c_name']:
+            tree[v['c_name']] = v['c_sp']
+            
+    # फिर बुकिंग डेटा से छूटे हुए रिश्ते जोड़ो
+    for project_name, p_info in db_data.items():
+        if isinstance(p_info, dict) and 'plots' in p_info:
+            plots_data = p_info['plots']
+            plot_items = plots_data.items() if isinstance(plots_data, dict) else enumerate(plots_data)
+            for pid, info in plot_items:
+                if isinstance(info, dict):
+                    ex_n, sp_n = "", ""
+                    for key, val in info.items():
+                        kl = clean_str(key)
+                        if kl in ['executivename', 'executive', 'execname', 'partnername']: ex_n = str(val).strip()
+                        elif kl in ['sponsorname', 'sponsor', 'upline']: sp_n = str(val).strip()
+                    cx = resolve_to_clean_id(ex_n, parsed_data)
+                    cs = resolve_to_clean_id(sp_n, parsed_data)
+                    if cx and cs and cx != cs:
+                        if cx not in tree or not tree[cx]:
+                            tree[cx] = cs
+    return tree
+
+def get_infinite_downline(target_clean, tree):
+    downline = set()
+    queue = [target_clean]
+    while queue:
+        curr = queue.pop(0)
+        if not curr: continue
+        for child, parent in tree.items():
+            if parent == curr or names_match(parent, curr):
+                if child not in downline and child != target_clean:
+                    downline.add(child)
+                    queue.append(child) # चेन को अगली गहराई (C, D...) तक ले जाने के लिए
+    return downline
+
+# 🛠️ पार्ट 3: ट्री-आधारित कट-टू-कट डिफरेंस कमीशन कैलकुलेटर
+def calculate_tree_diff(target_clean, plot_exec_clean, parsed_data, tree):
+    t_pct = parsed_data.get(target_clean, {}).get('pct', 0.0)
+    if not plot_exec_clean or target_clean == plot_exec_clean:
+        return t_pct
+        
+    # प्लॉट बेचने वाले से ऊपर की तरफ टारगेट तक रास्ता (Path) ट्रेस करना
+    path = []
+    curr = plot_exec_clean
+    visited = set()
+    while curr and curr in tree and curr != target_clean and curr not in visited:
+        visited.add(curr)
+        path.append(curr)
+        curr = tree[curr]
+        
+    # अगर चेन टारगेट तक पहुँचती है, तो टारगेट का ठीक निचला जूनियर ढूंढो
+    if curr == target_clean and path:
+        immediate_child = path[-1]
+        child_pct = parsed_data.get(immediate_child, {}).get('pct', 0.0)
+        return max(0.0, t_pct - child_pct)
+    else:
+        p_pct = parsed_data.get(plot_exec_clean, {}).get('pct', 0.0)
+        return max(0.0, t_pct - p_pct)
 
 # ==========================================================
-# 🚀 100% STRICT SECURITY - 'SUPER SENSOR' (सिर्फ एडमिन के लिए)
+# 🚀 100% STRICT SECURITY - 'SUPER SENSOR' (सिर्फ बॉस के लिए)
 # ==========================================================
 st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
@@ -109,20 +200,16 @@ for key, val in st.session_state.items():
     if isinstance(val, bool) and val == True and 'admin' in key_str:
         is_admin = True
         break
-    if isinstance(val, dict):
-        for k2, v2 in val.items():
-            if isinstance(v2, str) and any(x in str(v2).lower() for x in ['admin', 'boss', 'owner', 'firstchoice']):
-                is_admin = True
-                break
 
 if not is_admin:
     st.error("🚫 **Access Denied!** यह पेज सुरक्षित है और सिर्फ कंपनी के बॉस (Admin) के लिए उपलब्ध है।")
-    st.info("आपने मेन पेज पर एग्जीक्यूटिव के रूप में लॉगिन किया है। कृपया मेन पेज से 'Admin' के रूप में लॉगिन करें।")
+    st.info("कृपया मुख्य लॉगिन पेज से 'Admin' के रूप में लॉगिन करें।")
     st.stop() 
 
-# 👑 एडमिन पैनल 
-st.success("👑 **Boss / Admin Panel Active:** (मेन पेज से सुरक्षित लॉगिन प्रमाणित)")
+st.success("👑 **Boss / Admin Panel Active:** (सुरक्षित लॉगिन प्रमाणित)")
 
+# मास्टर ट्री का निर्माण
+master_tree = build_master_tree(parsed_execs, db_data)
 all_execs = [v['name'] for v in parsed_execs.values()]
 
 if all_execs:
@@ -138,56 +225,14 @@ start, end = col1.date_input("Start Date"), col2.date_input("End Date")
 btn_generate = st.button("🚀 Generate Final Statement")
 st.markdown('</div>', unsafe_allow_html=True)
 
-
-# 🛠️ पार्ट 2: मास्टर ट्री स्कैनर (यह पार्टनर और प्लॉट दोनों को स्कैन करके यूनिवर्सल चेन बनाएगा)
-def get_universal_downline(target_c_name, db_data, parsed_execs):
-    # 1. पूरे डेटाबेस से सारे रिश्ते (Links) निकालो
-    links = []
-    
-    # Partner Management से रिश्ते निकालो
-    for v in parsed_execs.values():
-        if v['c_name'] and v['c_sp']:
-            links.append((v['c_name'], v['c_sp']))
-            
-    # Plot Booking से रिश्ते निकालो (ताकि कोई छूट न जाए)
-    for project_name, p_info in db_data.items():
-        if isinstance(p_info, dict) and 'plots' in p_info:
-            plots_data = p_info['plots']
-            plot_items = plots_data.items() if isinstance(plots_data, dict) else enumerate(plots_data)
-            for pid, info in plot_items:
-                if isinstance(info, dict):
-                    ex_name, sp_name = "", ""
-                    for key, val in info.items():
-                        kl = clean_str(key)
-                        if kl in ['executivename', 'executive', 'execname', 'partnername']: ex_name = str(val).strip()
-                        elif kl in ['sponsorname', 'sponsor', 'upline']: sp_name = str(val).strip()
-                    cx = clean_str(ex_name)
-                    cs = clean_str(sp_name)
-                    if cx and cs:
-                        links.append((cx, cs))
-                        
-    # 2. अब इस मास्टर लिस्ट से चेन बनाओ (A -> B -> C)
-    team = set()
-    queue = [target_c_name]
-    while queue:
-        curr = queue.pop(0)
-        if not curr: continue
-        for child, parent in links:
-            if names_match(parent, curr):
-                if child not in team and not names_match(child, target_c_name):
-                    team.add(child)
-                    queue.append(child)
-    return team
-
 # 4. Calculation Logic
 if btn_generate and search_exec: 
     rows = []
     count = 1
-    target_c = clean_str(search_exec)
+    target_clean = resolve_to_clean_id(search_exec, parsed_execs)
     
-    # 🎯 ब्रह्मास्त्र: A की पूरी मल्टी-लेवल डाउनलाइन (B, C, D) ढूँढना
-    selected_downline = get_universal_downline(target_c, db_data, parsed_execs)
-    
+    # 🎯 ब्रह्मास्त्र: A की असीमित मल्टी-लेवल चेन (B, C, D...) खोजना
+    selected_downline = get_infinite_downline(target_clean, master_tree)
     mapping = {"firstchoice city 2": "Mohadi", "firstchoice city 3": "Pachgaon", "sai samruddhi": "Temsana"}
     
     for project_name, p_info in db_data.items():
@@ -201,32 +246,22 @@ if btn_generate and search_exec:
             for pid, info in plot_items:
                 info = info if isinstance(info, dict) else {}
                 
-                ex_name = ""
-                sp_name = ""
+                ex_name, sp_name = "", ""
                 for key, val in info.items():
                     kl = clean_str(key)
-                    if kl in ['executivename', 'executive', 'execname', 'partnername']:
-                        ex_name = str(val).strip()
-                    elif kl in ['sponsorname', 'sponsor', 'upline']:
-                        sp_name = str(val).strip()
+                    if kl in ['executivename', 'executive', 'execname', 'partnername']: ex_name = str(val).strip()
+                    elif kl in ['sponsorname', 'sponsor', 'upline']: sp_name = str(val).strip()
                         
-                plot_c = clean_str(ex_name)
-                plot_sp_c = clean_str(sp_name)
+                plot_exec_clean = resolve_to_clean_id(ex_name, parsed_execs)
+                plot_sponsor_clean = resolve_to_clean_id(sp_name, parsed_execs)
                 
-                # चेक करें: सेल्फ या ग्रुप?
-                is_self = names_match(target_c, plot_c)
+                is_self = (plot_exec_clean == target_clean)
                 
+                # चेक करें कि क्या बेचने वाला या स्पॉन्सर हमारी पूरी असीमित डाउनलाइन लिस्ट में है?
                 is_group = False
                 if not is_self:
-                    # क्या स्पॉन्सर डायरेक्ट टारगेट (A) है?
-                    if names_match(target_c, plot_sp_c):
+                    if plot_exec_clean in selected_downline or plot_sponsor_clean == target_clean or plot_sponsor_clean in selected_downline:
                         is_group = True
-                    else:
-                        # क्या ये एग्जीक्यूटिव या स्पॉन्सर डाउनलाइन (B, C) में है?
-                        for dl in selected_downline:
-                            if names_match(dl, plot_c) or names_match(dl, plot_sp_c):
-                                is_group = True
-                                break
                 
                 is_valid = False
                 if comm_type == "Self": is_valid = is_self
@@ -245,38 +280,17 @@ if btn_generate and search_exec:
                     if comp_rate <= 0: comp_rate = 650 
                     discount_sqft = safe_float(info.get('discount', 0))
                     
-                    # 🎯 डिफरेंस कमीशन लॉजिक
-                    # बॉस का कुल % (A)
-                    t_pct = 0.0
-                    for k, v in parsed_execs.items():
-                        if names_match(k, target_c):
-                            t_pct = v['pct']
-                            break
+                    # 🎯 परफेक्ट हाइएरेर्की डिफरेंस लागू
+                    diff_pct = calculate_tree_diff(target_clean, plot_exec_clean, parsed_execs, master_tree)
                     
-                    # डिफरेंस = (A का %) - (डायरेक्ट बेचने वाले का %)
-                    c_pct = 0.0
-                    for k, v in parsed_execs.items():
-                        if names_match(k, plot_c):
-                            c_pct = v['pct']
-                            break
-                            
-                    diff_pct = t_pct
-                    if not is_self:
-                        diff_pct = max(0.0, t_pct - c_pct)
-                    
-                    # नाम सेट करना
                     if is_self:
                         entry_label = "Self"
                     else:
-                        orig_name = str(ex_name).title()
-                        for v in parsed_execs.values():
-                            if names_match(v['c_name'], plot_c):
-                                orig_name = v['name']
-                                break
-                        entry_label = f"Group ({orig_name})"
+                        display_seller = parsed_execs.get(plot_exec_clean, {}).get('name', str(ex_name).title())
+                        entry_label = f"Group ({display_seller})"
                     
                     for pmt in payments:
-                        amt = safe_float(pmt['amt'])
+                        amt = safe_float(PMT_AMT := pmt['amt'])
                         if amt > 0:
                             gross = (amt * diff_pct) / 100
                             disc_amt = (amt / comp_rate) * discount_sqft 
