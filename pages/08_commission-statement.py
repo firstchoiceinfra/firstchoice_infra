@@ -84,13 +84,12 @@ st.markdown(f"""<style>
 </style>""", unsafe_allow_html=True)
 
 # ==========================================
-# 4. MASTER DATA EXTRACTION (From Partner Management)
+# 4. MASTER DATA EXTRACTION (Recursive Sync)
 # ==========================================
 parents_tree = {}  
 partner_rates = {}  
 real_names = {}
 
-# 100% Accurate fetching from 'executives' dict directly
 exec_data = db_data.get('executives', {})
 for ex_name, details in exec_data.items():
     if isinstance(details, dict):
@@ -105,32 +104,38 @@ for ex_name, details in exec_data.items():
             if clean_txt(senior): 
                 parents_tree[c_name] = clean_txt(senior)
 
-def is_downline(boss, seller):
-    curr = seller
-    visited = set()
-    while curr and curr in parents_tree:
-        if curr in visited: break
-        visited.add(curr)
-        parent = parents_tree[curr]
-        if parent == boss: return True
-        curr = parent
-    return False
+# 🔥 EMI Tracker वाला 100% सटीक Recursive Downline फंक्शन
+def get_all_downlines_recursive(boss_clean):
+    downlines = []
+    for child, parent in parents_tree.items():
+        if parent == boss_clean:
+            downlines.append(child)
+            downlines.extend(get_all_downlines_recursive(child))
+    return list(set(downlines))
 
-def get_diff_rate(boss, seller, boss_pct):
-    if not seller or boss == seller: return boss_pct
-    curr = seller
+def get_diff_rate(boss_clean, seller_clean, boss_pct):
+    if not seller_clean or boss_clean == seller_clean: return boss_pct
+    curr = seller_clean
     path = [curr]
     visited = set()
     while curr and curr in parents_tree:
         if curr in visited: break
         visited.add(curr)
         parent = parents_tree[curr]
-        if parent == boss:
+        if parent == boss_clean:
             immediate_junior = path[-1]
             return max(0.0, boss_pct - partner_rates.get(immediate_junior, 0.0))
         path.append(parent)
         curr = parent
-    return max(0.0, boss_pct - partner_rates.get(seller, 0.0))
+    return max(0.0, boss_pct - partner_rates.get(seller_clean, 0.0))
+
+def resolve_clean_id(raw_name):
+    c_raw = clean_txt(raw_name)
+    if not c_raw: return ""
+    if c_raw in partner_rates: return c_raw
+    for c_id in partner_rates.keys():
+        if c_raw in c_id or c_id in c_raw: return c_id
+    return c_raw
 
 # ==========================================
 # 5. UI: EXECUTIVE FILTER DESK
@@ -164,11 +169,11 @@ if btn_get_statement and search_exec:
     rows = []
     count = 1
     target_clean = clean_txt(search_exec)
-    
-    # ⚠️ लाइन 167 यहाँ पूरी तरह से सुरक्षित और सही है
     boss_pct = partner_rates.get(target_clean, 0.0)
     
-    # Iterate through all projects in the Master Ledger
+    # 🎯 सारे डाउनलाइन्स की लिस्ट एक बार में बना लें (ताकि कोई छूटे नहीं)
+    all_downlines = get_all_downlines_recursive(target_clean)
+    
     project_names = [name for name, data in db_data.items() if isinstance(data, dict) and ('plots' in data or 'total_plots' in data)]
     
     for p_name in project_names:
@@ -176,23 +181,29 @@ if btn_get_statement and search_exec:
         p_plots = p_info.get('plots', {})
         b_rate = safe_float(p_info.get('base_rate', 650.0))
         
-        # Smart Mauja Extraction
-        mauja_name = str(p_info.get('mauja', p_info.get('location', 'N/A'))).strip()
+        # 🔥 SMART MAUJA EXTRACTOR (ब्रैकेट और डेटाबेस दोनों चेक करेगा)
+        mauja_name = str(p_info.get('mauja', p_info.get('Mauja', ''))).strip()
+        if not mauja_name or mauja_name.lower() in ['n/a', 'none', '']:
+            # अगर मौजा डेटाबेस में नहीं है, तो प्रोजेक्ट के नाम से ब्रैकेट () के अंदर का शब्द निकालेगा
+            match = re.search(r'\((.*?)\)', p_name)
+            if match:
+                mauja_name = match.group(1).split('-')[0].strip()
+            else:
+                mauja_name = "N/A"
         
-        # Handle List vs Dict compatibility
         if isinstance(p_plots, list):
             p_plots = {str(idx): p for idx, p in enumerate(p_plots) if p is not None}
             
         for plot_id, info in p_plots.items():
             if isinstance(info, dict) and str(info.get('status', '')).lower() == 'booked':
                 
-                # Executive Identity
+                # Executive Identity Mapping
                 seller_raw = str(info.get('executive_name', '')).strip()
-                seller_clean = clean_txt(seller_raw)
+                seller_clean = resolve_clean_id(seller_raw)
                 
-                # Hierarchy Check
+                # 🎯 Accurate Hierarchy Check (Using Recursive Data)
                 is_self = (seller_clean == target_clean)
-                is_group = is_downline(target_clean, seller_clean) if not is_self else False
+                is_group = (seller_clean in all_downlines) if not is_self else False
                             
                 is_valid = (comm_type == "Self" and is_self) or \
                            (comm_type == "Group" and is_group) or \
@@ -206,14 +217,12 @@ if btn_get_statement and search_exec:
                     
                     diff_pct = get_diff_rate(target_clean, seller_clean, boss_pct)
                     
-                    # 1. Collect Token Payment
                     payments = []
                     tok_amt = safe_float(info.get('token_amount', info.get('received_amount', 0.0)))
                     tok_date = str(info.get('receipt_date', info.get('booking_date', '')))
                     if tok_amt > 0:
                         payments.append({'amt': tok_amt, 'date': tok_date})
                         
-                    # 2. Collect EMI Payments (Partial Payments List)
                     partial_payments = info.get('partial_payments', [])
                     for pmt in partial_payments:
                         p_amt = safe_float(pmt.get('amount', 0.0))
@@ -221,7 +230,6 @@ if btn_get_statement and search_exec:
                         if p_amt > 0:
                             payments.append({'amt': p_amt, 'date': p_date})
                     
-                    # 3. Process Payments through Date Filter & Math
                     for pmt in payments:
                         amt = pmt['amt']
                         pmt_date_parsed = parse_date(pmt['date'])
@@ -265,7 +273,7 @@ if btn_get_statement and search_exec:
         }
         df = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
     else:
-        st.error(f"⚠️ No payment records found for {search_exec} within the selected date range.")
+        st.error(f"⚠️ No payment records found for {search_exec} (and their downlines) within the selected date range.")
 
     st.session_state.statement_data = df
     st.session_state.statement_meta = {"exec": search_exec, "start": start_date, "end": end_date, "type": comm_type}
@@ -280,7 +288,6 @@ if 'statement_data' in st.session_state and not st.session_state.statement_data.
     logo_b64 = get_image_base64('logo.jpg')
     img_tag = f"<img src='data:image/jpeg;base64,{logo_b64}' width='120'/>" if logo_b64 else "<b>[LOGO]</b>"
     
-    # Important: HTML string starts without indentation to prevent markdown code-block issues
     html_string = f"""<div class='statement-container'>
 <table class='header-table'>
 <tr>
@@ -309,3 +316,4 @@ if 'statement_data' in st.session_state and not st.session_state.statement_data.
             </button>
         </div>
     """, height=100)
+
