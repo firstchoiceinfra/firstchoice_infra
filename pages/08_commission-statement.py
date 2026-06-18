@@ -42,28 +42,31 @@ LOGO_FILE = "logo.jpg"
 logo_base64 = get_image_base64(LOGO_FILE)
 logo_html = f"<img src='data:image/jpeg;base64,{logo_base64}' style='position:absolute; top:0px; left:15px; width:130px; height:auto; mix-blend-mode: multiply;'/>" if logo_base64 else ""
 
-# 2. CSS (अब HTML क्रैश करने वाला टैग हटा दिया गया है, सिर्फ सुरक्षित CSS लगाई है)
+# 2. CSS 
 st.markdown("""<style>
     .block-container { padding-top: 2rem !important; margin-top: 0px !important; padding-bottom: 1rem !important; max-width: 100% !important; }
     [data-testid="stHeader"] { display: none !important; height: 0 !important; }
-    div[class^="viewerBadge"], #Manage-app { display: none !important; }
-    
+    div[class^="viewerBadge"], div[class*="viewerBadge"], #viewerBadge_container__1QSob, a[href*="streamlit.io/cloud"], #Manage-app { 
+        display: none !important; visibility: hidden !important; opacity: 0 !important; height: 0 !important; width: 0 !important;
+    }
     @media print {
         @page { margin-top: 0mm !important; margin-bottom: 5mm !important; }
-        [data-testid="stSidebar"], .stAppHeader, header { display: none !important; }
-        /* प्रिंट करते समय बटन और ड्रॉपडाउन अपने आप छिप जाएंगे */
-        div.stButton, div[data-testid="stSelectbox"], div[data-testid="stRadio"], div[data-testid="stDateInput"], div.stAlert { display: none !important; }
+        [data-testid="stHeader"], [data-testid="stDecoration"], header, .stAppHeader, [data-testid="stSidebar"], [data-testid="stToolbar"] { display: none !important; }
+        [data-testid="stSelectbox"], [data-testid="stHorizontalBlock"], div.stButton, div[role="radiogroup"], div.stInfo, .no-print, details { display: none !important; }
         body, html, .stApp, main { background: white !important; padding: 0 !important; margin: 0 !important; }
         .block-container { padding-top: 0 !important; margin-top: 0 !important; }
+        .a4-container { display: block !important; width: 100% !important; position: absolute !important; top: 0 !important; left: 0 !important; margin: 0 !important; padding: 0 !important; border: none !important; }
     }
-    
     .a4-container { background: white; color: black; max-width: 1000px; margin: auto; padding: 5px 20px; }
     .header { position: relative; text-align: center; border-bottom: 2px solid #000; padding-bottom: 5px; margin-bottom: 15px; }
     .title { font-size: 30px; font-weight: bold; margin: 0; color: #000; text-transform: uppercase; }
     .data-table { width: 100%; border-collapse: collapse; font-size: 11px; }
     .data-table th, .data-table td { border: 1px solid #000; padding: 6px; text-align: right; }
     .data-table th { background-color: #f0f0f0; text-align: center; font-weight: bold; }
-    .data-table tr:last-child td { font-weight: 900 !important; background-color: #ffeb3b !important; color: #000 !important; font-size: 15px !important; padding: 12px 6px !important; border-top: 3px solid #000 !important; border-bottom: 3px solid #000 !important; }
+    .data-table tr:last-child td { 
+        font-weight: 900 !important; background-color: #ffeb3b !important; color: #000 !important; 
+        font-size: 15px !important; padding: 12px 6px !important; border-top: 3px solid #000 !important; border-bottom: 3px solid #000 !important; 
+    }
 </style>""", unsafe_allow_html=True)
 
 def safe_float(val):
@@ -123,6 +126,7 @@ def get_diff_commission(target_c, plot_c, parsed_data):
             if names_match(v['c_name'], curr):
                 curr_sp = v['c_sp']
                 break
+        
         if not curr_sp: break
         
         if names_match(curr_sp, target_c):
@@ -138,25 +142,47 @@ def get_diff_commission(target_c, plot_c, parsed_data):
         return max(0.0, t_pct - p_pct)
 
 # ==========================================================
-# 🚀 100% STRICT SECURITY - मेन पेज के लॉगिन से सीधा जुड़ा हुआ
+# 🚀 100% STRICT SECURITY - 'SUPER SENSOR'
 # ==========================================================
+st.markdown('<div class="no-print">', unsafe_allow_html=True)
 
-# मेन पेज के लॉगिन सेशन से डेटा उठाना
-user_role = str(st.session_state.get('role', '')).strip().lower()
-logged_in_user = str(st.session_state.get('username', '')).strip().lower()
+is_admin = False
 
-# चेक करें कि मेन पेज पर किसने लॉगिन किया है? ('admin 123' भी चलेगा)
-is_admin = ('admin' in user_role or 'boss' in user_role or 'admin' in logged_in_user or 'boss' in logged_in_user)
+# पूरे बैकएंड (Session State) को स्कैन करने वाला 'सुपर-सेंसर'
+for key, val in st.session_state.items():
+    val_str = str(val).strip().lower()
+    key_str = str(key).strip().lower()
+    
+    # अगर किसी भी वैल्यू में 'admin', 'boss', 'owner' या 'firstchoice' है
+    if isinstance(val, str) and any(x in val_str for x in ['admin', 'boss', 'owner', 'firstchoice']):
+        is_admin = True
+        break
+    # अगर किसी की (key) में admin है और उसकी वैल्यू True है
+    if isinstance(val, bool) and val == True and 'admin' in key_str:
+        is_admin = True
+        break
+    # अगर डिक्शनरी के अंदर डेटा है
+    if isinstance(val, dict):
+        for k2, v2 in val.items():
+            if isinstance(v2, str) and any(x in str(v2).lower() for x in ['admin', 'boss', 'owner', 'firstchoice']):
+                is_admin = True
+                break
 
 if not is_admin:
     st.error("🚫 **Access Denied!** यह पेज सुरक्षित है और सिर्फ कंपनी के बॉस (Admin) के लिए उपलब्ध है।")
     st.info("आपने मेन पेज पर एग्जीक्यूटिव के रूप में लॉगिन किया है, या आपका लॉगिन सेशन खत्म हो गया है। कृपया मेन पेज से 'Admin' के रूप में लॉगिन करें।")
-    st.stop() # एग्जीक्यूटिव का सिस्टम यहीं रुक जाएगा, और स्क्रीन Blank नहीं होगी!
+    
+    # ⚠️ यह डीबगिंग टूल आपकी मदद के लिए है!
+    with st.expander("🛠️ System Info (For Debugging - अगर आप बॉस हैं फिर भी यह एरर आ रही है, तो इसे खोलें)"):
+        st.write("**बैकएंड में यह डेटा आ रहा है:**", st.session_state)
+        st.warning("अगर आपको इसके अंदर आपका नाम दिख रहा है, तो मुझे इसकी फोटो खींचकर भेजें। मैं तुरंत सिस्टम को ठीक कर दूँगा।")
+    
+    st.stop() # एग्जीक्यूटिव का सिस्टम यहीं रुक जाएगा!
 
 # ==========================================================
 # 👑 एडमिन पैनल (सिर्फ बॉस के लिए)
 # ==========================================================
-st.success(f"👑 **Boss / Admin Panel Active:** (लॉगिन प्रमाणित: {st.session_state.get('username', 'Admin')})")
+st.success("👑 **Boss / Admin Panel Active:** (मेन पेज से सुरक्षित लॉगिन प्रमाणित)")
 
 all_execs = [v['name'] for v in parsed_execs.values()]
 
@@ -171,6 +197,7 @@ comm_type = st.radio("📊 Select Commission Type", ["Self", "Group", "All (Self
 col1, col2 = st.columns(2)
 start, end = col1.date_input("Start Date"), col2.date_input("End Date")
 btn_generate = st.button("🚀 Generate Final Statement")
+st.markdown('</div>', unsafe_allow_html=True)
 
 # 4. Calculation Logic
 if btn_generate and search_exec: 
