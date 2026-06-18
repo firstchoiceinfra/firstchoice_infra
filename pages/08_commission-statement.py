@@ -12,7 +12,7 @@ from datetime import datetime
 st.set_page_config(layout="wide", page_title="Commission Statement", initial_sidebar_state="collapsed")
 
 # ==========================================
-# 2. HELPER FUNCTIONS
+# 2. HELPER FUNCTIONS (🔥 ERROR FIXED HERE)
 # ==========================================
 def get_image_base64(image_path):
     if os.path.exists(image_path):
@@ -21,9 +21,7 @@ def get_image_base64(image_path):
     return ""
 
 def safe_float(val):
-    """अमाउंट में से कॉमा (,) और अक्षरों को हटाकर सुरक्षित रूप से नंबर में बदलता है"""
     try: 
-        # "1,50,000" या "Rs. 1500" को 150000.0 में कन्वर्ट करेगा
         clean_str = re.sub(r'[^\d.]', '', str(val))
         return float(clean_str) if clean_str else 0.0
     except: 
@@ -33,8 +31,16 @@ def clean_txt(s):
     return re.sub(r'[^a-z0-9]', '', str(s).lower()).strip()
 
 def parse_date(date_str):
-    try: return pd.to_datetime(date_str, format='mixed', dayfirst=True).date()
-    except: return None
+    """तारीख को सुरक्षित रूप से चेक करने का फिक्स (NaT Error Fix)"""
+    if not date_str or str(date_str).strip() in ['', 'NaT', 'nan', 'None']:
+        return None
+    try: 
+        dt = pd.to_datetime(str(date_str), format='mixed', dayfirst=True, errors='coerce')
+        if pd.isna(dt): # अगर तारीख NaT (Not a Time) बन गई है, तो क्रैश से बचने के लिए None रिटर्न करें
+            return None
+        return dt.date()
+    except: 
+        return None
 
 # ==========================================
 # 3. CSS & PRINT LAYOUT
@@ -147,7 +153,6 @@ col1, col2, col3 = st.columns(3)
 with col1:
     comm_type = st.radio("📑 Statement Type", ["Self", "Group", "All (Self + Group)"])
 with col2:
-    # ⚠️ यहाँ ध्यान दें: Start Date को डिफ़ॉल्ट रूप से इस साल का पहला दिन रखा गया है
     start_date = st.date_input("📅 Start Date", pd.to_datetime("today").replace(month=1, day=1))
 with col3:
     end_date = st.date_input("📅 End Date", pd.to_datetime("today"))
@@ -156,7 +161,7 @@ btn_get_statement = st.button("🚀 Get Statement", type="primary", use_containe
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
-# 6. PROCESS STATEMENT DATA (🔥 EXHAUSTIVE SCANNER)
+# 6. PROCESS STATEMENT DATA
 # ==========================================
 if btn_get_statement and search_exec:
     rows = []
@@ -179,7 +184,6 @@ if btn_get_statement and search_exec:
                     tok_amt, tok_date = 0.0, ""
                     c_rate, disc_sqft = b_rate, 0.0
                     
-                    # 🔎 100% Safe Dictionary Scanning (ब्रह्मास्त्र)
                     for k, v in info.items():
                         kl = clean_txt(k)
                         if kl in ['executivename', 'executive', 'partnername', 'agentname']: e_name = str(v)
@@ -198,16 +202,13 @@ if btn_get_statement and search_exec:
                                (comm_type == "All (Self + Group)" and (is_self or is_group))
                                
                     if is_valid:
-                        # Add Token Payment
                         payments = [{'amt': tok_amt, 'date': tok_date}]
                         
-                        # Add Partial Payments Safely
                         pp_data = info.get('partial_payments', info.get('partialpayments', []))
                         if isinstance(pp_data, dict): pp_data = list(pp_data.values())
                         if isinstance(pp_data, list):
                             for pmt in pp_data:
                                 if isinstance(pmt, dict):
-                                    # Handle different possible keys for amount/date inside partial payments
                                     p_amt = safe_float(pmt.get('amount', pmt.get('amt', 0)))
                                     p_date = str(pmt.get('date', pmt.get('payment_date', '')))
                                     payments.append({'amt': p_amt, 'date': p_date})
@@ -219,6 +220,8 @@ if btn_get_statement and search_exec:
                             amt = safe_float(pmt['amt'])
                             pmt_date_parsed = parse_date(pmt['date'])
                             
+                            # अगर डेट पार्स नहीं हो पाई, तो डिफ़ॉल्ट रूप से हम उसे स्टेटमेंट में शामिल करेंगे 
+                            # (ताकि पैसा मिस न हो) लेकिन अगर पार्स हो गई, तो ही डेट फिल्टर लगाएंगे।
                             date_in_range = True
                             if pmt_date_parsed:
                                 if pmt_date_parsed < start_date or pmt_date_parsed > end_date:
@@ -236,7 +239,7 @@ if btn_get_statement and search_exec:
                                     "Customer Name": cust_name.title(),
                                     "Plot No.": str(pid).upper(),
                                     "Received Amount": amt,
-                                    "Received Date": pmt['date'],
+                                    "Received Date": pmt['date'] if pmt['date'] else 'N/A',
                                     "Gross Commission": gross_comm,
                                     "Discount": disc_amt,
                                     "Exact Commission": exact_comm,
@@ -257,7 +260,7 @@ if btn_get_statement and search_exec:
         }
         df = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
     else:
-        st.warning(f"⚠️ {search_exec} के लिए कोई डेटा नहीं मिला। कृपया 'Start Date' को और पुराना (जैसे जनवरी 2025) करके देखें।")
+        st.warning(f"⚠️ {search_exec} के लिए चुनी गई तारीखों के बीच कोई डेटा नहीं मिला।")
 
     st.session_state.statement_data = df
     st.session_state.statement_meta = {"exec": search_exec, "start": start_date, "end": end_date}
