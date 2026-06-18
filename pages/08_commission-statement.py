@@ -70,14 +70,14 @@ st.markdown("""<style>
 # Sync with Inventory Dashboard
 db_projects = st.session_state.get('db_projects', {})
 
-# Robust Partner Sync Logic (यह हर जगह से डेटा ढूंढेगा)
+# Robust Partner Sync Logic 
 partner_db = {}
 for key in ['executives', 'db_executives', 'partners', 'associates']:
     if key in st.session_state and isinstance(st.session_state[key], dict) and st.session_state[key]:
         partner_db = st.session_state[key]
         break
 
-# Fallback: अगर डेटाबेस 'db_projects' के अंदर नेस्टेड है
+# Fallback:
 if not partner_db and isinstance(db_projects, dict):
     for k, v in db_projects.items():
         if str(k).strip().lower() in ['executives', 'executive', 'partners', 'associates']:
@@ -95,7 +95,6 @@ for key_id, info in partner_db.items():
         exec_name = info.get('name', info.get('executivename', info.get('partnername', key_id)))
         sponsor_name = info.get('sponsor', info.get('sponsorname', info.get('upline', '')))
         
-        # परसेंटेज या फ्लैट रुपीस
         pct_val = safe_float(info.get('percentage', info.get('commission', info.get('pct', 0))))
         
         c_exec = clean_txt(exec_name)
@@ -149,7 +148,6 @@ st.subheader("📊 Executive Commission Generator")
 
 exec_options = list(real_names.values())
 
-# Fix: अब बॉक्स हमेशा दिखेगा। अगर डेटा नहीं है, तो वार्निंग देगा।
 if exec_options:
     search_exec = st.selectbox("👤 Select Executive", options=exec_options, index=0)
 else:
@@ -168,7 +166,7 @@ btn_get_statement = st.button("🚀 Get Statement", type="primary", use_containe
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
-# 6. PROCESS STATEMENT DATA
+# 6. PROCESS STATEMENT DATA (🔥 ERROR FIXED HERE)
 # ==========================================
 if btn_get_statement and search_exec:
     rows = []
@@ -181,7 +179,16 @@ if btn_get_statement and search_exec:
         if isinstance(p_info, dict) and 'plots' in p_info:
             b_rate = safe_float(p_info.get('base_rate', 650))
             
-            for pid, info in p_info['plots'].items():
+            # 🛠️ ERROR FIX: Handle both Dictionary and List
+            plots_data = p_info['plots']
+            if isinstance(plots_data, dict):
+                plot_loop = plots_data.items()
+            elif isinstance(plots_data, list):
+                plot_loop = enumerate(plots_data)
+            else:
+                plot_loop = []
+            
+            for pid, info in plot_loop:
                 if isinstance(info, dict):
                     e_name = info.get('executive_name', info.get('executive', ''))
                     seller_clean = resolve_clean_id(e_name)
@@ -309,4 +316,3 @@ if 'statement_data' in st.session_state and not st.session_state.statement_data.
             </button>
         </div>
     """, height=100)
-
