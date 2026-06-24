@@ -4,264 +4,351 @@ import datetime
 import database
 
 st.set_page_config(
-    layout="wide",
-    page_title="FC Infra - Commission Management"
+    page_title="Commission Statement",
+    layout="wide"
 )
 
-# --------------------------------------------------
-# Security
-# --------------------------------------------------
+# -------------------------------------------------
+# LOGIN CHECK
+# -------------------------------------------------
 
 if 'logged_in' not in st.session_state:
     st.warning("Please Login First")
     st.stop()
 
 database.init_db()
+
 db_data = st.session_state.db_projects
+executives = db_data.get("executives", {})
 
-if "commission_ledger" not in db_data:
-    db_data["commission_ledger"] = []
+# -------------------------------------------------
+# DOWNLINE FINDER
+# -------------------------------------------------
 
-ledger = db_data["commission_ledger"]
+def get_all_downlines(manager_name):
+    downlines = []
 
-st.title("💰 Commission Management System")
+    for ex_name, details in executives.items():
 
-# --------------------------------------------------
-# Commission Entry
-# --------------------------------------------------
+        senior = str(
+            details.get("senior_name", "")
+        ).strip().lower()
 
-with st.expander("➕ Generate Commission Entry", expanded=True):
+        if senior == manager_name.strip().lower():
+            downlines.append(ex_name)
+            downlines.extend(
+                get_all_downlines(ex_name)
+            )
 
-    executives = list(
-        db_data.get("executives", {}).keys()
+    return list(set(downlines))
+
+# -------------------------------------------------
+# PAGE HEADER
+# -------------------------------------------------
+
+st.title("💰 Commission Statement Generator")
+
+executive_names = sorted(
+    list(executives.keys())
+)
+
+if not executive_names:
+    st.error("No Executives Found")
+    st.stop()
+
+col1,col2,col3,col4 = st.columns(4)
+
+selected_exec = col1.selectbox(
+    "Executive",
+    executive_names
+)
+
+comm_type = col2.selectbox(
+    "Commission Type",
+    ["Self","Group","All"]
+)
+
+start_date = col3.date_input(
+    "Start Date",
+    datetime.date.today().replace(day=1)
+)
+
+end_date = col4.date_input(
+    "End Date",
+    datetime.date.today()
+)
+
+generate = st.button(
+    "📊 Generate Statement",
+    use_container_width=True
+)
+
+# -------------------------------------------------
+# GENERATE
+# -------------------------------------------------
+
+if generate:
+
+    rows = []
+
+    self_exec = selected_exec
+
+    group_execs = get_all_downlines(
+        selected_exec
     )
 
-    col1,col2,col3 = st.columns(3)
+    all_execs = [self_exec] + group_execs
 
-    executive = col1.selectbox(
-        "Executive",
-        executives
-    )
+    project_names = [
+        name
+        for name,data in db_data.items()
+        if isinstance(data,dict)
+        and ("plots" in data)
+    ]
 
-    project = col2.text_input(
-        "Project Name"
-    )
+    total_commission = 0
 
-    sale_amount = col3.number_input(
-        "Sale Amount ₹",
-        min_value=0.0
-    )
+    for project in project_names:
 
-    exec_info = db_data["executives"].get(
-        executive,
-        {}
-    )
-
-    direct_pct = exec_info.get(
-        "percentage_exec",
-        0.0
-    )
-
-    senior_name = exec_info.get(
-        "senior_name",
-        "Direct"
-    )
-
-    senior_pct = st.number_input(
-        "Senior Commission %",
-        min_value=0.0,
-        value=10.0
-    )
-
-    group_pct = st.number_input(
-        "Group Commission %",
-        min_value=0.0,
-        value=0.0
-    )
-
-    if st.button("Generate Commission"):
-
-        direct_comm = (
-            sale_amount * direct_pct / 100
+        plots = db_data[project].get(
+            "plots",
+            {}
         )
 
-        difference_pct = max(
-            senior_pct - direct_pct,
-            0
-        )
+        if isinstance(plots,list):
+            plots = {
+                str(i):p
+                for i,p in enumerate(plots)
+                if p
+            }
 
-        difference_comm = (
-            sale_amount *
-            difference_pct / 100
-        )
+        for plot_no,plot in plots.items():
 
-        group_comm = (
-            sale_amount *
-            group_pct / 100
-        )
+            if not isinstance(plot,dict):
+                continue
 
-        total_comm = (
-            direct_comm +
-            difference_comm +
-            group_comm
-        )
+            if str(
+                plot.get("status","")
+            ).lower() != "booked":
+                continue
 
-        ledger.append({
-            "Date":
-            str(datetime.date.today()),
+            exec_name = str(
+                plot.get(
+                    "executive_name",
+                    ""
+                )
+            ).strip()
 
-            "Executive":
-            executive,
+            include = False
 
-            "Senior":
-            senior_name,
+            if comm_type == "Self":
+                include = (
+                    exec_name.lower()
+                    ==
+                    self_exec.lower()
+                )
 
-            "Project":
-            project,
+            elif comm_type == "Group":
+                include = (
+                    exec_name in group_execs
+                )
 
-            "Sale":
-            sale_amount,
+            elif comm_type == "All":
+                include = (
+                    exec_name in all_execs
+                )
 
-            "Direct":
-            direct_comm,
+            if not include:
+                continue
 
-            "Difference":
-            difference_comm,
+            booking_date = str(
+                plot.get(
+                    "booking_date",
+                    ""
+                )
+            )
 
-            "Group":
-            group_comm,
+            try:
+                booking_dt = datetime.datetime.strptime(
+                    booking_date,
+                    "%Y-%m-%d"
+                ).date()
+            except:
+                continue
 
-            "Total":
-            total_comm,
+            if not (
+                start_date
+                <=
+                booking_dt
+                <=
+                end_date
+            ):
+                continue
 
-            "Paid":
-            0,
+            sale_value = float(
+                plot.get(
+                    "selling_rate",
+                    0
+                )
+            )
 
-            "Pending":
-            total_comm,
+            exec_info = executives.get(
+                exec_name,
+                {}
+            )
 
-            "Status":
-            "Pending"
-        })
+            pct = float(
+                exec_info.get(
+                    "percentage_exec",
+                    0
+                )
+            )
 
-        database.save_db_data()
+            commission = (
+                sale_value * pct / 100
+            )
+
+            total_commission += commission
+
+            rows.append({
+                "Date":
+                booking_dt.strftime(
+                    "%d-%m-%Y"
+                ),
+
+                "Customer":
+                plot.get(
+                    "customer_name",
+                    ""
+                ),
+
+                "Project":
+                project,
+
+                "Plot":
+                plot_no,
+
+                "Executive":
+                exec_name,
+
+                "Sale Value":
+                sale_value,
+
+                "Comm %":
+                pct,
+
+                "Commission":
+                commission
+            })
+
+    if rows:
+
+        df = pd.DataFrame(rows)
 
         st.success(
-            "Commission Generated Successfully"
+            f"{len(df)} Records Found"
         )
 
-# --------------------------------------------------
-# Dashboard
-# --------------------------------------------------
+        st.metric(
+            "Total Commission",
+            f"₹ {total_commission:,.2f}"
+        )
 
-if ledger:
+        st.dataframe(
+            df,
+            use_container_width=True
+        )
 
-    df = pd.DataFrame(ledger)
+        csv = df.to_csv(
+            index=False
+        ).encode("utf-8-sig")
 
-    total_direct = df["Direct"].sum()
-    total_diff = df["Difference"].sum()
-    total_group = df["Group"].sum()
-    total_pending = df["Pending"].sum()
+        st.download_button(
+            "📥 Download Excel",
+            csv,
+            "Commission_Statement.csv",
+            "text/csv"
+        )
 
-    c1,c2,c3,c4 = st.columns(4)
+        table_html = df.to_html(
+            index=False
+        )
 
-    c1.metric(
-        "Direct Commission",
-        f"₹{total_direct:,.0f}"
-    )
+        html_statement = f"""
+        <div id="printArea"
+        style="
+        width:210mm;
+        min-height:297mm;
+        background:white;
+        color:black;
+        padding:15mm;
+        margin:auto;">
 
-    c2.metric(
-        "Difference Commission",
-        f"₹{total_diff:,.0f}"
-    )
+        <h2 style="text-align:center;">
+        FIRSTCHOICE INFRA
+        </h2>
 
-    c3.metric(
-        "Group Commission",
-        f"₹{total_group:,.0f}"
-    )
+        <h3 style="text-align:center;">
+        COMMISSION STATEMENT
+        </h3>
 
-    c4.metric(
-        "Pending",
-        f"₹{total_pending:,.0f}"
-    )
+        <hr>
 
-    st.divider()
+        <p>
+        <b>Executive :</b>
+        {selected_exec}<br>
 
-# --------------------------------------------------
-# Filters
-# --------------------------------------------------
+        <b>Commission Type :</b>
+        {comm_type}<br>
 
-    executives = [
-        "All"
-    ] + list(df["Executive"].unique())
+        <b>Period :</b>
+        {start_date}
+        To
+        {end_date}
+        </p>
 
-    selected_exec = st.selectbox(
-        "Filter Executive",
-        executives
-    )
+        {table_html}
 
-    if selected_exec != "All":
-        df = df[
-            df["Executive"] ==
-            selected_exec
-        ]
+        <hr>
 
-# --------------------------------------------------
-# Commission Statement
-# --------------------------------------------------
+        <h2>
+        Total Commission :
+        ₹ {total_commission:,.2f}
+        </h2>
 
-    st.subheader(
-        "📋 Commission Statement"
-    )
+        </div>
+        """
 
-    st.dataframe(
-        df,
-        use_container_width=True
-    )
+        st.markdown(
+            html_statement,
+            unsafe_allow_html=True
+        )
 
-# --------------------------------------------------
-# Download Excel
-# --------------------------------------------------
+        st.markdown(
+        """
+        <script>
+        function printPage(){
+            window.print();
+        }
+        </script>
 
-    csv = df.to_csv(
-        index=False
-    ).encode("utf-8")
+        <button onclick="printPage()"
+        style="
+        background:#1e3a8a;
+        color:white;
+        padding:12px 25px;
+        border:none;
+        border-radius:8px;
+        font-size:16px;
+        cursor:pointer;">
+        🖨️ Print Statement
+        </button>
+        """,
+        unsafe_allow_html=True
+        )
 
-    st.download_button(
-        "📥 Download Statement",
-        csv,
-        "commission_statement.csv",
-        "text/csv"
-    )
+    else:
 
-# --------------------------------------------------
-# Print Button
-# --------------------------------------------------
-
-    st.markdown(
-    """
-    <script>
-    function printPage() {
-        window.print();
-    }
-    </script>
-
-    <button onclick="printPage()"
-    style="
-    background:#1e3a8a;
-    color:white;
-    border:none;
-    padding:10px 20px;
-    border-radius:8px;
-    cursor:pointer;">
-    🖨️ Print Statement
-    </button>
-    """,
-    unsafe_allow_html=True
-    )
-
-else:
-
-    st.info(
-        "No Commission Records Found"
-    )
+        st.warning(
+            "No Commission Records Found"
+        )
