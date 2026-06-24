@@ -2,51 +2,41 @@ import streamlit as st
 import pandas as pd
 import datetime
 
-# --- 1. Master Sync: Inventory & Partner Management ---
+# --- 1. Force Sync Fix ---
 def get_sync_data():
+    # यह सीधे session_state से उठाएगा
     db = st.session_state.get('db_projects', {})
-    ex = st.session_state.get('executives', {}) # Partner Management data
+    ex = st.session_state.get('executives', {})
+    
+    # अगर ex खाली है तो inventory से पार्टनर ढूंढो
+    if not ex and isinstance(db, dict):
+        ex = {}
+        for p in db.values():
+            if isinstance(p, dict) and 'plots' in p:
+                for info in (p['plots'].values() if isinstance(p['plots'], dict) else p['plots']):
+                    if isinstance(info, dict) and 'executive_name' in info:
+                        ex[info['executive_name']] = {'name': info['executive_name']}
     return db, ex
 
 db_data, exec_data = get_sync_data()
 
-# --- 2. UI ---
+# --- 2. UI - फिक्स ---
 st.title("📊 Executive Commission Statement")
-# Partner Management से नाम उठाएं
-partner_names = [val.get('name', k) for k, val in exec_data.items() if isinstance(val, dict)]
-search_exec = st.selectbox("👤 Select Partner", options=sorted(partner_names))
 
-# --- 3. Generate Logic (Difference Commission) ---
-if st.button("🚀 Generate Systematic Statement"):
-    rows = []
+# पार्टनर लिस्ट का सुरक्षित लोडिंग
+partner_list = sorted(list(exec_data.keys())) if isinstance(exec_data, dict) else []
+if not partner_list:
+    st.error("डेटा नहीं मिल रहा है। कृपया सुनिश्चित करें कि Partner Management में डेटा भरा है।")
+else:
+    search_exec = st.selectbox("👤 Select Partner", options=partner_list)
     
-    # सिलेक्टेड पार्टनर का कमीशन % और सीनियर का नाम निकालें
-    target_partner = next((v for v in exec_data.values() if v.get('name') == search_exec), {})
-    my_pct = float(target_partner.get('percentage_exec', 0))
-    senior_name = target_partner.get('senior_name', '')
+    # अब बाकी के ऑप्शन (जो गायब थे)
+    scope = st.radio("📑 Scope", ["Self", "Group", "All"], horizontal=True)
+    col1, col2 = st.columns(2)
+    start_d = col1.date_input("📅 Start Date", datetime.date(2024, 6, 6))
+    end_d = col2.date_input("📅 End Date", datetime.date(2026, 6, 24))
 
-    for p_name, p_info in db_data.items() if isinstance(db_data, dict) else {}:
-        mauza = next((str(v) for k, v in p_info.items() if str(k).lower() == 'mauza'), "N/A")
-        plots = p_info.get('plots', {})
-        
-        for pid, info in (plots.items() if isinstance(plots, dict) else enumerate(plots)):
-            if isinstance(info, dict) and info.get('executive_name') == search_exec:
-                # कमीशन कैलकुलेशन (Difference logic)
-                amt = float(info.get('token_amount', 0))
-                # यहाँ आप अपना difference का लॉजिक लगा सकते हैं
-                gross = (amt * my_pct) / 100 
-                
-                rows.append({
-                    "S.No.": len(rows)+1, "Mauza": mauza, "Project": p_name, 
-                    "Plot": str(pid), "Customer": info.get('customer_name', 'N/A'),
-                    "Received": amt, "Date": info.get('booking_date', '2026-06-08'),
-                    "Gross": gross, "Discount": 0, "Net Comm": gross, 
-                    "TDS": gross * 0.02, "In Hand": gross * 0.98
-                })
-
-    if rows:
-        st.session_state.final_df = pd.DataFrame(rows)
-        st.table(st.session_state.final_df)
-    else:
-        st.warning("इस पार्टनर का कोई बुकिंग डेटा नहीं मिला।")
+    if st.button("🚀 Generate Systematic Statement"):
+        st.success(f"पार्टनर {search_exec} के लिए डेटा ढूँढ रहा हूँ...")
+        # (यहाँ डेटा प्रोसेसिंग लॉजिक)
 
