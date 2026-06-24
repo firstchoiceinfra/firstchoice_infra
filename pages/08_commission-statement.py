@@ -2,21 +2,53 @@ import streamlit as st
 import pandas as pd
 import datetime
 
-# ... (Security & Logic वही रखें जो काम कर रहा है) ...
+# --- 1. Security ---
+if st.session_state.get('user_role', '').lower() != 'admin':
+    st.error("🚨 Access Restricted")
+    st.stop()
 
-# --- 4. Print Layout (Systematic A4 Fix) ---
+# --- 2. Data Retrieval ---
+db_data = st.session_state.get('db_projects', {})
+exec_data = db_data.get('executives', {})
+
+# --- 3. UI Filters ---
+st.title("📊 Executive Commission Statement")
+search_exec = st.selectbox("👤 Select Partner", options=sorted(list(exec_data.keys())))
+scope = st.radio("📑 Scope", ["Self", "Group", "All"], horizontal=True)
+col1, col2 = st.columns(2)
+start_d = col1.date_input("📅 Start Date", datetime.date(2024, 6, 6))
+end_d = col2.date_input("📅 End Date", datetime.date(2026, 6, 24))
+
+if st.button("🚀 Generate Systematic Statement"):
+    rows = []
+    # डेटा फेचिंग लूप (सिंक के साथ)
+    for p_name, p_info in db_data.items():
+        # पक्का Mauza सर्च (Z वाली स्पेलिंग)
+        mauza = next((str(v) for k, v in p_info.items() if k.lower() == 'mauza'), "N/A")
+        
+        plots = p_info.get('plots', {})
+        for pid, info in (plots.items() if isinstance(plots, dict) else enumerate(plots)):
+            if isinstance(info, dict) and str(info.get('status', '')).lower() == 'booked':
+                # यहाँ कैलकुलेशन Logic
+                amt = float(info.get('token_amount', 0))
+                # 12 कॉलम्स का फिक्स्ड स्ट्रक्चर
+                rows.append({
+                    "S.No.": len(rows)+1, "Mauza": mauza, "Project": p_name, 
+                    "Plot": str(pid), "Customer": info.get('customer_name', 'N/A'),
+                    "Received": amt, "Date": info.get('booking_date', '2026-06-08'),
+                    "Gross": amt*0.1, "Discount": amt*0.02, "Net Comm": amt*0.08, 
+                    "TDS": amt*0.002, "In Hand": amt*0.078
+                })
+
+    df = pd.DataFrame(rows)
+    st.session_state.final_df = df
+    st.table(df) # टेबल को यहाँ दिखा दिया
+
+# --- 4. Print Logic (A4 Perfect) ---
 if 'final_df' in st.session_state:
     if st.button("🖨️ Print Statement"):
-        # CSS को फिक्स किया ताकि टेबल कटे नहीं
+        df_html = st.session_state.final_df.to_html(index=False, classes='table table-bordered')
         html = f"""
-        <style>
-            @media print {{
-                body {{ width: 100%; }}
-                .report-table {{ width: 100% !important; table-layout: fixed; font-size: 10px; }}
-            }}
-            .report-table {{ width: 100%; border-collapse: collapse; font-family: Arial; }}
-            .report-table th, .report-table td {{ border: 1px solid #000; padding: 4px; text-align: center; word-wrap: break-word; }}
-        </style>
         <div style="font-family: Arial; padding: 20px; border: 1px solid #000; max-width: 800px; margin: auto;">
             <center>
                 <h1>FIRSTCHOICE INFRA</h1>
@@ -25,19 +57,8 @@ if 'final_df' in st.session_state:
                 <hr>
                 <h2>Executive Commission Statement</h2>
             </center>
-            <p><b>Partner:</b> {search_exec} &nbsp;&nbsp;&nbsp; <b>Period:</b> {start_d} to {end_d}</p>
-            
-            <table class="report-table">
-                <thead>
-                    <tr>
-                        <th>S.No.</th><th>Mauza</th><th>Project</th><th>Plot</th><th>Customer</th>
-                        <th>Received</th><th>Date</th><th>Gross</th><th>Discount</th><th>Net</th><th>TDS</th><th>In Hand</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {"".join([f"<tr><td>{r['S.No.']}</td><td>{r['Mauza']}</td><td>{r['Project']}</td><td>{r['Plot']}</td><td>{r['Customer']}</td><td>{r['Received']}</td><td>{r['Date']}</td><td>{r['Gross']}</td><td>{r['Discount']}</td><td>{r['Net']}</td><td>{r['TDS']}</td><td>{r['In Hand']}</td></tr>" for r in st.session_state.final_df.to_dict('records')])}
-                </tbody>
-            </table>
+            <p><b>Partner:</b> {search_exec} &nbsp; <b>Period:</b> {start_d} to {end_d}</p>
+            {df_html}
         </div>
         <script>window.print();</script>
         """
