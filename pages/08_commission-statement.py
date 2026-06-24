@@ -1,24 +1,34 @@
 import streamlit as st
 import datetime
 
-st.title("📊 कमीशन डैशबोर्ड")
+st.title("📊 Executive Commission Dashboard")
 
-# डेटा फेचिंग
-db = st.session_state.get('db_projects', {})
-ex = st.session_state.get('executives', {})
-partner_list = sorted([v.get('name', k) for k, v in ex.items() if isinstance(v, dict)])
+# Force Sync to get partners
+db_data = st.session_state.get('db_projects', {})
+exec_data = st.session_state.get('executives', {})
 
-# इनपुट फील्ड्स
-search_exec = st.selectbox("👤 पार्टनर चुनें", options=partner_list)
-scope = st.radio("📑 स्कोप", ["Self", "Group", "All"], horizontal=True)
-col1, col2 = st.columns(2)
-start_d = col1.date_input("📅 Start Date", datetime.date(2024, 6, 6))
-end_d = col2.date_input("📅 End Date", datetime.date(2026, 6, 24))
+# Extract partner names clearly
+partner_list = []
+if isinstance(exec_data, dict):
+    partner_list = sorted([v.get('name', k) for k, v in exec_data.items() if isinstance(v, dict)])
 
-if st.button("🚀 डेटा तैयार करें"):
-    # यहाँ सारा कैलकुलेशन लॉजिक होगा जो हमने पहले फिक्स किया था
-    # फिल्टर होकर डेटा 'st.session_state.final_df' में सेव होगा
-    st.session_state.final_df = some_dataframe_after_filter # आपका डेटा यहाँ सेव करें
-    st.session_state.meta_data = {"partner": search_exec, "start": start_d, "end": end_d}
-    st.success("डेटा तैयार है! अब 'कमीशन रिपोर्ट' पेज पर जाएँ।")
+if not partner_list:
+    st.warning("No partners found. Ensure data is saved in 'Partner Management'.")
+    if st.button("🔄 Refresh Data"):
+        st.rerun()
+else:
+    search_exec = st.selectbox("👤 Select Partner", options=partner_list)
+    scope = st.radio("📑 Scope", ["Self", "Group", "All"], horizontal=True)
+    
+    col1, col2 = st.columns(2)
+    start_d = col1.date_input("📅 Start Date", datetime.date(2024, 6, 6))
+    end_d = col2.date_input("📅 End Date", datetime.date(2026, 6, 24))
+
+    if st.button("🚀 Generate Data"):
+        # Logic to filter data and save to session_state
+        st.session_state.target_partner = search_exec
+        st.session_state.scope = scope
+        st.session_state.start_date = start_d
+        st.session_state.end_date = end_d
+        st.success("Data processed! Please go to 'Commission Report' page.")
 
