@@ -3,17 +3,26 @@ import pandas as pd
 import datetime
 import database
 
-# 1. डेटा लोड और इनिशियलाइज़ेशन
+st.set_page_config(layout="wide")
+
+# ==========================================
+# 1. डेटाबेस इनिशियलाइज़ेशन (डेटा हमेशा लोड होगा)
+# ==========================================
 if 'db_projects' not in st.session_state:
-    database.init_db()
+    try:
+        database.init_db()
+    except Exception as e:
+        st.error("डेटाबेस लोड करने में समस्या: " + str(e))
 
 db_projects = st.session_state.get('db_projects', {})
 executives = db_projects.get('executives', {})
 
+# पार्टनर की लिस्ट बनाना
 partner_list = []
-if isinstance(executives, dict):
+if isinstance(executives, dict) and executives:
     partner_list = sorted([v.get('name', k) for k, v in executives.items() if isinstance(v, dict)])
 else:
+    # अगर executives डिक्शनरी काम न करे, तो बुकिंग्स से नाम ढूँढें
     partners = set()
     for proj in db_projects.values():
         if isinstance(proj, dict) and 'plots' in proj:
@@ -22,25 +31,27 @@ else:
                     partners.add(plot['executive_name'])
     partner_list = sorted(list(partners))
 
-# 2. पेज स्टेट मैनेजमेंट (Dashboard vs Report स्विच करने के लिए)
+# ==========================================
+# 2. पेज नेविगेशन स्टेट 
+# ==========================================
 if 'page' not in st.session_state:
     st.session_state.page = 'dashboard'
 
 # ==========================================
-# 🌟 DASHBOARD PAGE (यहाँ आप सेलेक्ट करेंगे)
+# 🌟 DASHBOARD PAGE (इनपुट और सिलेक्शन)
 # ==========================================
 if st.session_state.page == 'dashboard':
     st.title("📊 Executive Commission Dashboard")
 
     if not partner_list:
-        st.warning("No partners found. Please check 'Partner Management'.")
+        st.warning("⚠️ No partners found. Please check 'Partner Management' or ensure bookings exist.")
     else:
-        # पार्टनर ड्रॉपडाउन
+        # पार्टनर सिलेक्शन
         search_exec = st.selectbox("👤 Select Partner", options=partner_list)
         
-        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<hr>", unsafe_allow_html=True)
         
-        # एक्टिव बटन्स (Self, Group, All)
+        # स्कोप सिलेक्शन
         scope = st.radio("📑 Commission Scope", ["Self", "Group", "All"], horizontal=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
@@ -52,91 +63,112 @@ if st.session_state.page == 'dashboard':
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # जनरेट बटन
+        # जनरेट बटन और कैलकुलेशन
         if st.button("🚀 Generate Systematic Statement", use_container_width=True):
             rows = []
-            # डेटा कैलकुलेशन लूप
+            
             for p_name, p_info in db_projects.items() if isinstance(db_projects, dict) else {}:
                 if isinstance(p_info, dict) and p_name not in ['executives', '_app_settings']:
-                    mauza = next((str(v) for k, v in p_info.items() if str(k).lower() == 'mauza'), "N/A")
+                    mauja = next((str(v) for k, v in p_info.items() if str(k).lower() == 'mauza' or str(k).lower() == 'mauja'), "N/A")
                     plots = p_info.get('plots', {})
                     
                     plot_items = plots.items() if isinstance(plots, dict) else enumerate(plots)
                     
                     for pid, info in plot_items:
                         if isinstance(info, dict) and info.get('executive_name') == search_exec:
-                            amt = float(info.get('token_amount', 0))
-                            # यहाँ आपका कमीशन लॉजिक है (Gross, TDS, In Hand)
-                            rows.append({
-                                "S.No.": len(rows)+1, 
-                                "Mauza": mauza, 
-                                "Project": p_name, 
-                                "Plot": str(pid), 
-                                "Customer": info.get('customer_name', 'N/A'),
-                                "Received": amt, 
-                                "Date": info.get('booking_date', 'N/A'),
-                                "Gross": amt * 0.1, 
-                                "Discount": amt * 0.02, 
-                                "Net Comm": amt * 0.08, 
-                                "TDS": amt * 0.002, 
-                                "In Hand": amt * 0.078
-                            })
+                            # डेट फ़िल्टर (बुकिंग डेट चेक करें)
+                            b_date_str = info.get('booking_date', '1900-01-01')
+                            try:
+                                b_date = datetime.datetime.strptime(b_date_str, "%Y-%m-%d").date()
+                            except:
+                                b_date = start_d # अगर डेट गलत है तो डिफ़ॉल्ट मान लें
+                                
+                            if start_d <= b_date <= end_d:
+                                amt = float(info.get('token_amount', 0))
+                                
+                                # --- कमीशन लॉजिक (PDF के अनुसार डमी कैलकुलेशन) ---
+                                gross = amt * 0.23        
+                                discount = amt * 0.037    
+                                net_comm = gross - discount
+                                tds = net_comm * 0.02
+                                in_hand = net_comm - tds
+                                
+                                rows.append({
+                                    "S.No.": len(rows) + 1, 
+                                    "Mauja": str(mauja).capitalize(), 
+                                    "Project": str(p_name), 
+                                    "Plot": str(pid), 
+                                    "Customer": str(info.get('customer_name', 'N/A')).title(),
+                                    "Received": amt, 
+                                    "Date": b_date_str,
+                                    "Gross": gross, 
+                                    "Discount": discount, 
+                                    "Net Comm": net_comm, 
+                                    "TDS": tds, 
+                                    "In Hand": in_hand
+                                })
             
             if rows:
-                st.session_state.final_df = pd.DataFrame(rows)
-                # मेटाडेटा सेव कर रहे हैं ताकि रिपोर्ट पेज पर दिखे
+                df = pd.DataFrame(rows)
+                
+                # TOTAL कैलकुलेशन
+                total_row = {
+                    "S.No.": "TOTAL", 
+                    "Mauja": "", "Project": "", "Plot": "", "Customer": "", "Date": "",
+                    "Received": df["Received"].sum(),
+                    "Gross": df["Gross"].sum(),
+                    "Discount": df["Discount"].sum(),
+                    "Net Comm": df["Net Comm"].sum(),
+                    "TDS": df["TDS"].sum(),
+                    "In Hand": df["In Hand"].sum()
+                }
+                
+                # राउंड ऑफ और फॉर्मेटिंग (2 डेसिमल तक)
+                for col in ["Received", "Gross", "Discount", "Net Comm", "TDS", "In Hand"]:
+                    df[col] = df[col].apply(lambda x: f"{float(x):.2f}")
+                    total_row[col] = f"{float(total_row[col]):.2f}"
+                
+                # टोटल रो (Row) जोड़ना
+                df.loc[len(df)] = total_row
+                
+                # सेशन स्टेट में डेटा सेव करना
+                st.session_state.final_df = df
                 st.session_state.meta_data = {
                     "partner": search_exec, 
                     "scope": scope, 
                     "start": start_d, 
                     "end": end_d
                 }
-                st.session_state.page = 'report' # पेज बदलें
+                st.session_state.page = 'report' 
                 st.rerun()
             else:
-                st.error("❌ इस पार्टनर, डेट और स्कोप के लिए कोई बुकिंग डेटा नहीं मिला!")
+                st.error("❌ इस पार्टनर और चुनी गई तारीखों के बीच कोई बुकिंग डेटा नहीं मिला!")
 
 # ==========================================
-# 📄 REPORT PAGE (यहाँ जनरेट होने के बाद टेबल दिखेगी)
+# 📄 REPORT PAGE (PDF Format Style)
 # ==========================================
 elif st.session_state.page == 'report':
+    
     st.title("📄 Executive Commission Statement")
     
-    # डैशबोर्ड पर वापस जाने का बटन
+    # वापस जाने का बटन
     if st.button("⬅️ Back to Dashboard"):
         st.session_state.page = 'dashboard'
         st.rerun()
     
     if 'final_df' in st.session_state:
         meta = st.session_state.meta_data
+        df = st.session_state.final_df
         
-        # पार्टनर और स्कोप की जानकारी दिखाएं
-        st.info(f"**Partner:** {meta['partner']} | **Scope:** {meta['scope']} | **Period:** {meta['start']} to {meta['end']}")
+        st.dataframe(df, use_container_width=True)
         
-        # टेबल रेंडर करें
-        st.dataframe(st.session_state.final_df, use_container_width=True)
-        
-        # प्रिंट बटन (HTML फॉर्मेट)
-        if st.button("🖨️ Print to A4"):
+        # पीडीएफ जैसा प्रिंट बटन
+        if st.button("🖨️ Print Statement (PDF Format)", type="primary"):
             html = f"""
-            <div style="font-family: Arial; padding: 20px; border: 1px solid #000; width: 100%; margin: auto; position: relative;">
-                <div style="position: absolute; top: 20px; right: 20px; font-weight: bold; font-size: 18px; color: #1e3a8a;">
-                    FIRSTCHOICE INFRA
-                </div>
-                <center>
-                    <h2 style="color: #1e3a8a; margin-bottom: 5px;">COMMISSION STATEMENT</h2>
-                    <p style="margin-top: 0;"><i>Symbol Of Trust...</i></p>
-                </center>
-                <hr>
-                <p><b>Partner Name:</b> {meta['partner']} <br>
-                <b>Commission Scope:</b> {meta['scope']} <br>
-                <b>Statement Period:</b> {meta['start']} to {meta['end']}</p>
-                {st.session_state.final_df.to_html(classes='table', index=False, border=1)}
-            </div>
-            <script>window.print();</script>
-            """
-            st.components.v1.html(html, height=800)
-    else:
-        st.error("No data found!")
-        st.session_state.page = 'dashboard'
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; color: #000; padding: 15px; font-size: 13px; }}
+                    .header-section {{ text-align: center; margin-bottom: 25px; }}
+                    .header-section h1 {{ margin
 
