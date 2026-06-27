@@ -14,6 +14,46 @@ if 'db_projects' not in st.session_state:
 db_projects = st.session_state.get('db_projects', {})
 executives = db_projects.get('executives', {})
 
+# ---------------------------------------------------------
+# 🌟 DOWNLINE & COMMISSION DIFFERENCE LOGIC 
+# ---------------------------------------------------------
+def get_exec_details(name, exec_dict):
+    """पार्टनर का स्पॉन्सर (upline) और कमीशन % निकालता है"""
+    upline = ""
+    comm_perc = 0.23 # डिफ़ॉल्ट 23%
+    
+    for k, v in exec_dict.items():
+        if isinstance(v, dict) and v.get('name', k) == name:
+            # चेक करें कि क्या DB में upline/sponsor सेव है
+            upline = v.get('sponsor', v.get('upline', v.get('referred_by', '')))
+            
+            # चेक करें कि क्या DB में percentage सेव है
+            saved_perc = v.get('commission_percentage', v.get('percentage', v.get('comm_perc', 23)))
+            try:
+                val = float(saved_perc)
+                comm_perc = val / 100 if val > 1 else val
+            except:
+                comm_perc = 0.23
+            break
+            
+    return upline, comm_perc
+
+def get_all_downlines(target_name, exec_dict):
+    """टार्गेट के नीचे जुड़े सभी लोगों (Downline) की लिस्ट बनाता है"""
+    downlines = []
+    for k, v in exec_dict.items():
+        if isinstance(v, dict):
+            exec_name = v.get('name', k)
+            upline = v.get('sponsor', v.get('upline', v.get('referred_by', '')))
+            
+            if upline == target_name:
+                downlines.append(exec_name)
+                # उस व्यक्ति के नीचे (Third Party) के लोगों को भी जोड़ें
+                downlines.extend(get_all_downlines(exec_name, exec_dict))
+                
+    return list(set(downlines))
+# ---------------------------------------------------------
+
 partner_list = []
 if isinstance(executives, dict) and executives:
     partner_list = sorted([v.get('name', k) for k, v in executives.items() if isinstance(v, dict)])
@@ -29,6 +69,9 @@ else:
 if 'page' not in st.session_state:
     st.session_state.page = 'dashboard'
 
+# ==========================================
+# 🌟 DASHBOARD PAGE
+# ==========================================
 if st.session_state.page == 'dashboard':
     st.title("📊 Executive Commission Dashboard")
 
@@ -52,6 +95,16 @@ if st.session_state.page == 'dashboard':
         if st.button("🚀 Generate Systematic Statement", use_container_width=True):
             rows = []
             
+            # 1. डाउनलाइन और स्कोप सेट करें
+            if scope == "Self":
+                valid_execs = [search_exec]
+            else:
+                # Group/All में खुद का और डाउनलाइन का नाम शामिल होगा
+                valid_execs = [search_exec] + get_all_downlines(search_exec, executives)
+            
+            # 2. मेन पार्टनर का अपना कमीशन रेट निकालें
+            _, my_perc = get_exec_details(search_exec, executives)
+            
             for p_name, p_info in db_projects.items() if isinstance(db_projects, dict) else {}:
                 if isinstance(p_info, dict) and p_name not in ['executives', '_app_settings']:
                     mauja = next((str(v) for k, v in p_info.items() if str(k).lower() == 'mauza' or str(k).lower() == 'mauja'), "N/A")
@@ -60,7 +113,10 @@ if st.session_state.page == 'dashboard':
                     plot_items = plots.items() if isinstance(plots, dict) else enumerate(plots)
                     
                     for pid, info in plot_items:
-                        if isinstance(info, dict) and info.get('executive_name') == search_exec:
+                        exec_name = info.get('executive_name')
+                        
+                        # अगर जिसने सेल की है, वो हमारी लिस्ट (Self या Downline) में है
+                        if exec_name in valid_execs:
                             b_date_str = info.get('booking_date', '1900-01-01')
                             try:
                                 b_date = datetime.datetime.strptime(b_date_str, "%Y-%m-%d").date()
@@ -70,18 +126,38 @@ if st.session_state.page == 'dashboard':
                             if start_d <= b_date <= end_d:
                                 amt = float(info.get('token_amount', 0))
                                 
-                                gross = amt * 0.23        
-                                discount = amt * 0.037    
+                                # 3. डिफरेंस (Difference) कैलकुलेशन
+                                if exec_name == search_exec:
+                                    # खुद की सेल
+                                    diff_perc = my_perc
+                                    is_downline = False
+                                else:
+                                    # डाउनलाइन की सेल, सिर्फ डिफरेंस
+                                    _, downline_perc = get_exec_details(exec_name, executives)
+                                    diff_perc = my_perc - downline_perc
+                                    is_downline = True
+                                    
+                                # अगर डिफरेंस 0 या नेगेटिव है, तो कमीशन नहीं जुड़ेगा
+                                if diff_perc <= 0:
+                                    continue
+                                
+                                # 4. अमाउंट कैलकुलेशन
+                                gross = amt * diff_perc        
+                                discount = (amt * 0.037) * (diff_perc / 0.23) if my_perc > 0 else 0 
                                 net_comm = gross - discount
                                 tds = net_comm * 0.02
                                 in_hand = net_comm - tds
+                                
+                                cust_name = str(info.get('customer_name', 'N/A')).title()
+                                if is_downline:
+                                    cust_name += f" <br><i>(via {exec_name})</i>"
                                 
                                 rows.append({
                                     "S.No.": len(rows) + 1, 
                                     "Mauja": str(mauja).capitalize(), 
                                     "Project": str(p_name), 
                                     "Plot": str(pid), 
-                                    "Customer": str(info.get('customer_name', 'N/A')).title(),
+                                    "Customer": cust_name,
                                     "Received": amt, 
                                     "Date": b_date_str,
                                     "Gross": gross, 
@@ -121,8 +197,11 @@ if st.session_state.page == 'dashboard':
                 st.session_state.page = 'report' 
                 st.rerun()
             else:
-                st.error("❌ इस पार्टनर और चुनी गई तारीखों के बीच कोई बुकिंग डेटा नहीं मिला!")
+                st.error("❌ इस पार्टनर, डाउनलाइन और चुनी गई तारीखों के बीच कोई बुकिंग डेटा या डिफरेंस अमाउंट नहीं मिला!")
 
+# ==========================================
+# 📄 REPORT PAGE (PDF Format Style)
+# ==========================================
 elif st.session_state.page == 'report':
     
     st.title("📄 Executive Commission Statement")
@@ -135,7 +214,9 @@ elif st.session_state.page == 'report':
         meta = st.session_state.meta_data
         df = st.session_state.final_df
         
-        st.dataframe(df, use_container_width=True)
+        # HTML Rendering for Dashboard Display to support `<br>` in Customer Column
+        st.write(df.to_html(escape=False, index=False), unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
         
         if st.button("🖨️ Print Statement (PDF Format)", type="primary"):
             html = f"""
@@ -169,7 +250,7 @@ elif st.session_state.page == 'report':
                     <b>Period:</b> {meta['start']} to {meta['end']}
                 </div>
                 
-                {df.to_html(classes='table-container', index=False)}
+                {df.to_html(classes='table-container', index=False, escape=False)}
                 
             </body>
             </html>
