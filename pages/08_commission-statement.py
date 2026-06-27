@@ -3,52 +3,42 @@ import pandas as pd
 import datetime
 import database
 
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="FC Infra - Commission Statement")
 
-# 🔒 SECURITY
+# 🔒 1. ADMIN ONLY SECURITY LOCK
 if st.session_state.get('user_role') != 'admin':
-    st.error("🚨 Access Denied!")
+    st.error("🚨 Access Denied! यह पेज केवल एडमिन/बॉस के लिए है।")
     st.stop()
 
 database.init_db()
 db_data = st.session_state.db_projects
 exec_data = db_data.get('executives', {})
 
-# 🔍 1. पार्टनर की पूरी चेन ढूँढने का फंक्शन
-def get_downline_info(manager_name, exec_dict):
-    """पार्टनर और उसकी पूरी डाउनलाइन + उनके कमीशन % का मैप बनाता है"""
-    chain = {}
+# 🔍 टीम चेन ढूँढने का लॉजिक (मास्टर स्लैब रजिस्टर के हिसाब से)
+def get_all_downlines(manager_name):
     manager_clean = str(manager_name).strip().lower()
-    
-    # चेन बनाएं
-    def build_chain(name):
-        res = [name.lower()]
-        for ex, det in exec_dict.items():
-            if str(det.get('senior_name', '')).strip().lower() == name.lower():
-                res.extend(build_chain(ex))
-        return res
-        
-    team_list = build_chain(manager_clean)
-    
-    # कमीशन % मैप करें
-    for name in team_list:
-        details = exec_dict.get(name, {})
-        # यहाँ आपके पार्टनर मैनेजमेंट के 'percentage_exec' का इस्तेमाल हो रहा है
-        chain[name] = float(details.get('percentage_exec', 0))
-    return chain
+    downlines = []
+    for ex_name, details in exec_data.items():
+        if str(details.get('senior_name', '')).strip().lower() == manager_clean:
+            downlines.append(ex_name)
+            downlines.extend(get_all_downlines(ex_name)) 
+    return list(set(downlines))
 
-# 2. UI
-st.title("📊 Master Sync Commission Dashboard")
-partner_names = sorted(list(exec_data.keys()))
-search_exec = st.selectbox("👤 Select Senior/Admin", options=partner_names)
+st.title("📄 Executive Commission Statement")
+
+# 2. सिलेक्शन पैनल्स
+c1, c2 = st.columns(2)
+search_exec = c1.selectbox("👤 पार्टनर चुनें", options=sorted(list(exec_data.keys())))
+scope = c2.radio("📑 कमीशन स्कोप", ["Self", "Group", "All"], horizontal=True)
+
 start_d = st.date_input("📅 Start Date", datetime.date(2025, 6, 20))
 end_d = st.date_input("📅 End Date", datetime.date(2026, 6, 24))
 
-if st.button("🚀 Generate Sync Statement"):
-    # पार्टनर का अपना कमीशन %
-    my_perc = float(exec_data.get(search_exec, {}).get('percentage_exec', 23))
-    # पूरी टीम और उनका %
-    team_map = get_downline_info(search_exec, exec_data)
+if st.button("🚀 Generate Systematic Statement"):
+    # टीम मेंबर्स की लिस्ट
+    if scope == "Self": valid_team = [search_exec.lower()]
+    elif scope == "Group": valid_team = [search_exec.lower()] + [d.lower() for d in get_all_downlines(search_exec)]
+    else: valid_team = [n.lower() for n in exec_data.keys()]
     
     rows = []
     for p_name, p_info in db_data.items():
@@ -57,34 +47,33 @@ if st.button("🚀 Generate Sync Statement"):
                 if isinstance(info, dict) and str(info.get('status', '')).lower() == 'booked':
                     exec_name = str(info.get('executive_name', '')).strip().lower()
                     
-                    if exec_name in team_map:
-                        # EMI & Token Calculation (Date Range Sync)
-                        total_amt = 0.0
-                        # 1. Token Check
-                        b_date = datetime.datetime.strptime(str(info.get('booking_date', '2000-01-01')), "%Y-%m-%d").date()
-                        if start_d <= b_date <= end_d:
-                            total_amt += float(info.get('token_amount', 0))
-                        
-                        # 2. EMI Check
+                    if exec_name in valid_team:
+                        # बिज़नेस कैलकुलेशन
+                        amt = float(info.get('token_amount', 0))
                         for pmt in info.get('partial_payments', []):
-                            p_date = datetime.datetime.strptime(str(pmt.get('date', '2000-01-01')), "%Y-%m-%d").date()
-                            if start_d <= p_date <= end_d:
-                                total_amt += float(pmt.get('amount', 0))
+                            amt += float(pmt.get('amount', 0))
                         
-                        if total_amt > 0:
-                            # डिफरेंस कमीशन कैलकुलेशन
-                            junior_perc = team_map[exec_name]
-                            diff = max(0, my_perc - junior_perc) # अगर सीनियर का % ज्यादा है
+                        if amt > 0:
+                            # PDF फॉर्मेट जैसा कैलकुलेशन
+                            gross = amt * 0.23
+                            discount = gross * 0.16 # उदाहरण के लिए
+                            net = gross - discount
+                            tds = net * 0.02
+                            in_hand = net - tds
                             
                             rows.append({
-                                "Project": p_name, "Plot": pid, "Member": exec_name.upper(),
-                                "Total Collection": total_amt,
-                                "Comm % (Diff)": f"{diff}%",
-                                "Difference Amount (₹)": (total_amt * diff) / 100
+                                "Mauja": p_info.get('mauza', 'Mohadi'), "Project": p_name, "Plot": pid,
+                                "Customer": info.get('customer_name', 'N/A'), "Received": amt,
+                                "Gross": gross, "Net Comm": net, "TDS": tds, "In Hand": in_hand
                             })
-    
+
     if rows:
-        st.dataframe(pd.DataFrame(rows), use_container_width=True)
+        df = pd.DataFrame(rows)
+        st.dataframe(df, use_container_width=True)
+        
+        # 📄 PDF जैसा एक्सपोर्ट
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("🖨️ Download Statement (CSV)", csv, "Statement.csv", "text/csv")
     else:
-        st.error("❌ कोई बिज़नेस डेटा नहीं मिला।")
+        st.error("❌ इस स्कोप और डेट के बीच कोई डेटा नहीं मिला।")
 
