@@ -26,45 +26,50 @@ def get_all_downlines(manager_name):
 
 st.title("📄 Executive Commission Statement")
 
-# सिलेक्शन पैनल्स
 search_exec = st.selectbox("👤 पार्टनर चुनें", options=sorted(list(exec_data.keys())))
-scope = st.radio("📑 कमीशन स्कोप", ["Self", "Group", "All"], horizontal=True)
+scope = st.radio("📑 स्कोप", ["Self", "Group"], horizontal=True)
+
+start_d = st.date_input("📅 Start Date", datetime.date(2025, 6, 20))
+end_d = st.date_input("📅 End Date", datetime.date(2026, 6, 24))
 
 if st.button("🚀 Generate Statement"):
-    # 1. रिस्ट्रिक्शन: वैलिड टीम लिस्ट बनाना
+    # यहाँ 'All' का ऑप्शन हटा दिया है ताकि आप कन्फ्यूज न हों
+    # अब यह कोड सिर्फ 'Self' या 'Group' के लिए ही काम करेगा
     if scope == "Self":
         valid_team = [search_exec.lower()]
-    elif scope == "Group":
-        valid_team = [search_exec.lower()] + get_all_downlines(search_exec)
     else:
-        valid_team = [n.lower() for n in exec_data.keys()]
+        valid_team = [search_exec.lower()] + get_all_downlines(search_exec)
     
     rows = []
-    found_any = False
+    found = False
     
-    # 2. डेटा स्कैन (बुकिंग्स फिल्टरिंग)
+    # स्ट्रिक्ट स्कैनिंग
     for p_name, p_info in db_data.items():
         if isinstance(p_info, dict) and 'plots' in p_info:
             for pid, info in p_info['plots'].items() if isinstance(p_info['plots'], dict) else enumerate(p_info['plots']):
                 if isinstance(info, dict) and str(info.get('status', '')).lower() == 'booked':
                     
-                    # 🎯 यहाँ है सबसे जरूरी चेक
                     booked_by = str(info.get('executive_name', '')).strip().lower()
                     
+                    # अगर बुकिंग करने वाला बंदा हमारी टीम लिस्ट (valid_team) का हिस्सा है तभी आगे बढ़ो
                     if booked_by in valid_team:
+                        
+                        # बिज़नेस की गणना
                         amt = float(info.get('token_amount', 0))
                         for pmt in info.get('partial_payments', []):
                             amt += float(pmt.get('amount', 0))
                         
                         if amt > 0:
-                            found_any = True
+                            found = True
                             rows.append({
                                 "Project": p_name, "Plot": pid, "Partner": booked_by.upper(),
                                 "Customer": info.get('customer_name', 'N/A'), "Received": amt
                             })
     
-    if found_any:
+    if found:
         st.dataframe(pd.DataFrame(rows), use_container_width=True)
+        if st.button("🖨️ Print"):
+            st.write("<script>window.print();</script>", unsafe_allow_html=True)
     else:
-        st.error(f"❌ {search_exec} के लिए कोई बुकिंग रिकॉर्ड नहीं पाया गया।")
+        st.error(f"❌ {search_exec} के अंडर में कोई बुकिंग रिकॉर्ड नहीं मिला।")
 
