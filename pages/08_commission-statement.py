@@ -1,57 +1,90 @@
 import streamlit as st
 import pandas as pd
+import datetime
 import database
 
 st.set_page_config(layout="wide")
 
-# डेटाबेस लोड
-if 'db_projects' not in st.session_state:
-    database.init_db()
+# 🔒 SECURITY
+if st.session_state.get('user_role') != 'admin':
+    st.error("🚨 Access Denied!")
+    st.stop()
 
-db_data = st.session_state.get('db_projects', {})
+database.init_db()
+db_data = st.session_state.db_projects
 exec_data = db_data.get('executives', {})
 
-# नाम को साफ़ करने वाला फंक्शन (सबसे जरूरी)
-def clean_name(name):
-    return "".join(str(name).lower().split())
+# 🔍 1. पार्टनर की पूरी चेन ढूँढने का फंक्शन
+def get_downline_info(manager_name, exec_dict):
+    """पार्टनर और उसकी पूरी डाउनलाइन + उनके कमीशन % का मैप बनाता है"""
+    chain = {}
+    manager_clean = str(manager_name).strip().lower()
+    
+    # चेन बनाएं
+    def build_chain(name):
+        res = [name.lower()]
+        for ex, det in exec_dict.items():
+            if str(det.get('senior_name', '')).strip().lower() == name.lower():
+                res.extend(build_chain(ex))
+        return res
+        
+    team_list = build_chain(manager_clean)
+    
+    # कमीशन % मैप करें
+    for name in team_list:
+        details = exec_dict.get(name, {})
+        # यहाँ आपके पार्टनर मैनेजमेंट के 'percentage_exec' का इस्तेमाल हो रहा है
+        chain[name] = float(details.get('percentage_exec', 0))
+    return chain
 
-# टीम की पूरी चेन निकालने वाला फंक्शन
-def get_team_chain(target_name, exec_dict):
-    target_clean = clean_name(target_name)
-    team = [target_clean]
-    for k, v in exec_dict.items():
-        if isinstance(v, dict):
-            # स्पॉन्सर का नाम ढूँढें और साफ़ करें
-            s = str(v.get('sponsor', v.get('upline', ''))).split('|')[-1]
-            if clean_name(s) == target_clean:
-                team.append(clean_name(v.get('name', k)))
-                team.extend(get_team_chain(v.get('name', k), exec_dict))
-    return list(set(team))
+# 2. UI
+st.title("📊 Master Sync Commission Dashboard")
+partner_names = sorted(list(exec_data.keys()))
+search_exec = st.selectbox("👤 Select Senior/Admin", options=partner_names)
+start_d = st.date_input("📅 Start Date", datetime.date(2025, 6, 20))
+end_d = st.date_input("📅 End Date", datetime.date(2026, 6, 24))
 
-st.title("📊 Master Commission Statement (Debug Mode)")
-partner_names = sorted(list(set([str(v.get('name', k)).strip() for k, v in exec_data.items() if isinstance(v, dict)])))
-search_exec = st.selectbox("👤 पार्टनर चुनें", partner_names)
-scope = st.radio("📑 स्कोप", ["Self", "Group"], horizontal=True)
-
-if st.button("🚀 रिपोर्ट जनरेट करें"):
-    valid_team = get_team_chain(search_exec, exec_data) if scope == "Group" else [clean_name(search_exec)]
-    st.write(f"🔍 सिस्टम इन नामों को ढूँढ रहा है: {valid_team}")
+if st.button("🚀 Generate Sync Statement"):
+    # पार्टनर का अपना कमीशन %
+    my_perc = float(exec_data.get(search_exec, {}).get('percentage_exec', 23))
+    # पूरी टीम और उनका %
+    team_map = get_downline_info(search_exec, exec_data)
     
     rows = []
-    for p_name, p_info in db_data.items() if isinstance(db_data, dict) else {}:
+    for p_name, p_info in db_data.items():
         if isinstance(p_info, dict) and 'plots' in p_info:
             for pid, info in p_info['plots'].items() if isinstance(p_info['plots'], dict) else enumerate(p_info['plots']):
-                if isinstance(info, dict):
-                    # बुकिंग वाले नाम को भी साफ़ करें
-                    booked_by = clean_name(info.get('executive_name', info.get('partner', '')))
+                if isinstance(info, dict) and str(info.get('status', '')).lower() == 'booked':
+                    exec_name = str(info.get('executive_name', '')).strip().lower()
                     
-                    if booked_by in valid_team:
-                        amt = float(info.get('token_amount', 0))
-                        rows.append({"Team Member": booked_by, "Project": p_name, "Amount": amt})
+                    if exec_name in team_map:
+                        # EMI & Token Calculation (Date Range Sync)
+                        total_amt = 0.0
+                        # 1. Token Check
+                        b_date = datetime.datetime.strptime(str(info.get('booking_date', '2000-01-01')), "%Y-%m-%d").date()
+                        if start_d <= b_date <= end_d:
+                            total_amt += float(info.get('token_amount', 0))
+                        
+                        # 2. EMI Check
+                        for pmt in info.get('partial_payments', []):
+                            p_date = datetime.datetime.strptime(str(pmt.get('date', '2000-01-01')), "%Y-%m-%d").date()
+                            if start_d <= p_date <= end_d:
+                                total_amt += float(pmt.get('amount', 0))
+                        
+                        if total_amt > 0:
+                            # डिफरेंस कमीशन कैलकुलेशन
+                            junior_perc = team_map[exec_name]
+                            diff = max(0, my_perc - junior_perc) # अगर सीनियर का % ज्यादा है
+                            
+                            rows.append({
+                                "Project": p_name, "Plot": pid, "Member": exec_name.upper(),
+                                "Total Collection": total_amt,
+                                "Comm % (Diff)": f"{diff}%",
+                                "Difference Amount (₹)": (total_amt * diff) / 100
+                            })
     
     if rows:
         st.dataframe(pd.DataFrame(rows), use_container_width=True)
     else:
-        st.error("❌ कोई डेटा नहीं मिला।")
-        st.info("प्रो टिप: अगर '🔍 सिस्टम इन नामों को ढूँढ रहा है' में सही नाम है, लेकिन डेटा नहीं आ रहा, तो इसका मतलब है कि बुकिंग के अंदर 'executive_name' वाली Key ही खाली है।")
+        st.error("❌ कोई बिज़नेस डेटा नहीं मिला।")
 
