@@ -5,6 +5,7 @@ import database
 
 st.set_page_config(layout="wide")
 
+# 🔒 SECURITY
 if st.session_state.get('user_role') != 'admin':
     st.error("🚨 Access Denied!")
     st.stop()
@@ -31,7 +32,7 @@ scope = c2.radio("📑 स्कोप", ["Self", "Group"], horizontal=True)
 start_d = st.date_input("📅 Start Date", datetime.date(2025, 6, 20))
 end_d = st.date_input("📅 End Date", datetime.date(2026, 6, 24))
 
-if st.button("🚀 Generate Statement"):
+if st.button("🚀 Generate Systematic Statement"):
     valid_team = [search_exec.lower()] + (get_all_downlines(search_exec) if scope == "Group" else [])
     
     rows = []
@@ -41,32 +42,37 @@ if st.button("🚀 Generate Statement"):
                 if isinstance(info, dict) and str(info.get('status', '')).lower() == 'booked':
                     if str(info.get('executive_name', '')).strip().lower() in valid_team:
                         
-                        # रसीदें इकट्ठा करें (Token + Partial Payments)
-                        all_receipts = [{'date': info.get('booking_date', '2000-01-01'), 'amount': info.get('token_amount', 0)}]
-                        all_receipts.extend(info.get('partial_payments', []))
+                        # 1. टोकन ट्रांजैक्शन चेक
+                        t_date = datetime.datetime.strptime(str(info.get('booking_date', '2000-01-01')), "%Y-%m-%d").date()
+                        if start_d <= t_date <= end_d:
+                            amt = float(info.get('token_amount', 0))
+                            if amt > 0:
+                                rows.append({"Mauja": p_info.get('mauza', '-'), "Project": p_name, "Plot": pid, "Customer": info.get('customer_name', '-'), "Received": amt, "Date": t_date, "Type": "Token"})
                         
-                        for rec in all_receipts:
-                            r_date = datetime.datetime.strptime(str(rec.get('date', '2000-01-01')), "%Y-%m-%d").date()
-                            if start_d <= r_date <= end_d:
-                                amt = float(rec.get('amount', 0))
-                                if amt > 0:
-                                    # PDF के अनुसार गणना
-                                    gross = amt * 0.23 # मान लिया 23%
-                                    discount = gross * 0.16
-                                    net = gross - discount
-                                    tds = net * 0.02
-                                    rows.append({
-                                        "Mauja": p_info.get('mauza', 'Mohadi'), "Project": p_name, "Plot": pid,
-                                        "Customer": info.get('customer_name', 'N/A'), "Received": amt,
-                                        "Date": r_date, "Gross": gross, "Discount": discount,
-                                        "Net Comm": net, "TDS": tds, "In Hand": net - tds
-                                    })
-    
+                        # 2. EMI/Partial Payments ट्रांजैक्शन चेक
+                        for pmt in info.get('partial_payments', []):
+                            p_date = datetime.datetime.strptime(str(pmt.get('date', '2000-01-01')), "%Y-%m-%d").date()
+                            if start_d <= p_date <= end_d:
+                                amt = float(pmt.get('amount', 0))
+                                rows.append({"Mauja": p_info.get('mauza', '-'), "Project": p_name, "Plot": pid, "Customer": info.get('customer_name', '-'), "Received": amt, "Date": p_date, "Type": pmt.get('remarks', 'EMI')})
+
     if rows:
         df = pd.DataFrame(rows)
+        # कैलकुलेशन: Gross, Net, TDS, In Hand
+        df['Gross'] = df['Received'] * 0.23
+        df['Discount'] = df['Gross'] * 0.16
+        df['Net Comm'] = df['Gross'] - df['Discount']
+        df['TDS'] = df['Net Comm'] * 0.02
+        df['In Hand'] = df['Net Comm'] - df['TDS']
+        
         st.dataframe(df, use_container_width=True)
-        # प्रिंट बटन जो सीधे ब्राउज़र प्रिंट खोलेगा
-        st.button("🖨️ Print Statement", on_click=lambda: st.write("<script>window.print();</script>", unsafe_allow_html=True))
+        
+        # 🖨️ पक्का प्रिंट बटन (JavaScript ट्रिगर)
+        st.markdown("""
+            <button onclick="window.print()" style="padding:10px 20px; background:#1e3a8a; color:white; border:none; border-radius:5px; cursor:pointer;">
+                🖨️ Print this Statement
+            </button>
+        """, unsafe_allow_html=True)
     else:
         st.error("❌ कोई डेटा नहीं मिला।")
 
