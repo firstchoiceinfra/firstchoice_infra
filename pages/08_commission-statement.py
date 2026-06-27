@@ -3,17 +3,18 @@ import pandas as pd
 import datetime
 import database
 
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="FC Infra - Commission Statement")
 
-# 🔒 SECURITY
+# 🔒 1. SECURITY LOCK
 if st.session_state.get('user_role') != 'admin':
-    st.error("🚨 Access Denied!")
+    st.error("🚨 Access Denied! यह पेज केवल बॉस/एडमिन के लिए है।")
     st.stop()
 
 database.init_db()
 db_data = st.session_state.db_projects
 exec_data = db_data.get('executives', {})
 
+# 🔄 टीम चेन ढूँढने का पक्का लॉजिक
 def get_all_downlines(manager_name):
     manager_clean = str(manager_name).strip().lower()
     downlines = []
@@ -25,6 +26,7 @@ def get_all_downlines(manager_name):
 
 st.title("📄 Executive Commission Statement")
 
+# 2. सिलेक्शन पैनल्स
 c1, c2 = st.columns(2)
 search_exec = c1.selectbox("👤 पार्टनर चुनें", options=sorted(list(exec_data.keys())))
 scope = c2.radio("📑 स्कोप", ["Self", "Group", "All"], horizontal=True)
@@ -32,50 +34,43 @@ scope = c2.radio("📑 स्कोप", ["Self", "Group", "All"], horizontal=Tr
 start_d = st.date_input("📅 Start Date", datetime.date(2025, 6, 20))
 end_d = st.date_input("📅 End Date", datetime.date(2026, 6, 24))
 
-if st.button("🚀 Generate Statement"):
-    # 1. अधिकार क्षेत्र (Valid Team) तय करना
-    if scope == "Self":
-        valid_team = [search_exec.lower()]
-    elif scope == "Group":
-        valid_team = [search_exec.lower()] + get_all_downlines(search_exec)
-    else:
-        valid_team = [n.lower() for n in exec_data.keys()]
+if st.button("🚀 Generate Systematic Statement"):
+    # सख्त टीम लिस्टिंग
+    if scope == "Self": valid_team = [search_exec.lower()]
+    elif scope == "Group": valid_team = [search_exec.lower()] + get_all_downlines(search_exec)
+    else: valid_team = [n.lower() for n in exec_data.keys()]
     
     rows = []
-    # 2. डेटा स्कैन (Strict Matching)
     for p_name, p_info in db_data.items():
         if isinstance(p_info, dict) and 'plots' in p_info:
             for pid, info in p_info['plots'].items() if isinstance(p_info['plots'], dict) else enumerate(p_info['plots']):
                 if isinstance(info, dict) and str(info.get('status', '')).lower() == 'booked':
+                    exec_name = str(info.get('executive_name', '')).strip().lower()
                     
-                    # बुकिंग करने वाले का नाम
-                    booked_by = str(info.get('executive_name', '')).strip().lower()
-                    
-                    # 🎯 यहाँ है 'Strict Filtering' - अगर नाम वैलिड टीम में नहीं है, तो लूप आगे बढ़ जाएगा
-                    if booked_by in valid_team:
-                        
-                        # डेट रेंज चेक (Booking Date OR Payment Date)
-                        b_date = datetime.datetime.strptime(str(info.get('booking_date', '2000-01-01')), "%Y-%m-%d").date()
-                        
-                        # EMI पेमेंट्स स्कैन
+                    if exec_name in valid_team:
+                        # बिज़नेस कैलकुलेशन
                         amt = float(info.get('token_amount', 0))
                         for pmt in info.get('partial_payments', []):
-                            p_date = datetime.datetime.strptime(str(pmt.get('date', '2000-01-01')), "%Y-%m-%d").date()
-                            if start_d <= p_date <= end_d:
-                                amt += float(pmt.get('amount', 0))
+                            amt += float(pmt.get('amount', 0))
                         
-                        # सिर्फ वही डेटा दिखाएं जो सिलेक्टेड पार्टनर/टीम का है
-                        rows.append({
-                            "Project": p_name, "Plot": pid, "Partner": booked_by.upper(),
-                            "Customer": info.get('customer_name', 'N/A'), "Received": amt
-                        })
-    
+                        if amt > 0:
+                            # PDF फॉर्मेट के कॉलम
+                            rows.append({
+                                "Mauja": p_info.get('mauza', 'N/A'),
+                                "Project": p_name,
+                                "Plot": pid,
+                                "Customer": info.get('customer_name', 'N/A'),
+                                "Received": amt,
+                                "Net Comm": amt * 0.15, # आपका फिक्स्ड %
+                                "TDS": (amt * 0.15) * 0.02,
+                                "In Hand": (amt * 0.15) * 0.98
+                            })
+
     if rows:
         df = pd.DataFrame(rows)
-        # 3. नाम के आधार पर फ़िल्टर (डुप्लीकेट रोकने के लिए)
         st.dataframe(df, use_container_width=True)
-        if st.button("🖨️ Print"):
+        # प्रिंट बटन
+        if st.button("🖨️ Print Statement"):
             st.write("<script>window.print();</script>", unsafe_allow_html=True)
     else:
-        st.error(f"❌ {search_exec} के लिए इस स्कोप में कोई बुकिंग नहीं मिली।")
-
+        st.error(f"❌ {search_exec} के लिए इस स्कोप में कोई डेटा नहीं मिला।")
