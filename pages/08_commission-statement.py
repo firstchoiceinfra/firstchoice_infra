@@ -136,11 +136,21 @@ def get_project_mauza(project_name):
     return p.get('mauza', project_name)
 
 
+def is_top_level_senior(senior_val):
+    """Check if senior value means 'company/direct' — no real upline."""
+    return str(senior_val).strip().lower() in ['', 'company', 'direct', 'none', '-']
+
+
 def get_all_downlines(manager_name):
+    """Get all downlines whose senior_name matches manager_name (case-insensitive)."""
     mgr = str(manager_name).strip().lower()
     result = []
     for ex, det in exec_data_root.items():
-        if isinstance(det, dict) and str(det.get('senior_name', '')).strip().lower() == mgr:
+        if not isinstance(det, dict):
+            continue
+        senior_val = str(det.get('senior_name', '')).strip().lower()
+        # Match by name — skip "company"/"direct" entries
+        if senior_val == mgr and not is_top_level_senior(senior_val):
             result.append(ex)
             result.extend(get_all_downlines(ex))
     return list(set(result))
@@ -284,14 +294,22 @@ def build_self_records(exec_name, date_from, date_to):
 
 
 def build_group_records(exec_name, date_from, date_to):
-    """Own bookings + difference commission from all direct downlines."""
+    """Own bookings + difference commission from ALL downlines (recursive)."""
     all_rec = fetch_records(exec_name, date_from, date_to)  # own
 
     exec_pct, _ = get_exec_slab(exec_name)
+    exec_name_lower = str(exec_name).strip().lower()
+
+    # Find ALL executives whose senior_name == selected exec (direct downlines only for diff)
     for ex, det in exec_data_root.items():
-        if not isinstance(det, dict): continue
-        if str(det.get('senior_name', '')).strip().lower() != str(exec_name).strip().lower():
+        if not isinstance(det, dict):
             continue
+        senior_val = str(det.get('senior_name', '')).strip().lower()
+        if senior_val != exec_name_lower:
+            continue
+        if is_top_level_senior(senior_val):
+            continue
+
         dl_pct, _ = get_exec_slab(ex)
         if exec_pct > dl_pct:
             diff_recs = fetch_records(ex, date_from, date_to,
@@ -299,6 +317,7 @@ def build_group_records(exec_name, date_from, date_to):
             for r in diff_recs:
                 r['Customer'] = f"{r['Customer']} [{ex}]"
             all_rec.extend(diff_recs)
+
     return all_rec
 
 
@@ -566,5 +585,4 @@ if group_clicked:
     with st.spinner("Data collect ho raha hai..."):
         records = build_group_records(selected_exec, date_from, date_to)
     show_statement(records, selected_exec, date_from, date_to, "GROUP")
-
 
