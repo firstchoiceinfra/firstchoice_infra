@@ -5,31 +5,65 @@ import database
 
 st.set_page_config(layout="wide")
 
-# ... (Security और Database वाला हिस्सा वही रखें जो मैंने पहले दिया था) ...
+# डेटाबेस लोड करें
+database.init_db()
+db_data = st.session_state.db_projects
+exec_data = db_data.get('executives', {})
 
-if st.button("🚀 Generate PDF-Format Statement"):
-    # ... (डेटा प्रोसेसिंग वाला हिस्सा वही रखें) ...
+# टीम चेन ढूँढने का फंक्शन
+def get_all_downlines(manager_name):
+    manager_clean = str(manager_name).strip().lower()
+    downlines = []
+    for ex_name, details in exec_data.items():
+        if isinstance(details, dict) and str(details.get('senior_name', '')).strip().lower() == manager_clean:
+            downlines.append(ex_name.lower())
+            downlines.extend(get_all_downlines(ex_name)) 
+    return list(set(downlines))
+
+st.title("📄 Executive Commission Statement")
+
+# सिलेक्शन पैनल
+col1, col2 = st.columns(2)
+search_exec = col1.selectbox("👤 पार्टनर चुनें", options=sorted(list(exec_data.keys())))
+scope = col2.radio("📑 स्कोप", ["Self", "Group"], horizontal=True)
+start_d = st.date_input("📅 Start Date", datetime.date(2025, 6, 20))
+end_d = st.date_input("📅 End Date", datetime.date(2026, 6, 24))
+
+if st.button("🚀 Generate Statement"):
+    valid_team = [search_exec.lower()] + (get_all_downlines(search_exec) if scope == "Group" else [])
+    rows = []
+    
+    for p_name, p_info in db_data.items():
+        if isinstance(p_info, dict) and 'plots' in p_info:
+            for pid, info in p_info['plots'].items() if isinstance(p_info['plots'], dict) else enumerate(p_info['plots']):
+                if isinstance(info, dict) and str(info.get('status', '')).lower() == 'booked':
+                    if str(info.get('executive_name', '')).strip().lower() in valid_team:
+                        
+                        all_txns = [{'date': info.get('booking_date', '2000-01-01'), 'amount': info.get('token_amount', 0)}]
+                        all_txns.extend(info.get('partial_payments', []))
+                        
+                        for tx in all_txns:
+                            t_date = datetime.datetime.strptime(str(tx.get('date', '2000-01-01')), "%Y-%m-%d").date()
+                            if start_d <= t_date <= end_d:
+                                amt = float(tx.get('amount', 0))
+                                if amt > 0:
+                                    gross = amt * 0.23
+                                    disc = gross * 0.16
+                                    net = gross - disc
+                                    tds = net * 0.02
+                                    rows.append({
+                                        "Mauja": p_info.get('mauza', 'Mohadi'), "Project": p_name, "Plot": pid,
+                                        "Customer": info.get('customer_name', 'N/A'), "Received": amt,
+                                        "Date": t_date, "Gross": gross, "Discount": disc,
+                                        "Net Comm": net, "TDS": tds, "In Hand": net - tds
+                                    })
     
     if rows:
         df = pd.DataFrame(rows)
         st.dataframe(df, use_container_width=True)
-        
-        # 🖨️ यह वाला कोड ब्राउज़र की हर पाबंदी को तोड़ देगा
-        st.markdown("""
-        <script>
-        function openPrintWindow() {
-            var printWin = window.open('', '_blank', 'width=800,height=600');
-            printWin.document.write('<html><head><title>Statement</title></head><body>');
-            printWin.document.write('<h1>Commission Statement</h1>');
-            printWin.document.write(document.querySelector('[data-testid="stDataFrame"]').outerHTML);
-            printWin.document.write('</body></html>');
-            printWin.document.close();
-            printWin.focus();
-            setTimeout(function(){ printWin.print(); }, 500);
-        }
-        </script>
-        <button onclick="openPrintWindow()" style="padding:15px 30px; font-size:16px; background:#1e3a8a; color:white; border:none; border-radius:8px; cursor:pointer;">
-            🖨️ Click to Print Statement
-        </button>
-        """, unsafe_allow_html=True)
+        # सुरक्षित डाउनलोड बटन
+        st.download_button("📥 Download Statement (Printable)", df.to_csv(index=False).encode('utf-8-sig'), "Statement.csv", "text/csv", use_container_width=True)
+        st.info("💡 फाइल डाउनलोड करें, एक्सेल में खोलें और Ctrl+P दबाएं। यह सबसे साफ़ और पक्का प्रिंट तरीका है।")
+    else:
+        st.error("❌ कोई डेटा नहीं मिला।")
 
