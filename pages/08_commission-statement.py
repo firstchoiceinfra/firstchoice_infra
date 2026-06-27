@@ -171,4 +171,3 @@ elif st.session_state.page == 'report':
                     body {{ font-family: Arial, sans-serif; color: #000; padding: 15px; font-size: 13px; }}
                     .header-section {{ text-align: center; margin-bottom: 25px; }}
                     .header-section h1 {{ margin
-
