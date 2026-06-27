@@ -24,25 +24,21 @@ def get_all_downlines(manager_name):
 
 st.title("📄 Executive Commission Statement")
 
-# सिलेक्शन पैनल
-c1, c2 = st.columns(2)
-search_exec = c1.selectbox("👤 पार्टनर चुनें", options=sorted(list(exec_data.keys())))
-scope = c2.radio("📑 स्कोप", ["Self", "Group"], horizontal=True)
-
+col1, col2 = st.columns(2)
+search_exec = col1.selectbox("👤 पार्टनर चुनें", options=sorted(list(exec_data.keys())))
+scope = col2.radio("📑 स्कोप", ["Self", "Group"], horizontal=True)
 start_d = st.date_input("📅 Start Date", datetime.date(2025, 6, 20))
 end_d = st.date_input("📅 End Date", datetime.date(2026, 6, 24))
 
-if st.button("🚀 Generate PDF-Style Statement"):
+if st.button("🚀 Generate Statement"):
     valid_team = [search_exec.lower()] + (get_all_downlines(search_exec) if scope == "Group" else [])
-    
     rows = []
+    
     for p_name, p_info in db_data.items():
         if isinstance(p_info, dict) and 'plots' in p_info:
             for pid, info in p_info['plots'].items() if isinstance(p_info['plots'], dict) else enumerate(p_info['plots']):
                 if isinstance(info, dict) and str(info.get('status', '')).lower() == 'booked':
                     if str(info.get('executive_name', '')).strip().lower() in valid_team:
-                        
-                        # टोकन और EMI ट्रांजेक्शन इकट्ठा करना
                         all_txns = [{'date': info.get('booking_date', '2000-01-01'), 'amount': info.get('token_amount', 0)}]
                         all_txns.extend(info.get('partial_payments', []))
                         
@@ -51,29 +47,21 @@ if st.button("🚀 Generate PDF-Style Statement"):
                             if start_d <= t_date <= end_d:
                                 amt = float(tx.get('amount', 0))
                                 if amt > 0:
-                                    # PDF फॉर्मेट वाली गणना
                                     gross = amt * 0.23
                                     disc = gross * 0.16
-                                    net_comm = gross - disc
-                                    tds = net_comm * 0.02
-                                    
+                                    net = gross - disc
+                                    tds = net * 0.02
                                     rows.append({
                                         "Mauja": p_info.get('mauza', 'Mohadi'), "Project": p_name, "Plot": pid,
                                         "Customer": info.get('customer_name', 'N/A'), "Received": amt,
                                         "Date": t_date, "Gross": gross, "Discount": disc,
-                                        "Net Comm": net_comm, "TDS": tds, "In Hand": net_comm - tds
+                                        "Net Comm": net, "TDS": tds, "In Hand": net - tds
                                     })
     
     if rows:
         df = pd.DataFrame(rows)
         st.dataframe(df, use_container_width=True)
-        
-        # 🖨️ पक्का प्रिंट बटन (HTML/JS का उपयोग करके)
-        st.markdown("""
-        <button onclick="window.print()" style="padding: 10px 20px; background-color: #1e3a8a; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
-            🖨️ Print Statement
-        </button>
-        """, unsafe_allow_html=True)
+        st.download_button("📥 Download Statement (CSV)", df.to_csv(index=False).encode('utf-8-sig'), "Statement.csv", "text/csv", use_container_width=True)
     else:
-        st.error("❌ इस तारीख के बीच कोई ट्रांजैक्शन नहीं मिला।")
+        st.error("❌ कोई डेटा नहीं मिला।")
 
