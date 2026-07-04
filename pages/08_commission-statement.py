@@ -20,7 +20,7 @@ import streamlit.components.v1 as components
 st.set_page_config(layout="wide", page_title="FC Infra - Commission Statement")
 
 # ---------------------------------------------------------------
-# 2. SECURITY — SIRF ADMIN KO ACCESS
+# 2. SECURITY — ADMIN ONLY
 # ---------------------------------------------------------------
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.warning("🔒 Please login on the Main Page portal first.")
@@ -28,30 +28,30 @@ if 'logged_in' not in st.session_state or not st.session_state.logged_in:
 
 if st.session_state.get('user_role', 'executive') != 'admin':
     st.error("🚨 Access Denied! Yeh page sirf Admin ke liye hai.")
-    st.info("💡 Commission Statement dekhne ke liye Admin se contact karo.")
+    st.info("💡 Commission statement dekhne ke liye Admin se contact karo.")
     st.stop()
 
 # ---------------------------------------------------------------
 # 3. DATABASE
 # ---------------------------------------------------------------
 database.init_db()
-db_data = st.session_state.db_projects
+db_data        = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
 # ---------------------------------------------------------------
 # 4. THEME
 # ---------------------------------------------------------------
-bg_url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
+bg_url  = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
 p_color = "#1e3a8a"
 s_color = "#3b82f6"
-c_bg = "rgba(255,255,255,0.92)"
+c_bg    = "rgba(255,255,255,0.92)"
 
 if '_app_settings' in db_data:
-    gs = db_data['_app_settings']
-    bg_url = gs.get('bg_url', bg_url)
+    gs      = db_data['_app_settings']
+    bg_url  = gs.get('bg_url', bg_url)
     p_color = gs.get('primary_color', p_color)
     s_color = gs.get('secondary_color', s_color)
-    c_bg = gs.get('card_bg', c_bg)
+    c_bg    = gs.get('card_bg', c_bg)
 
 st.markdown(f"""
 <style>
@@ -87,10 +87,9 @@ h1, h2, h3, h4 {{ color: {p_color} !important; font-weight: 900; }}
 # ---------------------------------------------------------------
 st.markdown("<h1 style='text-align:center;'>💼 FC Infra — Commission Statement</h1>",
             unsafe_allow_html=True)
-st.markdown(
-    "<p style='text-align:center;color:#475569;font-size:15px;'>"
-    "🔐 Admin Only Panel — Partner commission generate karo</p>",
-    unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;color:#475569;font-size:15px;'>"
+            "🔐 Admin Only — Partner commission generate karo</p>",
+            unsafe_allow_html=True)
 st.divider()
 
 # ---------------------------------------------------------------
@@ -138,11 +137,11 @@ def get_direct_downlines(manager_name):
     return result
 
 
-def get_all_downlines(manager_name):
+def get_all_downlines_list(manager_name):
     result = []
     for dl in get_direct_downlines(manager_name):
         result.append(dl)
-        result.extend(get_all_downlines(dl))
+        result.extend(get_all_downlines_list(dl))
     return list(set(result))
 
 
@@ -156,44 +155,61 @@ def get_project_mauza(project_name):
     return p.get('mauza', '')
 
 
-def get_company_rate(plot_info):
-    return sf(plot_info.get('rate_per_sqft', 0.0))
+def get_discount_pct(plot_info):
+    """
+    Company rate  = rate_per_sqft (original company rate)
+    Actual rate   = actual sold rate per sqft
+    Discount %    = (company_rate - actual_rate) / company_rate * 100
+    """
+    comp_rate = sf(plot_info.get('rate_per_sqft', 0.0))
 
-
-def get_actual_rate(plot_info):
     plot_area = sf(plot_info.get('plot_area', 0.0))
-    sell_rate = sf(plot_info.get('selling_rate', 0.0))
-    rate_sqft = sf(plot_info.get('rate_per_sqft', 0.0))
-    if sell_rate > 100000:
-        return (sell_rate / plot_area) if plot_area > 0 else rate_sqft
+    sell_val  = sf(plot_info.get('selling_rate', 0.0))
+
+    if sell_val > 100000:
+        actual_rate = sell_val / plot_area if plot_area > 0 else comp_rate
     else:
-        return sell_rate
+        actual_rate = sell_val
 
-
-def compute_discount_pct(company_rate, actual_rate):
-    if company_rate <= 0 or actual_rate >= company_rate:
+    if comp_rate <= 0 or actual_rate >= comp_rate:
         return 0.0
-    return ((company_rate - actual_rate) / company_rate) * 100.0
+    return ((comp_rate - actual_rate) / comp_rate) * 100.0
 
 
-def compute_row(received, exec_pct, rs_fixed, comm_type, discount_pct):
-    if received <= 0:
-        return 0.0, 0.0, 0.0, 0.0, 0.0
+def compute_row(received, comm_pct, rs_fixed, comm_type, disc_pct):
+    """
+    % project:
+      Gross    = received × comm_pct / 100
+      Disc Amt = Gross × disc_pct / 100
+      Net      = Gross - Disc Amt
+      TDS      = Net × 2%
+      In Hand  = Net - TDS
+
+    Rs project:
+      Gross    = rs_fixed
+      Disc Amt = 0
+      Net      = Gross
+      TDS      = Net × 2%
+      In Hand  = Net - TDS
+    """
+    if received <= 0: return 0.0, 0.0, 0.0, 0.0, 0.0
     is_pct = '%' in str(comm_type) or 'percentage' in str(comm_type).lower()
+
     if is_pct:
-        gross = received * exec_pct / 100.0
-        discount_amt = gross * discount_pct / 100.0
-        net_comm = max(0.0, gross - discount_amt)
+        gross    = received * comm_pct / 100.0
+        disc_amt = gross * disc_pct / 100.0
+        net      = max(0.0, gross - disc_amt)
     else:
-        gross = rs_fixed
-        discount_amt = 0.0
-        net_comm = gross
-    tds = net_comm * 0.02
-    in_hand = net_comm - tds
-    return gross, discount_amt, net_comm, tds, in_hand
+        gross    = rs_fixed
+        disc_amt = 0.0
+        net      = gross
+
+    tds     = net * 0.02
+    in_hand = net - tds
+    return gross, disc_amt, net, tds, in_hand
 
 
-def get_payments(plot_info, date_from, date_to):
+def get_payments_in_range(plot_info, date_from, date_to):
     payments = []
     tok = sf(plot_info.get('token_amount', 0.0))
     tok_date = plot_info.get('receipt_date', plot_info.get('booking_date', str(datetime.date.today())))
@@ -202,6 +218,7 @@ def get_payments(plot_info, date_from, date_to):
         except: d = datetime.date.today()
         if date_from <= d <= date_to:
             payments.append({'date': str(d), 'amount': tok})
+
     for p in plot_info.get('partial_payments', []):
         amt = sf(p.get('amount', 0.0))
         if amt <= 0: continue
@@ -212,8 +229,8 @@ def get_payments(plot_info, date_from, date_to):
     return payments
 
 
-def fetch_exec_records(exec_name, date_from, date_to, override_pct=None):
-    """Fetch payment records for exec_name. override_pct for difference commission."""
+def fetch_records(exec_name, date_from, date_to, override_pct=None):
+    """Fetch all payment rows for exec_name's own bookings."""
     exec_pct, rs_fixed = get_exec_slab(exec_name)
     use_pct = override_pct if override_pct is not None else exec_pct
 
@@ -222,13 +239,13 @@ def fetch_exec_records(exec_name, date_from, date_to, override_pct=None):
                      if isinstance(d, dict) and ('plots' in d or 'total_plots' in d)]
 
     for p_name in project_names:
-        p_info = db_data[p_name]
+        p_info  = db_data[p_name]
         p_plots = p_info.get('plots', {})
         if isinstance(p_plots, list):
             p_plots = {str(i): p for i, p in enumerate(p_plots) if p is not None}
 
         comm_type = get_project_comm_type(p_name)
-        mauza = get_project_mauza(p_name)
+        mauza     = get_project_mauza(p_name)
 
         for plot_id, plot_info in p_plots.items():
             if not isinstance(plot_info, dict): continue
@@ -237,89 +254,95 @@ def fetch_exec_records(exec_name, date_from, date_to, override_pct=None):
             if str(plot_info.get('executive_name', '')).strip().lower() != str(exec_name).strip().lower():
                 continue
 
-            customer = str(plot_info.get('customer_name', 'N/A')).title()
+            customer   = str(plot_info.get('customer_name', 'N/A')).title()
             booked_str = plot_info.get('booked_plots_str', plot_id)
-            comp_rate = get_company_rate(plot_info)
-            actual_rate = get_actual_rate(plot_info)
-            disc_pct = compute_discount_pct(comp_rate, actual_rate)
+            disc_pct   = get_discount_pct(plot_info)
+            payments   = get_payments_in_range(plot_info, date_from, date_to)
 
-            for pmt in get_payments(plot_info, date_from, date_to):
-                gross, disc_amt, net_comm, tds, in_hand = compute_row(
+            for pmt in payments:
+                gross, disc_amt, net, tds, in_hand = compute_row(
                     pmt['amount'], use_pct, rs_fixed, comm_type, disc_pct)
                 if gross <= 0: continue
+
                 records.append({
-                    'project' : p_name,
-                    'plot' : booked_str,
-                    'mauza' : mauza,
+                    'project'  : p_name,
+                    'plot'     : booked_str,
+                    'mauza'    : mauza,
                     'customer' : customer,
                     'received' : pmt['amount'],
-                    'date' : pmt['date'],
-                    'gross' : gross,
+                    'date'     : pmt['date'],
+                    'gross'    : gross,
                     'disc_pct' : disc_pct,
                     'disc_amt' : disc_amt,
-                    'net_comm' : net_comm,
-                    'tds' : tds,
-                    'in_hand' : in_hand,
+                    'net_comm' : net,
+                    'tds'      : tds,
+                    'in_hand'  : in_hand,
                     'comm_pct' : use_pct,
-                    'via' : '',
+                    'via'      : '',
                 })
     return records
 
 
 # ---------------------------------------------------------------
-# 7. BUILD STATEMENT LOGIC
+# 7. COMMISSION CHAIN LOGIC
 # ---------------------------------------------------------------
 def build_self(exec_name, date_from, date_to):
-    """Sirf apni khud ki bookings — full slab."""
-    return fetch_exec_records(exec_name, date_from, date_to)
+    """Only own bookings at full slab."""
+    return fetch_records(exec_name, date_from, date_to)
 
 
 def build_group(exec_name, date_from, date_to):
     """
-    Difference commission from downlines chain.
+    Chain rule:
+    A=23%, B=18%, C=15%, D=8%
 
-    Chain: A(23%) > B(18%) > C(15%) > D(8%)
+    A ka GROUP statement:
+    - B ki bookings pe: A gets (23-18) = 5%
+    - C ki bookings pe: A gets (23-18) = 5%  ← A-B diff, NOT A-C
+    - D ki bookings pe: A gets (23-18) = 5%  ← A-B diff, NOT A-D
 
-    A ka GROUP:
-      B ki bookings → A gets (23-18)=5%
-      C ki bookings → A gets (23-18)=5% [same diff, not 23-15]
-      D ki bookings → A gets (23-18)=5% [same diff, not 23-8]
+    B ka GROUP statement:
+    - C ki bookings pe: B gets (18-15) = 3%
+    - D ki bookings pe: B gets (18-15) = 3%
 
-    B ka GROUP:
-      C ki bookings → B gets (18-15)=3%
-      D ki bookings → B gets (18-15)=3%
-
-    Rule: Senior gets (his_pct - direct_downline_pct) on ALL bookings
-          under that downline's ENTIRE chain.
+    Rule: Senior gets (his_pct - his_DIRECT_downline_pct)
+          on ALL bookings in that downline's entire chain.
     """
     records = []
     exec_pct, _ = get_exec_slab(exec_name)
 
-    def collect_chain(senior_name, senior_pct):
+    def collect_chain_diff(senior_name, senior_pct):
         for dl in get_direct_downlines(senior_name):
             dl_pct, _ = get_exec_slab(dl)
-            diff_pct = senior_pct - dl_pct
+            diff_pct  = senior_pct - dl_pct
+
             if diff_pct > 0:
                 # dl ki apni bookings pe diff
-                for r in fetch_exec_records(dl, date_from, date_to, override_pct=diff_pct):
+                dl_recs = fetch_records(dl, date_from, date_to, override_pct=diff_pct)
+                for r in dl_recs:
+                    r['via']      = dl
                     r['customer'] = f"{r['customer']} [{dl}]"
-                    records.append(r)
-                # dl ke saare sub-downlines pe bhi same diff_pct
-                def get_sub_all(node):
-                    for sub in get_direct_downlines(node):
-                        for r in fetch_exec_records(sub, date_from, date_to, override_pct=diff_pct):
-                            r['customer'] = f"{r['customer']} [{sub}]"
-                            records.append(r)
-                        get_sub_all(sub)
-                get_sub_all(dl)
+                records.extend(dl_recs)
 
-    collect_chain(exec_name, exec_pct)
+                # dl ke saare sub-downlines pe bhi same diff_pct (not changing)
+                def get_sub_chain(node, diff):
+                    for sub in get_direct_downlines(node):
+                        sub_recs = fetch_records(sub, date_from, date_to, override_pct=diff)
+                        for r in sub_recs:
+                            r['via']      = sub
+                            r['customer'] = f"{r['customer']} [{sub}]"
+                        records.extend(sub_recs)
+                        get_sub_chain(sub, diff)  # same diff goes deeper
+
+                get_sub_chain(dl, diff_pct)
+
+    collect_chain_diff(exec_name, exec_pct)
     return records
 
 
 def build_all(exec_name, date_from, date_to):
-    """Self + Group dono."""
-    self_recs = build_self(exec_name, date_from, date_to)
+    """Self + Group combined."""
+    self_recs  = build_self(exec_name, date_from, date_to)
     group_recs = build_group(exec_name, date_from, date_to)
     return self_recs + group_recs
 
@@ -329,19 +352,18 @@ def build_all(exec_name, date_from, date_to):
 # ---------------------------------------------------------------
 def generate_pdf(exec_name, records, date_from, date_to, mode_label):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4,
+    doc    = SimpleDocTemplate(buffer, pagesize=A4,
                rightMargin=12*mm, leftMargin=12*mm,
                topMargin=10*mm, bottomMargin=10*mm)
-
-    NAVY = colors.HexColor("#1e3a8a")
+    BLACK  = colors.black
+    NAVY   = colors.HexColor("#1e3a8a")
     LTBLUE = colors.HexColor("#e0f2fe")
-    GREY = colors.HexColor("#f8fafc")
-    GREEN = colors.HexColor("#d1fae5")
-    DKGREEN = colors.HexColor("#065f46")
-    BLACK = colors.black
-    story = []
+    GREY   = colors.HexColor("#f8fafc")
+    GREEN  = colors.HexColor("#d1fae5")
+    DKGRN  = colors.HexColor("#065f46")
+    story  = []
 
-    # Company Header
+    # Header
     story.append(Paragraph("<b>FIRSTCHOICE INFRA</b>",
         ParagraphStyle('TT', fontSize=20, alignment=TA_CENTER,
                        fontName='Helvetica-Bold', spaceAfter=3)))
@@ -356,107 +378,111 @@ def generate_pdf(exec_name, records, date_from, date_to, mode_label):
                        fontName='Helvetica-Bold', spaceAfter=6)))
     story.append(HRFlowable(width="100%", thickness=0.5, color=NAVY, spaceAfter=6))
 
-    # Partner (left) + Period (right)
+    # Partner + Period
     exec_info = get_exec_info(exec_name)
     senior_nm = exec_info.get('senior_name', 'Direct')
     pct, rs_d = get_exec_slab(exec_name)
-    slab_str = (f"{pct}% (Disc: Rs {rs_d:,.0f})" if pct > 0 and rs_d > 0
+    slab_str  = (f"{pct}% (Disc: Rs {rs_d:,.0f})" if pct > 0 and rs_d > 0
                  else f"{pct}%" if pct > 0 else f"Rs {rs_d:,.0f} Fixed")
 
-    hdr_tbl = Table([[
-        Paragraph(f"<b>Partner:</b> {exec_name} &nbsp;&nbsp; <b>Senior:</b> {senior_nm} &nbsp;&nbsp; <b>Slab:</b> {slab_str}",
+    hdr = Table([[
+        Paragraph(f"<b>Partner:</b> {exec_name}  |  <b>Senior:</b> {senior_nm}  |  <b>Slab:</b> {slab_str}",
                   ParagraphStyle('PL', fontSize=9)),
-        Paragraph(f"<b>Period:</b> {date_from} to {date_to}<br/><b>Generated:</b> {datetime.date.today()}",
+        Paragraph(f"<b>Period:</b> {date_from}  to  {date_to}",
                   ParagraphStyle('PR', fontSize=9, alignment=TA_RIGHT)),
-    ]], colWidths=[105*mm, 65*mm])
-    hdr_tbl.setStyle(TableStyle([('BOTTOMPADDING',(0,0),(-1,-1),4)]))
-    story.append(hdr_tbl)
-    story.append(Spacer(1, 6))
+    ]], colWidths=[110*mm, 60*mm])
+    hdr.setStyle(TableStyle([('BOTTOMPADDING',(0,0),(-1,-1),4)]))
+    story.append(hdr)
+    story.append(Spacer(1, 5))
 
-    # Main Table
-    headers = ["Sr\nNo", "Project", "Plot\nNo", "Mauza", "Client Name",
+    # Main table
+    headers = ["Sr\nNo", "Project\nName", "Plot\nNo", "Mauza", "Client Name",
                "Received\nAmt (Rs)", "Received\nDate",
                "Gross\nComm", "Discount\nAmt", "Net\nComm", "TDS\n2%", "In\nHand"]
     cw = [8*mm, 28*mm, 10*mm, 16*mm, 30*mm,
-          18*mm, 17*mm, 16*mm, 16*mm, 15*mm, 11*mm, 15*mm]
+          18*mm, 18*mm, 16*mm, 16*mm, 16*mm, 12*mm, 16*mm]
 
     tdata = [headers]
-    tot = {k: 0.0 for k in ['received','gross','disc_amt','net_comm','tds','in_hand']}
+    tot   = {k: 0.0 for k in ['received','gross','disc_amt','net_comm','tds','in_hand']}
 
     for idx, r in enumerate(records, 1):
         tdata.append([
             str(idx),
-            r['project'], str(r['plot']), r['mauza'], r['customer'],
-            f"{r['received']:,.2f}", r['date'],
-            f"{r['gross']:,.2f}", f"{r['disc_amt']:,.2f}",
-            f"{r['net_comm']:,.2f}", f"{r['tds']:,.2f}", f"{r['in_hand']:,.2f}",
+            r['project'],
+            str(r['plot']),
+            r['mauza'],
+            r['customer'],
+            f"{r['received']:,.2f}",
+            r['date'],
+            f"{r['gross']:,.2f}",
+            f"{r['disc_amt']:,.2f}",
+            f"{r['net_comm']:,.2f}",
+            f"{r['tds']:,.2f}",
+            f"{r['in_hand']:,.2f}",
         ])
         for k in tot: tot[k] += r[k]
 
     tdata.append(["TOTAL","","","","",
         f"{tot['received']:,.2f}","",
         f"{tot['gross']:,.2f}", f"{tot['disc_amt']:,.2f}",
-        f"{tot['net_comm']:,.2f}", f"{tot['tds']:,.2f}", f"{tot['in_hand']:,.2f}",
-    ])
+        f"{tot['net_comm']:,.2f}", f"{tot['tds']:,.2f}", f"{tot['in_hand']:,.2f}"])
 
     tbl = Table(tdata, colWidths=cw, repeatRows=1)
     tbl.setStyle(TableStyle([
-        ('BACKGROUND', (0,0),(-1,0), NAVY),
-        ('TEXTCOLOR', (0,0),(-1,0), colors.white),
-        ('FONTNAME', (0,0),(-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0),(-1,0), 7),
-        ('ALIGN', (0,0),(-1,0), 'CENTER'),
-        ('FONTNAME', (0,1),(-1,-2), 'Helvetica'),
-        ('FONTSIZE', (0,1),(-1,-2), 7),
-        ('ALIGN', (0,1),(-1,-2), 'CENTER'),
-        ('ALIGN', (4,1),(4,-2), 'LEFT'),
-        ('ALIGN', (1,1),(1,-2), 'LEFT'),
+        ('BACKGROUND',    (0,0),(-1,0),  NAVY),
+        ('TEXTCOLOR',     (0,0),(-1,0),  colors.white),
+        ('FONTNAME',      (0,0),(-1,0),  'Helvetica-Bold'),
+        ('FONTSIZE',      (0,0),(-1,0),  7),
+        ('ALIGN',         (0,0),(-1,0),  'CENTER'),
+        ('FONTNAME',      (0,1),(-1,-2), 'Helvetica'),
+        ('FONTSIZE',      (0,1),(-1,-2), 7),
+        ('ALIGN',         (0,1),(-1,-2), 'CENTER'),
+        ('ALIGN',         (1,1),(1,-2),  'LEFT'),
+        ('ALIGN',         (4,1),(4,-2),  'LEFT'),
         ('ROWBACKGROUNDS',(0,1),(-1,-2), [colors.white, GREY]),
-        ('BACKGROUND', (0,-1),(-1,-1),NAVY),
-        ('TEXTCOLOR', (0,-1),(-1,-1),colors.white),
-        ('FONTNAME', (0,-1),(-1,-1),'Helvetica-Bold'),
-        ('FONTSIZE', (0,-1),(-1,-1),7),
-        ('BACKGROUND', (-1,1),(-1,-2),colors.HexColor("#fef3c7")),
-        ('TEXTCOLOR', (-1,1),(-1,-2),colors.HexColor("#92400e")),
-        ('FONTNAME', (-1,1),(-1,-2),'Helvetica-Bold'),
-        ('BOX', (0,0),(-1,-1), 0.8, BLACK),
-        ('INNERGRID', (0,0),(-1,-1), 0.3, colors.HexColor("#cbd5e1")),
-        ('TOPPADDING', (0,0),(-1,-1), 3),
+        ('BACKGROUND',    (0,-1),(-1,-1),NAVY),
+        ('TEXTCOLOR',     (0,-1),(-1,-1),colors.white),
+        ('FONTNAME',      (0,-1),(-1,-1),'Helvetica-Bold'),
+        ('FONTSIZE',      (0,-1),(-1,-1),7),
+        ('BACKGROUND',    (-1,1),(-1,-2),colors.HexColor("#fef3c7")),
+        ('TEXTCOLOR',     (-1,1),(-1,-2),colors.HexColor("#92400e")),
+        ('FONTNAME',      (-1,1),(-1,-2),'Helvetica-Bold'),
+        ('BOX',           (0,0),(-1,-1), 0.8, BLACK),
+        ('INNERGRID',     (0,0),(-1,-1), 0.3, colors.HexColor("#cbd5e1")),
+        ('TOPPADDING',    (0,0),(-1,-1), 3),
         ('BOTTOMPADDING', (0,0),(-1,-1), 3),
-        ('LEFTPADDING', (0,0),(-1,-1), 2),
-        ('RIGHTPADDING', (0,0),(-1,-1), 2),
-        ('VALIGN', (0,0),(-1,-1), 'MIDDLE'),
+        ('LEFTPADDING',   (0,0),(-1,-1), 2),
+        ('VALIGN',        (0,0),(-1,-1), 'MIDDLE'),
     ]))
     story.append(tbl)
     story.append(Spacer(1, 8))
 
-    # Summary Bifurcation
+    # Summary bifurcation
     story.append(Paragraph("<b>Summary Bifurcation</b>",
         ParagraphStyle('SB', fontSize=10, fontName='Helvetica-Bold',
                        textColor=NAVY, spaceAfter=4)))
     stbl = Table([
-        ["Total Received","Gross Commission","Total Discount","Net Commission","Total TDS","IN HAND"],
+        ["Total Received","Gross Comm","Total Discount","Net Commission","Total TDS","IN HAND"],
         [f"Rs {tot['received']:,.2f}", f"Rs {tot['gross']:,.2f}",
          f"Rs {tot['disc_amt']:,.2f}", f"Rs {tot['net_comm']:,.2f}",
-         f"Rs {tot['tds']:,.2f}", f"Rs {tot['in_hand']:,.2f}"],
-    ], colWidths=[30*mm, 30*mm, 28*mm, 30*mm, 24*mm, 28*mm])
+         f"Rs {tot['tds']:,.2f}",      f"Rs {tot['in_hand']:,.2f}"],
+    ], colWidths=[30*mm, 28*mm, 28*mm, 30*mm, 24*mm, 30*mm])
     stbl.setStyle(TableStyle([
-        ('BACKGROUND', (0,0),(-1,0), NAVY),
-        ('TEXTCOLOR', (0,0),(-1,0), colors.white),
-        ('FONTNAME', (0,0),(-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0),(-1,-1), 8),
-        ('ALIGN', (0,0),(-1,-1), 'CENTER'),
-        ('BACKGROUND', (0,1),(-2,1), LTBLUE),
-        ('BACKGROUND', (-1,1),(-1,1), GREEN),
-        ('TEXTCOLOR', (-1,1),(-1,1), DKGREEN),
-        ('FONTNAME', (0,1),(-1,1), 'Helvetica-Bold'),
-        ('BOX', (0,0),(-1,-1), 1, NAVY),
-        ('INNERGRID', (0,0),(-1,-1), 0.4, colors.HexColor("#93c5fd")),
-        ('TOPPADDING', (0,0),(-1,-1), 6),
-        ('BOTTOMPADDING', (0,0),(-1,-1), 6),
+        ('BACKGROUND',   (0,0),(-1,0),  NAVY),
+        ('TEXTCOLOR',    (0,0),(-1,0),  colors.white),
+        ('FONTNAME',     (0,0),(-1,0),  'Helvetica-Bold'),
+        ('FONTSIZE',     (0,0),(-1,-1), 8),
+        ('ALIGN',        (0,0),(-1,-1), 'CENTER'),
+        ('BACKGROUND',   (0,1),(-2,1),  LTBLUE),
+        ('BACKGROUND',   (-1,1),(-1,1), GREEN),
+        ('TEXTCOLOR',    (-1,1),(-1,1), DKGRN),
+        ('FONTNAME',     (0,1),(-1,1),  'Helvetica-Bold'),
+        ('BOX',          (0,0),(-1,-1), 1,   NAVY),
+        ('INNERGRID',    (0,0),(-1,-1), 0.4, colors.HexColor("#93c5fd")),
+        ('TOPPADDING',   (0,0),(-1,-1), 6),
+        ('BOTTOMPADDING',(0,0),(-1,-1), 6),
     ]))
     story.append(stbl)
-
     story.append(Spacer(1, 10))
     story.append(HRFlowable(width="100%", thickness=0.5, color=NAVY, spaceAfter=4))
     story.append(Paragraph(
@@ -482,11 +508,11 @@ if not exec_names_all:
 selected_exec = st.selectbox("Partner / Executive:", exec_names_all)
 
 if selected_exec:
-    pct, rs_d = get_exec_slab(selected_exec)
-    senior = get_exec_senior(selected_exec)
-    downlines = get_all_downlines(selected_exec)
+    pct, rs_d  = get_exec_slab(selected_exec)
+    senior     = get_exec_senior(selected_exec)
+    downlines  = get_all_downlines_list(selected_exec)
     c1, c2, c3 = st.columns(3)
-    slab_info = (f"{pct}% (Disc ₹{rs_d:,.0f})" if rs_d > 0 and pct > 0
+    slab_info  = (f"{pct}% (Disc ₹{rs_d:,.0f})" if rs_d > 0 and pct > 0
                   else f"{pct}%" if pct > 0 else f"₹{rs_d:,.0f} Fixed")
     c1.info(f"**Slab:** {slab_info}")
     c2.info(f"**Senior:** {senior if senior else 'Direct (Company)'}")
@@ -495,15 +521,15 @@ if selected_exec:
 st.markdown("### 📅 Step 2 — Period Select Karo")
 col1, col2 = st.columns(2)
 date_from = col1.date_input("From Date:", datetime.date(datetime.date.today().year, 1, 1))
-date_to = col2.date_input("To Date:", datetime.date.today())
+date_to   = col2.date_input("To Date:",   datetime.date.today())
 
 st.divider()
 st.markdown("### 🖨️ Step 3 — Statement Type Choose Karo")
 
 b1, b2, b3 = st.columns(3)
-self_clicked = b1.button("👤 SELF\n(Sirf Apni Bookings)", use_container_width=True)
+self_clicked  = b1.button("👤 SELF\n(Sirf Apni Bookings)",       use_container_width=True)
 group_clicked = b2.button("👥 GROUP\n(Downline Difference Comm)", use_container_width=True)
-all_clicked = b3.button("🌐 ALL\n(Self + Group Dono)", use_container_width=True)
+all_clicked   = b3.button("🌐 ALL\n(Self + Group Dono)",          use_container_width=True)
 
 
 def show_statement(records, exec_name, date_from, date_to, mode_label):
@@ -526,12 +552,12 @@ def show_statement(records, exec_name, date_from, date_to, mode_label):
     st.dataframe(df_show, use_container_width=True)
 
     st.markdown("#### 📊 Summary")
-    m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Total Received", f"₹ {df['received'].sum():,.2f}")
-    m2.metric("Gross Comm", f"₹ {df['gross'].sum():,.2f}")
-    m3.metric("Discount", f"₹ {df['disc_amt'].sum():,.2f}")
-    m4.metric("Net Comm", f"₹ {df['net_comm'].sum():,.2f}")
-    m5.metric("💰 In Hand", f"₹ {df['in_hand'].sum():,.2f}")
+    m1,m2,m3,m4,m5 = st.columns(5)
+    m1.metric("Total Received",  f"₹ {df['received'].sum():,.2f}")
+    m2.metric("Gross Comm",      f"₹ {df['gross'].sum():,.2f}")
+    m3.metric("Discount",        f"₹ {df['disc_amt'].sum():,.2f}")
+    m4.metric("Net Comm",        f"₹ {df['net_comm'].sum():,.2f}")
+    m5.metric("💰 In Hand",       f"₹ {df['in_hand'].sum():,.2f}")
 
     st.divider()
 
@@ -539,7 +565,7 @@ def show_statement(records, exec_name, date_from, date_to, mode_label):
         pdf_bytes = generate_pdf(exec_name, records, str(date_from), str(date_to), mode_label)
 
     fname = f"Commission_{exec_name.replace(' ','_')}_{mode_label}_{date_from}_to_{date_to}.pdf"
-    b64 = base64.b64encode(pdf_bytes).decode()
+    b64   = base64.b64encode(pdf_bytes).decode()
 
     col_dl, col_pr = st.columns(2)
     with col_dl:
@@ -555,7 +581,8 @@ def show_statement(records, exec_name, date_from, date_to, mode_label):
             var b=atob("{b64}"),n=new Array(b.length);
             for(var i=0;i<b.length;i++) n[i]=b.charCodeAt(i);
             var blob=new Blob([new Uint8Array(n)],{{type:'application/pdf'}});
-            var win=window.open(URL.createObjectURL(blob),'_blank');
+            var url=URL.createObjectURL(blob);
+            var win=window.open(url,'_blank');
             win.addEventListener('load',function(){{win.print();}});
         }}
         </script>
@@ -564,9 +591,10 @@ def show_statement(records, exec_name, date_from, date_to, mode_label):
                    color:white;padding:12px;border-radius:8px;border:none;
                    font-weight:700;font-size:15px;cursor:pointer;">
             🖨️ Print PDF (A4)
-        </button>""", height=55)
+        </button>
+        """, height=55)
 
-    st.info("💡 Download karo ya Print karo — dono A4 size mein.")
+    st.info("💡 Download karo ya Print karo — dono A4 size mein honge.")
 
 
 if self_clicked:
