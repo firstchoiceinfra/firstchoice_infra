@@ -140,19 +140,16 @@ def get_all_downlines(manager_name):
     for ex_name, details in exec_data_root.items():
         if str(details.get('senior_name', '')).strip().lower() == manager_clean:
             downlines.append(ex_name)
-            downlines.extend(get_all_downlines(ex_name)) 
+            downlines.extend(get_all_downlines(ex_name))
     return list(set(downlines))
 
 def is_authorized(plot_exec_name):
     if str(user_role).lower() == 'admin': return True
     plot_exec_clean = str(plot_exec_name).strip().lower()
     curr_user_clean = str(current_user).strip().lower()
-   
     if plot_exec_clean == curr_user_clean: return True
-   
     all_downlines_lower = [d.lower() for d in get_all_downlines(curr_user_clean)]
     if plot_exec_clean in all_downlines_lower: return True
-   
     return False
 
 # =========================================================
@@ -216,7 +213,7 @@ if 'booking_popup' in st.session_state:
     proj = p_info['project']
     plt = p_info['plot']
     curr_stat = p_info['current_status']
-   
+
     p_khasra = project_data.get('khasra', 'N/A')
     p_ph = project_data.get('ph_no', 'N/A')
     p_mauza = project_data.get('mauza', 'N/A')
@@ -224,11 +221,11 @@ if 'booking_popup' in st.session_state:
     p_dist = project_data.get('district', 'N/A')
 
     st.markdown(f"### 📝 Project Matrix: {proj} | Secure Plot Node Assignment: P-{plt}")
-   
+
+    # ── HOLD STATUS ───────────────────────────────────────────
     if curr_stat == "Hold":
         st.warning(f"🚧 **Plot P-{plt} is currently on HOLD (Blocked from Sale / Not for Sale).**")
         st.info("This plot cannot be booked by executives.")
-       
         if st.session_state.get('user_role', 'executive') == 'admin':
             if st.button("✅ Unblock & Make Available (Admin)", use_container_width=True, type="primary"):
                 st.session_state.db_projects[proj]['plots'][plt] = {"status": "Available"}
@@ -238,7 +235,8 @@ if 'booking_popup' in st.session_state:
                     st.rerun()
         else:
             st.error("🔒 Only Admins have the authority to unblock this plot.")
-           
+
+    # ── AVAILABLE — BOOKING FORM ──────────────────────────────
     elif curr_stat == "Available":
         if st.session_state.get('user_role', 'executive') == 'admin':
             if st.button("⏸️ Block Unit / Put on Hold (Admin Action)", use_container_width=True):
@@ -250,16 +248,14 @@ if 'booking_popup' in st.session_state:
             st.write("---")
 
         st.info(f"📍 **Land Location Specifications:** Khasra No: {p_khasra} | PH No: {p_ph} | Mauza: {p_mauza} | Tahsil: {p_tahsil}")
-       
+
         st.subheader("🔗 Joint / Combo Booking (Optional)", divider="blue")
-        st.caption("💡 Select additional plots below if the client is buying multiple units. They will be merged into a single Master Ledger.")
-       
-        available_others = [p for p, d in st.session_state.db_projects[proj]['plots'].items() if d.get('status', 'Available') == 'Available' and p != plt]
+        st.caption("💡 Select additional plots below if the client is buying multiple units.")
+        available_others = [p for p, d in st.session_state.db_projects[proj]['plots'].items()
+                            if d.get('status', 'Available') == 'Available' and p != plt]
         combo_selections = st.multiselect(f"Select additional plots to combine with P-{plt}:", available_others)
-       
         all_booking_plots = [plt] + combo_selections
         joined_plots_str = ", ".join(all_booking_plots)
-       
         if combo_selections:
             st.success(f"🤝 **Joint Booking Active!** Master Ledger will be created for Plots: **P-{joined_plots_str}**")
 
@@ -268,95 +264,128 @@ if 'booking_popup' in st.session_state:
         c_name = col1.text_input("Client Full Name *")
         c_dob = col2.date_input("Date of Birth (DOB)", min_value=datetime.date(1950, 1, 1))
         c_phone = col3.text_input("Contact Mobile Number *")
-       
         c_address = st.text_area("Permanent Residential Address")
-       
         col4, col5 = st.columns(2)
         c_aadhaar = col4.text_input("Aadhaar National ID Number")
         c_pan = col5.text_input("PAN Card Alpha-Numeric ID")
-       
         col6, col7 = st.columns(2)
         n_name = col6.text_input("Nominee Attributed Full Name")
         n_age = col7.text_input("Nominee Declared Age")
-       
+
         st.subheader("📐 Layout Specifications & Commercial Valuation", divider="blue")
-        st.caption("*(💡 Type the Area and Rate below. The system will auto-calculate the total value. You can also edit the final deal value manually if needed.)*")
-       
-        col8, col9 = st.columns(2)
+        st.caption("*(💡 Company Rate = original rate, Selling Rate = actual deal rate. Difference = discount for commission calculation.)*")
+
+        col8, col9, col10 = st.columns(3)
         plot_area_input = col8.text_input("Total Plot Area (Sq.Ft) *", value="0")
         try:
             area_val = float(plot_area_input.strip())
         except:
             area_val = 0.0
-            
-        rate_sqft = col9.number_input("Negotiated Rate (per Sq.Ft) *", min_value=0.0, step=10.0)
-        
-        auto_calc_total = area_val * rate_sqft
-        
+
+        # ✅ NEW: Company Rate field
+        company_rate = col9.number_input("🏢 Company Rate (per Sq.Ft) *", min_value=0.0, step=10.0,
+                                          help="Original company rate per sqft — used for commission discount calculation")
+        selling_rate_sqft = col10.number_input("💸 Selling Rate (per Sq.Ft) *", min_value=0.0, step=10.0,
+                                                help="Actual rate at which plot was sold")
+
+        # Show discount if any
+        if company_rate > 0 and selling_rate_sqft > 0:
+            if selling_rate_sqft < company_rate:
+                disc_rs = company_rate - selling_rate_sqft
+                disc_pct = (disc_rs / company_rate) * 100
+                st.warning(f"⚠️ **Discount:** ₹{disc_rs:.0f}/Sq.Ft ({disc_pct:.2f}%) — Commission will be adjusted accordingly.")
+            elif selling_rate_sqft == company_rate:
+                st.success("✅ No discount — selling at company rate.")
+            else:
+                st.info("ℹ️ Selling above company rate.")
+
+        auto_calc_total = area_val * selling_rate_sqft
         if auto_calc_total > 0:
-            st.success(f"💡 **Auto-Calculation Engine:** {area_val} Sq.Ft × ₹ {rate_sqft} = **₹ {auto_calc_total:,.2f}**")
-            
-        selling_rate = st.number_input("💰 Final Total Deal Value (₹) *", min_value=0.0, value=float(auto_calc_total) if auto_calc_total > 0 else 0.0, step=1000.0)
+            st.success(f"💡 **Auto-Calculation:** {area_val} Sq.Ft × ₹{selling_rate_sqft} = **₹ {auto_calc_total:,.2f}**")
+
+        selling_rate_total = st.number_input("💰 Final Total Deal Value (₹) *", min_value=0.0,
+                                              value=float(auto_calc_total) if auto_calc_total > 0 else 0.0,
+                                              step=1000.0)
 
         st.subheader("💳 Secured Advance & Token Collection Details", divider="blue")
         col11, col12, col13 = st.columns(3)
         token_amt = col11.number_input("Total Deposited Token Amount (₹) *", min_value=0.0, step=1000.0)
         pay_mode = col12.selectbox("Payment Channel Mode", ["Cash", "Online/UPI", "Cheque", "RTGS/NEFT"])
         trans_id = col13.text_input("Transaction ID / Instrument Reference Number")
-       
         receive_date = st.date_input("Date of Advance Receipt Collection")
-       
+
         st.subheader("👨‍💼 Associated Partner Credit Allocation", divider="blue")
-       
         if st.session_state.get('user_role', 'executive') == 'executive':
             logged_name = st.session_state.get('current_user_name', 'Direct Sale')
             st.text_input("Attributed Partner Profile", value=logged_name, disabled=True)
             final_exec_name = logged_name
         else:
             final_exec_name = st.selectbox("Attributed Partner Profile", exec_list, index=0)
-       
+
         st.write("")
         if st.button("🔒 Execute Permanent Inventory Lock & Allocation", use_container_width=True, type="primary"):
             if c_name.strip() == "" or c_phone.strip() == "":
-                st.error("🚨 Validation Failure: Client Name and Mobile Contact Number are mandatory fields!")
+                st.error("🚨 Client Name and Mobile are mandatory!")
             elif token_amt <= 0:
-                st.error("🚨 Accounting Failure: Token Deposit Value must be greater than zero!")
-            elif selling_rate <= 0:
-                st.error("🚨 Valuation Failure: Final Total Deal Value cannot be zero!")
+                st.error("🚨 Token Deposit Value must be greater than zero!")
+            elif selling_rate_total <= 0:
+                st.error("🚨 Final Total Deal Value cannot be zero!")
+            elif company_rate <= 0:
+                st.error("🚨 Company Rate per Sq.Ft is mandatory for commission calculation!")
             else:
                 primary_booking_data = {
-                    "status": "Booked", "customer_name": c_name.strip(), "dob": str(c_dob),
-                    "phone": c_phone.strip(), "address": c_address.strip(), "aadhaar": c_aadhaar.strip(),
-                    "pan": c_pan.strip(), "nominee_name": n_name.strip(), "nominee_age": n_age.strip(),
-                    "plot_area": plot_area_input.strip(), "selling_rate": selling_rate, "rate_per_sqft": rate_sqft,
-                    "token_amount": token_amt, "payment_mode": pay_mode,
-                    "transaction_id": trans_id.strip(), "receipt_date": str(receive_date),
-                    "executive_name": final_exec_name, "booking_date": str(datetime.date.today()),
-                    "booked_plots_str": joined_plots_str, "is_primary": True, "primary_plot_id": plt
+                    "status": "Booked",
+                    "customer_name": c_name.strip(),
+                    "dob": str(c_dob),
+                    "phone": c_phone.strip(),
+                    "address": c_address.strip(),
+                    "aadhaar": c_aadhaar.strip(),
+                    "pan": c_pan.strip(),
+                    "nominee_name": n_name.strip(),
+                    "nominee_age": n_age.strip(),
+                    "plot_area": plot_area_input.strip(),
+                    "company_rate": company_rate, # ✅ NEW FIELD
+                    "selling_rate": selling_rate_total, # total deal value
+                    "rate_per_sqft": selling_rate_sqft, # actual per sqft
+                    "token_amount": token_amt,
+                    "payment_mode": pay_mode,
+                    "transaction_id": trans_id.strip(),
+                    "receipt_date": str(receive_date),
+                    "executive_name": final_exec_name,
+                    "booking_date": str(datetime.date.today()),
+                    "booked_plots_str": joined_plots_str,
+                    "is_primary": True,
+                    "primary_plot_id": plt
                 }
                 st.session_state.db_projects[proj]['plots'][plt].update(primary_booking_data)
-               
+
                 for child_plt in combo_selections:
                     child_data = {
-                        "status": "Booked", "customer_name": c_name.strip(), "phone": c_phone.strip(),
-                        "executive_name": final_exec_name, "booked_plots_str": joined_plots_str,
-                        "is_primary": False, "primary_plot_id": plt,
-                        "selling_rate": 0, "token_amount": 0, "plot_area": 0
+                        "status": "Booked",
+                        "customer_name": c_name.strip(),
+                        "phone": c_phone.strip(),
+                        "executive_name": final_exec_name,
+                        "booked_plots_str": joined_plots_str,
+                        "is_primary": False,
+                        "primary_plot_id": plt,
+                        "selling_rate": 0,
+                        "token_amount": 0,
+                        "plot_area": 0
                     }
                     st.session_state.db_projects[proj]['plots'][child_plt].update(child_data)
-               
+
                 with st.spinner("Locking transaction matrix onto cloud security..."):
                     if database.save_db_data():
-                        st.success(f"🎉 Congratulations! Plot(s) P-{joined_plots_str} successfully secured!")
+                        st.success(f"🎉 Plot(s) P-{joined_plots_str} successfully secured!")
                         del st.session_state['booking_popup']
                         st.rerun()
 
-    # --- C. Comprehensive Statement Dashboard (BOOKED) ---
+    # ── BOOKED — STATEMENT + EDIT ─────────────────────────────
     else:
         p_data = st.session_state.db_projects[proj]['plots'][plt]
-       
+
         if not is_authorized(p_data.get('executive_name', '')):
-            st.error("🔒 **ACCESS DENIED:** You are not authorized to view the commercial statement of this plot. It belongs to another executive's portfolio.")
+            st.error("🔒 **ACCESS DENIED:** You are not authorized to view this plot.")
             if st.button("❌ Back to Grid Matrix", use_container_width=True):
                 del st.session_state['booking_popup']
                 st.rerun()
@@ -366,113 +395,141 @@ if 'booking_popup' in st.session_state:
             prim_id = p_data.get('primary_plot_id')
             if prim_id and prim_id in st.session_state.db_projects[proj]['plots']:
                 p_data = st.session_state.db_projects[proj]['plots'][prim_id]
-                st.info(f"🔗 **Joint Booking Detected!** You are viewing the unified Master Ledger for Plots: **P-{p_data.get('booked_plots_str')}**")
-       
+                st.info(f"🔗 **Joint Booking Detected!** Viewing Master Ledger for Plots: **P-{p_data.get('booked_plots_str')}**")
+
         joined_view_str = p_data.get('booked_plots_str', str(plt))
-        st.error(f"⚠️ Allocation Alert: Plot(s) **P-{joined_view_str}** are locked. Comprehensive allotment details below:")
-       
+        st.error(f"⚠️ Plot(s) **P-{joined_view_str}** are locked. Details below:")
+
         c1, c2, c3 = st.columns(3)
-        c1.metric("Customer Identity Holder", p_data.get('customer_name', 'N/A'))
+        c1.metric("Customer", p_data.get('customer_name', 'N/A'))
         c1.write(f"**DOB:** {p_data.get('dob', 'N/A')} | **Address:** {p_data.get('address', 'N/A')}")
-       
-        c2.metric("Contact Profile String", p_data.get('phone', 'N/A'))
-        c2.write(f"**Aadhaar ID:** {p_data.get('aadhaar', 'N/A')} | **PAN Card ID:** {p_data.get('pan', 'N/A')}")
-       
-        c3.metric("Credential Credit Owner", p_data.get('executive_name', 'N/A'))
+        c2.metric("Contact", p_data.get('phone', 'N/A'))
+        c2.write(f"**Aadhaar:** {p_data.get('aadhaar', 'N/A')} | **PAN:** {p_data.get('pan', 'N/A')}")
+        c3.metric("Executive", p_data.get('executive_name', 'N/A'))
         c3.write(f"**Nominee:** {p_data.get('nominee_name', 'N/A')} (Age: {p_data.get('nominee_age', 'N/A')})")
-       
-        with st.expander("📄 Financial Commercial Statement & Payout Ledger", expanded=True):
+
+        with st.expander("📄 Financial Statement & Payout Ledger", expanded=True):
             def sf(val, default=0.0):
                 try:
                     if val is None or str(val).strip() == "": return float(default)
                     return float(val)
                 except: return float(default)
-                
-            # 🛠️ SMART BACKWARD COMPATIBILITY FIX FOR OLD DATA
+
             plot_area_val = sf(p_data.get('plot_area', 0.0))
             saved_selling_rate = sf(p_data.get('selling_rate', 0.0))
-            
+            comp_rate_saved = sf(p_data.get('company_rate', 0.0))
+            rate_sqft_saved = sf(p_data.get('rate_per_sqft', 0.0))
+
             if saved_selling_rate > 0 and saved_selling_rate <= 100000 and plot_area_val > 0:
-                # If the saved value is small (like 650), auto-multiply by area
                 total_cost_val = plot_area_val * saved_selling_rate
                 rate_applied = saved_selling_rate
             else:
-                # Normal behavior for new bookings
                 total_cost_val = saved_selling_rate
-                rate_applied = sf(p_data.get('rate_per_sqft', 0.0))
+                rate_applied = rate_sqft_saved
 
             col_s1, col_s2, col_s3 = st.columns(3)
-            col_s1.write(f"📐 **Total Plot Size:** {p_data.get('plot_area', 'N/A')} Sq.Ft")
-            col_s1.write(f"📆 **Allotment Date:** {p_data.get('booking_date', 'N/A')}")
-           
-            col_s2.write(f"💰 **Gross Final Deal Value:** ₹ {total_cost_val:,.2f}")
-            col_s2.write(f"📊 **Sq.Ft Rate Applied:** ₹ {rate_applied}")
-           
-            col_s3.warning(f"💳 **Deposited Advance Token:** ₹ {p_data.get('token_amount', 0)}")
-            col_s3.write(f"🏪 **Payment Mode:** {p_data.get('payment_mode', 'N/A')}")
+            col_s1.write(f"📐 **Plot Size:** {p_data.get('plot_area', 'N/A')} Sq.Ft")
+            col_s1.write(f"📆 **Booking Date:** {p_data.get('booking_date', 'N/A')}")
+            col_s1.write(f"🏢 **Company Rate:** ₹ {comp_rate_saved:,.0f}/Sq.Ft")
+
+            col_s2.write(f"💰 **Total Deal Value:** ₹ {total_cost_val:,.2f}")
+            col_s2.write(f"📊 **Selling Rate:** ₹ {rate_applied}/Sq.Ft")
+            if comp_rate_saved > 0 and rate_applied > 0 and rate_applied < comp_rate_saved:
+                disc = comp_rate_saved - rate_applied
+                disc_pct = (disc / comp_rate_saved) * 100
+                col_s2.warning(f"⚠️ Discount: ₹{disc:.0f}/Sq.Ft ({disc_pct:.2f}%)")
+
+            col_s3.warning(f"💳 **Token:** ₹ {p_data.get('token_amount', 0)}")
+            col_s3.write(f"🏪 **Mode:** {p_data.get('payment_mode', 'N/A')}")
             col_s3.write(f"🔑 **Ref ID:** {p_data.get('transaction_id', 'N/A')}")
-           
+
             st.markdown("#### 🔄 Live Payment & EMI Sync")
-           
             token_amt_val = sf(p_data.get('token_amount', 0.0))
-               
             partial_payments = p_data.get('partial_payments', [])
             total_emi_paid = sum(sf(pmt.get('amount', 0.0)) for pmt in partial_payments)
-           
             total_overall_paid = token_amt_val + total_emi_paid
             net_outstanding = max(0.0, total_cost_val - total_overall_paid)
-           
+
             c_emi1, c_emi2, c_emi3 = st.columns(3)
             c_emi1.metric("Gross Deal Value", f"₹ {total_cost_val:,.2f}")
-            c_emi2.metric("Total Collection (Paid)", f"₹ {total_overall_paid:,.2f}")
-            c_emi3.metric("Net Outstanding Due", f"₹ {net_outstanding:,.2f}")
-           
-            # 📝 STATEMENT TABLE WITH SLIP NO
+            c_emi2.metric("Total Paid", f"₹ {total_overall_paid:,.2f}")
+            c_emi3.metric("Net Outstanding", f"₹ {net_outstanding:,.2f}")
+
             history_rows = []
             history_rows.append({
-                "Date": p_data.get('receipt_date', p_data.get('booking_date', 'N/A')), 
-                "Type": "Booking Advance (Token)", 
-                "Mode": p_data.get('payment_mode', 'N/A'), 
+                "Date": p_data.get('receipt_date', p_data.get('booking_date', 'N/A')),
+                "Type": "Booking Advance (Token)",
+                "Mode": p_data.get('payment_mode', 'N/A'),
                 "Slip No": p_data.get('token_slip_no', 'N/A'),
                 "Amount (₹)": token_amt_val
             })
             for pmt in partial_payments:
                 history_rows.append({
-                    "Date": pmt.get('date', 'N/A'), 
-                    "Type": pmt.get('remarks', 'Installment Payment'), 
-                    "Mode": pmt.get('mode', 'N/A'), 
+                    "Date": pmt.get('date', 'N/A'),
+                    "Type": pmt.get('remarks', 'Installment Payment'),
+                    "Mode": pmt.get('mode', 'N/A'),
                     "Slip No": pmt.get('slip_no', 'N/A'),
                     "Amount (₹)": sf(pmt.get('amount', 0.0))
                 })
-           
+
             df_display = pd.DataFrame(history_rows)
             df_display['Amount (₹)'] = df_display['Amount (₹)'].apply(lambda x: f"₹ {x:,.2f}")
             st.dataframe(df_display, use_container_width=True, hide_index=True)
-           
-            # 🛠️ EDIT MISSING SLIP NUMBERS SECTION
+
+            # ── ADMIN EDIT SECTION ────────────────────────────
             if st.session_state.get('user_role', 'executive') == 'admin':
                 st.write("")
+
+                # ✅ NEW: Update Company Rate for old bookings
+                with st.expander("🏢 Update Company Rate (For Commission Calculation)", expanded=False):
+                    st.caption("⚠️ Purani bookings mein Company Rate nahi tha — yahan add/update karo.")
+                    with st.form(f"update_company_rate_{plt}"):
+                        current_cr = sf(p_data.get('company_rate', 0.0))
+                        new_cr = st.number_input(
+                            "Company Rate per Sq.Ft (₹)",
+                            min_value=0.0, step=10.0,
+                            value=current_cr,
+                            help="Yeh rate commission discount calculate karne ke liye use hoga"
+                        )
+                        curr_sr = sf(p_data.get('rate_per_sqft', 0.0))
+                        if new_cr > 0 and curr_sr > 0:
+                            if curr_sr < new_cr:
+                                d = new_cr - curr_sr
+                                dp = (d / new_cr) * 100
+                                st.warning(f"Discount: ₹{d:.0f}/Sq.Ft = {dp:.2f}%")
+                            else:
+                                st.success("No discount at this rate.")
+                        if st.form_submit_button("💾 Save Company Rate", use_container_width=True):
+                            real_plt = p_data.get('primary_plot_id', plt)
+                            st.session_state.db_projects[proj]['plots'][real_plt]['company_rate'] = new_cr
+                            if database.save_db_data():
+                                st.success(f"✅ Company Rate updated to ₹{new_cr}/Sq.Ft!")
+                                st.rerun()
+
+                # Edit Slip Numbers
                 with st.expander("✏️ Edit Missing Slip Numbers (Admin Only)"):
                     with st.form(f"edit_slips_form_{plt}"):
                         st.caption("Fill in or update any missing slip numbers below and hit Save.")
-                        new_tok_slip = st.text_input("Booking Advance (Token) - Slip No:", value=p_data.get('token_slip_no', ''))
-                        
+                        new_tok_slip = st.text_input("Booking Advance (Token) - Slip No:",
+                                                      value=p_data.get('token_slip_no', ''))
                         new_emi_slips = []
                         for i, pmt in enumerate(partial_payments):
-                            ns = st.text_input(f"EMI on {pmt.get('date', 'N/A')} (₹{pmt.get('amount', 0)}) - Slip No:", value=pmt.get('slip_no', ''))
+                            ns = st.text_input(
+                                f"EMI on {pmt.get('date', 'N/A')} (₹{pmt.get('amount', 0)}) - Slip No:",
+                                value=pmt.get('slip_no', ''))
                             new_emi_slips.append(ns)
-                            
                         if st.form_submit_button("💾 Save Slip Updates", use_container_width=True):
-                            st.session_state.db_projects[proj]['plots'][plt]['token_slip_no'] = new_tok_slip
+                            real_plt = p_data.get('primary_plot_id', plt)
+                            st.session_state.db_projects[proj]['plots'][real_plt]['token_slip_no'] = new_tok_slip
                             for i, pmt in enumerate(partial_payments):
-                                st.session_state.db_projects[proj]['plots'][plt]['partial_payments'][i]['slip_no'] = new_emi_slips[i]
+                                st.session_state.db_projects[proj]['plots'][real_plt]['partial_payments'][i]['slip_no'] = new_emi_slips[i]
                             if database.save_db_data():
-                                st.success("Slip numbers updated successfully!")
+                                st.success("Slip numbers updated!")
                                 st.rerun()
 
             st.write("---")
             c_btn1, c_btn2 = st.columns(2)
-           
+
             csv_statement = pd.DataFrame(history_rows).to_csv(index=False).encode('utf-8-sig')
             with c_btn1:
                 st.download_button(
@@ -482,17 +539,24 @@ if 'booking_popup' in st.session_state:
                     mime="text/csv",
                     use_container_width=True
                 )
-           
+
             cust_phone = str(p_data.get('phone', '')).replace(' ', '').replace('+', '').strip()
             if len(cust_phone) == 10:
                 cust_phone = "91" + cust_phone
-               
-            wa_msg = f"🌟 *FirstChoice Infra - Payment Update* 🌟\n\nDear *{str(p_data.get('customer_name', 'Sir/Madam')).title()}*,\nHere is the live payment status for your Plot(s) *P-{joined_view_str}* in *{proj}*:\n\n🔹 *Total Value:* ₹ {total_cost_val:,.2f}\n✅ *Total Amount Paid:* ₹ {total_overall_paid:,.2f}\n⚠️ *Net Outstanding Balance:* ₹ {net_outstanding:,.2f}\n\nThank you for your trust and association with us!\n\nRegards,\n*FC Infra Team*"
+
+            wa_msg = (f"🌟 *FirstChoice Infra - Payment Update* 🌟\n\n"
+                      f"Dear *{str(p_data.get('customer_name', 'Sir/Madam')).title()}*,\n"
+                      f"Plot(s) *P-{joined_view_str}* in *{proj}*:\n\n"
+                      f"🔹 *Total Value:* ₹ {total_cost_val:,.2f}\n"
+                      f"✅ *Total Paid:* ₹ {total_overall_paid:,.2f}\n"
+                      f"⚠️ *Outstanding:* ₹ {net_outstanding:,.2f}\n\n"
+                      f"Thank you!\n*FC Infra Team*")
             wa_url = f"https://wa.me/{cust_phone}?text={urllib.parse.quote(wa_msg)}"
-           
+
             with c_btn2:
-                st.markdown(f'<a href="{wa_url}" target="_blank" class="wa-btn">💬 Send Live Update on WhatsApp</a>', unsafe_allow_html=True)
-           
+                st.markdown(f'<a href="{wa_url}" target="_blank" class="wa-btn">💬 Send Live Update on WhatsApp</a>',
+                            unsafe_allow_html=True)
+
         if st.session_state.get('user_role', 'admin') == 'admin':
             st.write("")
             st.warning("Strategic Action: Force Cancel will revoke all plots attached to this Joint Booking.")
@@ -501,10 +565,9 @@ if 'booking_popup' in st.session_state:
                 for f_plt in plots_to_free:
                     if f_plt in st.session_state.db_projects[proj]['plots']:
                         st.session_state.db_projects[proj]['plots'][f_plt] = {"status": "Available"}
-                       
                 with st.spinner("Revoking ledger data strings..."):
                     if database.save_db_data():
-                        st.success(f"Plots P-{joined_view_str} successfully restored to active open inventory!")
+                        st.success(f"Plots P-{joined_view_str} restored to open inventory!")
                         del st.session_state['booking_popup']
                         st.rerun()
 
@@ -519,7 +582,7 @@ if 'booking_popup' in st.session_state:
 # 📊 Interactive Plot Grid Matrix Render Layout
 # =========================================================
 st.markdown(f"### 📋 Project Inventory Gallery: {selected_project_name}")
-st.write(f"📍 Location Profile Matrix: Khasra No: {project_data.get('khasra','N/A')} | Mauza: {project_data.get('mauza','N/A')} | Registered Unit Base Count: {project_data.get('total_plots', 0)}")
+st.write(f"📍 Khasra No: {project_data.get('khasra','N/A')} | Mauza: {project_data.get('mauza','N/A')} | Total Plots: {project_data.get('total_plots', 0)}")
 
 cols_per_row = 5
 plot_items = list(plots.items())
@@ -531,7 +594,7 @@ for row in rows:
         with cols[i]:
             status = plot_info.get('status', 'Available')
             plot_exec_name = plot_info.get('executive_name', '')
-           
+
             if status == "Available":
                 st.markdown(f'<div class="plot-card plot-available">🏠 Plot {plot_id}<br>✅ Available</div>', unsafe_allow_html=True)
                 btn_txt = "📝 Book Unit"
@@ -550,8 +613,9 @@ for row in rows:
                     st.markdown(f'<div class="plot-card plot-locked">🛑 Plot {plot_id}<br>🔒 Booked</div>', unsafe_allow_html=True)
                     btn_txt = "🔒 Access Denied"
                     btn_disabled = True
-           
-            if st.button(btn_txt, key=f"btn_{selected_project_name}_{plot_id}", use_container_width=True, disabled=btn_disabled):
+
+            if st.button(btn_txt, key=f"btn_{selected_project_name}_{plot_id}",
+                         use_container_width=True, disabled=btn_disabled):
                 st.session_state['booking_popup'] = {
                     'project': selected_project_name,
                     'plot': plot_id,
