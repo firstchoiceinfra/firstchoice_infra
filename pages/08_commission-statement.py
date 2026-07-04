@@ -155,22 +155,17 @@ def get_discount_pct(plot_info):
       actual_rate = rate_per_sqft (saved at booking)
       Discount % = (comp_rate - actual_rate) / comp_rate * 100
     """
-    p_name = plot_info.get('_project_name', '')
-    proj_data = db_data.get(p_name, {})
+    # company_rate = original company rate per sqft (saved at booking)
+    comp_rate = sf(plot_info.get('company_rate', 0.0))
 
-    # Company rate from Admin Panel max_commission field
-    comp_rate = sf(proj_data.get('max_commission', 0.0))
-
-    # Actual sold rate per sqft saved at booking
+    # rate_per_sqft = actual selling rate per sqft (saved at booking)
     actual_rate = sf(plot_info.get('rate_per_sqft', 0.0))
 
-    # Fallback: if selling_rate is per sqft (<=10000), use it
-    sell_val = sf(plot_info.get('selling_rate', 0.0))
-    plot_area = sf(plot_info.get('plot_area', 0.0))
+    # Fallback: if rate_per_sqft not saved, try to derive from selling_rate / plot_area
     if actual_rate <= 0:
-        if sell_val <= 10000:
-            actual_rate = sell_val
-        elif plot_area > 0:
+        plot_area = sf(plot_info.get('plot_area', 0.0))
+        sell_val = sf(plot_info.get('selling_rate', 0.0))
+        if sell_val > 0 and plot_area > 0:
             actual_rate = sell_val / plot_area
 
     if comp_rate <= 0 or actual_rate <= 0 or actual_rate >= comp_rate:
