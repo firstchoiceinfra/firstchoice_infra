@@ -142,26 +142,38 @@ def get_project_mauza(project_name):
 
 def get_discount_pct(plot_info):
     """
-    Company rate = rate_per_sqft (original company rate per sqft)
-    Actual rate = actual sold rate per sqft
+    Company rate = max_commission from Admin Panel project settings (rate_per_sqft field)
+    Actual sold rate = rate_per_sqft saved at booking time
 
-    If company rate = 700, sold = 650:
-      Discount Rs = 700 - 650 = 50
-      Discount % = 50 / 700 * 100 = 7.14%
+    inventory dashboard saves:
+      rate_per_sqft = negotiated rate per sqft (actual sold rate)
+      selling_rate = total deal value OR per sqft rate
 
-    This discount % is applied on Gross commission only for the
-    executive who made the booking (not for upline diff commission).
+    So we need company rate from project settings.
+    Formula:
+      comp_rate = project max_commission (Admin Panel)
+      actual_rate = rate_per_sqft (saved at booking)
+      Discount % = (comp_rate - actual_rate) / comp_rate * 100
     """
-    comp_rate = sf(plot_info.get('rate_per_sqft', 0.0))
-    plot_area = sf(plot_info.get('plot_area', 0.0))
+    p_name = plot_info.get('_project_name', '')
+    proj_data = db_data.get(p_name, {})
+
+    # Company rate from Admin Panel max_commission field
+    comp_rate = sf(proj_data.get('max_commission', 0.0))
+
+    # Actual sold rate per sqft saved at booking
+    actual_rate = sf(plot_info.get('rate_per_sqft', 0.0))
+
+    # Fallback: if selling_rate is per sqft (<=10000), use it
     sell_val = sf(plot_info.get('selling_rate', 0.0))
+    plot_area = sf(plot_info.get('plot_area', 0.0))
+    if actual_rate <= 0:
+        if sell_val <= 10000:
+            actual_rate = sell_val
+        elif plot_area > 0:
+            actual_rate = sell_val / plot_area
 
-    if sell_val > 100000:
-        actual_rate = sell_val / plot_area if plot_area > 0 else comp_rate
-    else:
-        actual_rate = sell_val
-
-    if comp_rate <= 0 or actual_rate >= comp_rate:
+    if comp_rate <= 0 or actual_rate <= 0 or actual_rate >= comp_rate:
         return 0.0
     return ((comp_rate - actual_rate) / comp_rate) * 100.0
 
@@ -251,6 +263,7 @@ def fetch_records(exec_name, date_from, date_to, override_pct=None, apply_discou
             booked_str = plot_info.get('booked_plots_str', plot_id)
 
             # Discount only for own booking executive, NOT for upline diff rows
+            plot_info['_project_name'] = p_name # pass project name for discount lookup
             disc_pct = get_discount_pct(plot_info) if apply_discount else 0.0
 
             payments = get_payments_in_range(plot_info, date_from, date_to)
@@ -357,18 +370,30 @@ def generate_pdf(exec_name, records, date_from, date_to, mode_label):
     story = []
 
     # ── Company Header ──────────────────────────────────────────
-    story.append(Spacer(1, 2))
+    story.append(Spacer(1, 4))
     story.append(Paragraph("<b>FIRSTCHOICE INFRA</b>",
         ParagraphStyle('TT', fontSize=22, alignment=TA_CENTER,
-                       fontName='Helvetica-Bold', spaceAfter=6)))
-    story.append(Paragraph("<i>Symbol Of Trust...</i>",
-        ParagraphStyle('ST', fontSize=10, alignment=TA_CENTER,
-                       spaceAfter=6)))
+                       fontName='Helvetica-Bold', spaceAfter=4)))
+    story.append(Spacer(1, 4))
+    # Slogan with lines on both sides using a table
+    slogan_tbl = Table([[
+        HRFlowable(width="100%", thickness=1, color=NAVY),
+        Paragraph("<i> Symbol Of Trust... </i>",
+                  ParagraphStyle('SL', fontSize=10, alignment=TA_CENTER)),
+        HRFlowable(width="100%", thickness=1, color=NAVY),
+    ]], colWidths=[40*mm, 80*mm, 40*mm])
+    slogan_tbl.setStyle(TableStyle([
+        ('VALIGN', (0,0),(-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0),(-1,-1), 0),
+        ('BOTTOMPADDING', (0,0),(-1,-1), 0),
+    ]))
+    story.append(slogan_tbl)
+    story.append(Spacer(1, 6))
     story.append(Paragraph(
         "Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034",
         ParagraphStyle('AD', fontSize=8, alignment=TA_CENTER, spaceAfter=8)))
     story.append(HRFlowable(width="100%", thickness=1.5, color=NAVY, spaceAfter=6))
-    story.append(Paragraph(f"<b>Executive Commission Statement</b>",
+    story.append(Paragraph("<b>Executive Commission Statement</b>",
         ParagraphStyle('ES', fontSize=13, alignment=TA_CENTER,
                        fontName='Helvetica-Bold', spaceAfter=8)))
     story.append(HRFlowable(width="100%", thickness=0.5, color=NAVY, spaceAfter=8))
