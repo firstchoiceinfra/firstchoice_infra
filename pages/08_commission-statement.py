@@ -101,32 +101,33 @@ def get_project_mauza(p):
 
 def get_discount_pct(plot_info):
     """
-    company_rate = original rate per sqft (saved at booking)
-    rate_per_sqft = actual selling rate per sqft (saved at booking)
+    company_rate = original rate per sqft (saved at booking or via update)
+    rate_per_sqft = actual selling rate per sqft
 
     Discount % = (company_rate - rate_per_sqft) / company_rate * 100
 
-    Safety rules:
-    - If company_rate = 0 → no discount
-    - If rate_per_sqft = 0 → try to derive from selling_rate/plot_area
-    - If derived rate still 0 → no discount (return 0, do NOT calculate)
-    - If disc_pct > 50% → data error, return 0
+    Safety:
+    - disc_pct > 50% → data error → return 0
+    - company_rate = 0 → no discount
     """
     comp_rate = sf(plot_info.get('company_rate', 0.0))
     actual_rate = sf(plot_info.get('rate_per_sqft', 0.0))
 
-    # If actual_rate not saved, try to derive
+    # Derive actual_rate from selling_rate / plot_area if not saved directly
     if actual_rate <= 0:
         plot_area = sf(plot_info.get('plot_area', 0.0))
         sell_val = sf(plot_info.get('selling_rate', 0.0))
         if sell_val > 0 and plot_area > 0:
             derived = sell_val / plot_area
-            # Only use if reasonable value (between 100 and comp_rate*1.5)
-            if 100 < derived <= (comp_rate * 1.5 if comp_rate > 0 else 99999):
+            if 50 < derived < 99999:
                 actual_rate = derived
 
-    # No company_rate or no actual_rate → no discount
-    if comp_rate <= 0 or actual_rate <= 0:
+    # If company_rate not set, try to use it as no-discount case
+    if comp_rate <= 0:
+        return 0.0
+
+    # If actual_rate still 0 after fallback → no discount
+    if actual_rate <= 0:
         return 0.0
 
     # No discount if selling at or above company rate
@@ -135,7 +136,7 @@ def get_discount_pct(plot_info):
 
     disc_pct = ((comp_rate - actual_rate) / comp_rate) * 100.0
 
-    # Safety cap: more than 50% discount is likely a data error
+    # Safety cap
     if disc_pct > 50.0:
         return 0.0
 
