@@ -11,17 +11,11 @@ from reportlab.lib.units import mm
 from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
                                  TableStyle, HRFlowable)
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 import streamlit.components.v1 as components
 
-# ---------------------------------------------------------------
-# 1. PAGE CONFIG
-# ---------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="FC Infra - Commission Statement")
 
-# ---------------------------------------------------------------
-# 2. SECURITY — ADMIN ONLY
-# ---------------------------------------------------------------
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.warning("🔒 Please login on the Main Page portal first.")
     st.stop()
@@ -31,21 +25,14 @@ if st.session_state.get('user_role', 'executive') != 'admin':
     st.info("💡 Commission statement dekhne ke liye Admin se contact karo.")
     st.stop()
 
-# ---------------------------------------------------------------
-# 3. DATABASE
-# ---------------------------------------------------------------
 database.init_db()
 db_data = st.session_state.db_projects
 exec_data_root = db_data.get('executives', {})
 
-# ---------------------------------------------------------------
-# 4. THEME
-# ---------------------------------------------------------------
 bg_url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
 p_color = "#1e3a8a"
 s_color = "#3b82f6"
 c_bg = "rgba(255,255,255,0.92)"
-
 if '_app_settings' in db_data:
     gs = db_data['_app_settings']
     bg_url = gs.get('bg_url', bg_url)
@@ -55,41 +42,21 @@ if '_app_settings' in db_data:
 
 st.markdown(f"""
 <style>
-.stApp {{
-    background-image: url("{bg_url}");
-    background-attachment: fixed; background-size: cover;
-}}
-.block-container {{
-    background-color: {c_bg} !important;
-    padding: 2.5rem 3.5rem !important;
-    border-radius: 24px;
-    box-shadow: 0px 20px 40px rgba(0,0,0,0.2);
-    margin-top: 2rem; margin-bottom: 2rem;
-}}
+.stApp {{ background-image: url("{bg_url}"); background-attachment: fixed; background-size: cover; }}
+.block-container {{ background-color: {c_bg} !important; padding: 2.5rem 3.5rem !important;
+    border-radius: 24px; box-shadow: 0px 20px 40px rgba(0,0,0,0.2); margin-top: 2rem; margin-bottom: 2rem; }}
 h1, h2, h3, h4 {{ color: {p_color} !important; font-weight: 900; }}
-.stButton>button {{
-    background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%);
-    color: white !important; border-radius: 8px; font-weight: 700;
-    border: none; padding: 10px 20px;
-    box-shadow: 0 4px 12px rgba(59,130,246,0.4);
-    transition: all 0.3s ease;
-}}
+.stButton>button {{ background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%);
+    color: white !important; border-radius: 8px; font-weight: 700; border: none;
+    padding: 10px 20px; box-shadow: 0 4px 12px rgba(59,130,246,0.4); transition: all 0.3s ease; }}
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------------------
-# 5. HEADING
-# ---------------------------------------------------------------
-st.markdown("<h1 style='text-align:center;'>💼 FC Infra — Commission Statement</h1>",
-            unsafe_allow_html=True)
-st.markdown("<p style='text-align:center;color:#475569;font-size:15px;'>"
-            "🔐 Admin Only — Partner commission generate karo</p>",
-            unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center;'>💼 FC Infra — Commission Statement</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;color:#475569;'>🔐 Admin Only</p>", unsafe_allow_html=True)
 st.divider()
 
-# ---------------------------------------------------------------
-# 6. HELPER FUNCTIONS
-# ---------------------------------------------------------------
+# ── HELPERS ──────────────────────────────────────────────────
 def sf(val, default=0.0):
     try:
         if val is None or str(val).strip() == "": return float(default)
@@ -98,8 +65,7 @@ def sf(val, default=0.0):
 
 def get_exec_info(name):
     for k, v in exec_data_root.items():
-        if str(k).strip().lower() == str(name).strip().lower():
-            return v
+        if str(k).strip().lower() == str(name).strip().lower(): return v
     return {}
 
 def get_exec_slab(name):
@@ -109,93 +75,92 @@ def get_exec_slab(name):
 def get_exec_senior(name):
     info = get_exec_info(name)
     s = str(info.get('senior_name', '')).strip()
-    if s.lower() in ['', 'company', 'direct', 'none', '-']: return None
-    return s
+    return None if s.lower() in ['', 'company', 'direct', 'none', '-'] else s
 
-def is_top_level(senior_val):
-    return str(senior_val).strip().lower() in ['', 'company', 'direct', 'none', '-']
+def is_top_level(v):
+    return str(v).strip().lower() in ['', 'company', 'direct', 'none', '-']
 
-def get_direct_downlines(manager_name):
-    mgr = str(manager_name).strip().lower()
+def get_direct_downlines(mgr):
+    m = str(mgr).strip().lower()
+    return [ex for ex, det in exec_data_root.items()
+            if isinstance(det, dict) and str(det.get('senior_name','')).strip().lower() == m
+            and not is_top_level(det.get('senior_name',''))]
+
+def get_all_downlines_list(mgr):
     result = []
-    for ex, det in exec_data_root.items():
-        if not isinstance(det, dict): continue
-        senior = str(det.get('senior_name', '')).strip().lower()
-        if senior == mgr and not is_top_level(senior):
-            result.append(ex)
-    return result
-
-def get_all_downlines_list(manager_name):
-    result = []
-    for dl in get_direct_downlines(manager_name):
+    for dl in get_direct_downlines(mgr):
         result.append(dl)
         result.extend(get_all_downlines_list(dl))
     return list(set(result))
 
-def get_project_comm_type(project_name):
-    p = db_data.get(project_name, {})
-    return p.get('comm_type', 'Percentage (%)')
+def get_project_comm_type(p):
+    return db_data.get(p, {}).get('comm_type', 'Percentage (%)')
 
-def get_project_mauza(project_name):
-    p = db_data.get(project_name, {})
-    return p.get('mauza', '')
+def get_project_mauza(p):
+    return db_data.get(p, {}).get('mauza', '')
 
 def get_discount_pct(plot_info):
     """
-    Company rate = max_commission from Admin Panel project settings (rate_per_sqft field)
-    Actual sold rate = rate_per_sqft saved at booking time
+    company_rate = original rate per sqft (saved at booking)
+    rate_per_sqft = actual selling rate per sqft (saved at booking)
 
-    inventory dashboard saves:
-      rate_per_sqft = negotiated rate per sqft (actual sold rate)
-      selling_rate = total deal value OR per sqft rate
+    Discount % = (company_rate - rate_per_sqft) / company_rate * 100
 
-    So we need company rate from project settings.
-    Formula:
-      comp_rate = project max_commission (Admin Panel)
-      actual_rate = rate_per_sqft (saved at booking)
-      Discount % = (comp_rate - actual_rate) / comp_rate * 100
+    Safety rules:
+    - If company_rate = 0 → no discount
+    - If rate_per_sqft = 0 → try to derive from selling_rate/plot_area
+    - If derived rate still 0 → no discount (return 0, do NOT calculate)
+    - If disc_pct > 50% → data error, return 0
     """
-    # company_rate = original company rate per sqft (saved at booking)
     comp_rate = sf(plot_info.get('company_rate', 0.0))
-
-    # rate_per_sqft = actual selling rate per sqft (saved at booking)
     actual_rate = sf(plot_info.get('rate_per_sqft', 0.0))
 
-    # Fallback: if rate_per_sqft not saved, try to derive from selling_rate / plot_area
+    # If actual_rate not saved, try to derive
     if actual_rate <= 0:
         plot_area = sf(plot_info.get('plot_area', 0.0))
         sell_val = sf(plot_info.get('selling_rate', 0.0))
         if sell_val > 0 and plot_area > 0:
-            actual_rate = sell_val / plot_area
+            derived = sell_val / plot_area
+            # Only use if reasonable value (between 100 and comp_rate*1.5)
+            if 100 < derived <= (comp_rate * 1.5 if comp_rate > 0 else 99999):
+                actual_rate = derived
 
-    if comp_rate <= 0 or actual_rate <= 0 or actual_rate >= comp_rate:
+    # No company_rate or no actual_rate → no discount
+    if comp_rate <= 0 or actual_rate <= 0:
         return 0.0
-    return ((comp_rate - actual_rate) / comp_rate) * 100.0
+
+    # No discount if selling at or above company rate
+    if actual_rate >= comp_rate:
+        return 0.0
+
+    disc_pct = ((comp_rate - actual_rate) / comp_rate) * 100.0
+
+    # Safety cap: more than 50% discount is likely a data error
+    if disc_pct > 50.0:
+        return 0.0
+
+    return disc_pct
 
 def compute_row(received, comm_pct, rs_fixed, comm_type, disc_pct=0.0):
     """
     % project:
       Gross = received × comm_pct / 100
-      Disc Amt = Gross × disc_pct / 100
+      Disc Amt = received × disc_pct / 100 ← on RECEIVED amount
       Net = Gross - Disc Amt
       TDS = Net × 2%
       In Hand = Net - TDS
 
     Rs project:
-      Gross = rs_fixed (fixed amount, no discount)
-      Net = Gross
-      TDS = Net × 2%
-      In Hand = Net - TDS
-
-    NOTE: disc_pct is passed as 0.0 for upline difference commission rows
-          (discount only applies to the actual booking executive).
+      Gross = rs_fixed, no discount
+      TDS = Gross × 2%
+      In Hand = Gross - TDS
     """
     if received <= 0: return 0.0, 0.0, 0.0, 0.0, 0.0
     is_pct = '%' in str(comm_type) or 'percentage' in str(comm_type).lower()
 
     if is_pct:
         gross = received * comm_pct / 100.0
-        disc_amt = received * disc_pct / 100.0 # Discount on RECEIVED amount
+        disc_amt = received * disc_pct / 100.0 # on received amount
         net = max(0.0, gross - disc_amt)
     else:
         gross = rs_fixed
@@ -209,8 +174,7 @@ def compute_row(received, comm_pct, rs_fixed, comm_type, disc_pct=0.0):
 def get_payments_in_range(plot_info, date_from, date_to):
     payments = []
     tok = sf(plot_info.get('token_amount', 0.0))
-    tok_date = plot_info.get('receipt_date',
-               plot_info.get('booking_date', str(datetime.date.today())))
+    tok_date = plot_info.get('receipt_date', plot_info.get('booking_date', str(datetime.date.today())))
     if tok > 0:
         try: d = datetime.date.fromisoformat(str(tok_date)[:10])
         except: d = datetime.date.today()
@@ -219,21 +183,15 @@ def get_payments_in_range(plot_info, date_from, date_to):
     for p in plot_info.get('partial_payments', []):
         amt = sf(p.get('amount', 0.0))
         if amt <= 0: continue
-        try: d = datetime.date.fromisoformat(str(p.get('date', ''))[:10])
+        try: d = datetime.date.fromisoformat(str(p.get('date',''))[:10])
         except: d = datetime.date.today()
         if date_from <= d <= date_to:
             payments.append({'date': str(d), 'amount': amt})
     return payments
 
 def fetch_records(exec_name, date_from, date_to, override_pct=None, apply_discount=True):
-    """
-    Fetch payment rows for exec_name's own bookings.
-    override_pct : use this % instead of exec's slab (for diff commission)
-    apply_discount : True for own bookings, False for upline diff commission
-    """
     exec_pct, rs_fixed = get_exec_slab(exec_name)
     use_pct = override_pct if override_pct is not None else exec_pct
-
     records = []
     project_names = [n for n, d in db_data.items()
                      if isinstance(d, dict) and ('plots' in d or 'total_plots' in d)]
@@ -251,28 +209,24 @@ def fetch_records(exec_name, date_from, date_to, override_pct=None, apply_discou
             if not isinstance(plot_info, dict): continue
             if str(plot_info.get('status', '')).lower() != 'booked': continue
             if plot_info.get('is_primary', True) is False: continue
-            if str(plot_info.get('executive_name', '')).strip().lower() != \
-               str(exec_name).strip().lower(): continue
+            if str(plot_info.get('executive_name','')).strip().lower() != str(exec_name).strip().lower():
+                continue
 
             customer = str(plot_info.get('customer_name', 'N/A')).title()
             booked_str = plot_info.get('booked_plots_str', plot_id)
-
-            # Discount only for own booking executive, NOT for upline diff rows
-            plot_info['_project_name'] = p_name # pass project name for discount lookup
             disc_pct = get_discount_pct(plot_info) if apply_discount else 0.0
-
             payments = get_payments_in_range(plot_info, date_from, date_to)
+
             for pmt in payments:
                 gross, disc_amt, net, tds, in_hand = compute_row(
                     pmt['amount'], use_pct, rs_fixed, comm_type, disc_pct)
                 if gross <= 0: continue
-
                 records.append({
                     'project' : p_name,
                     'plot' : booked_str,
                     'mauza' : mauza,
                     'customer' : customer,
-                    'exec_name' : exec_name, # booking executive name
+                    'exec_name': exec_name,
                     'received' : pmt['amount'],
                     'date' : pmt['date'],
                     'gross' : gross,
@@ -282,75 +236,47 @@ def fetch_records(exec_name, date_from, date_to, override_pct=None, apply_discou
                     'tds' : tds,
                     'in_hand' : in_hand,
                     'comm_pct' : use_pct,
-                    'via' : '',
                 })
     return records
 
-# ---------------------------------------------------------------
-# 7. COMMISSION CHAIN LOGIC
-# ---------------------------------------------------------------
 def build_self(exec_name, date_from, date_to):
-    """Own bookings with full slab + discount applied."""
-    return fetch_records(exec_name, date_from, date_to,
-                         apply_discount=True)
+    return fetch_records(exec_name, date_from, date_to, apply_discount=True)
 
 def build_group(exec_name, date_from, date_to):
-    """
-    Chain rule:
-    A=23%, B=18%, C=15%, D=8%
-
-    A ka GROUP:
-    - B ki bookings → A gets (23-18)=5%, NO discount (discount was B's responsibility)
-    - C ki bookings → A gets (23-18)=5%, NO discount
-    - D ki bookings → A gets (23-18)=5%, NO discount
-
-    Discount ONLY deducted from the person who actually made the booking (SELF).
-    """
     records = []
     exec_pct, _ = get_exec_slab(exec_name)
 
-    def collect_chain_diff(senior_name, senior_pct):
+    def collect_chain(senior_name, senior_pct):
         for dl in get_direct_downlines(senior_name):
             dl_pct, _ = get_exec_slab(dl)
             diff_pct = senior_pct - dl_pct
-
             if diff_pct > 0:
-                # dl ki apni bookings — NO discount for upline
+                # NO discount for upline difference rows
                 dl_recs = fetch_records(dl, date_from, date_to,
-                                        override_pct=diff_pct,
-                                        apply_discount=False)
+                                        override_pct=diff_pct, apply_discount=False)
                 for r in dl_recs:
                     r['via'] = dl
-                    r['customer'] = r['customer'] # keep client name
-                    r['exec_name']= dl # booking was by dl
+                    r['exec_name'] = dl
                 records.extend(dl_recs)
 
-                # dl ke saare sub-downlines — same diff_pct, NO discount
-                def get_sub_chain(node, diff):
+                def get_sub(node, diff):
                     for sub in get_direct_downlines(node):
                         sub_recs = fetch_records(sub, date_from, date_to,
-                                                 override_pct=diff,
-                                                 apply_discount=False)
+                                                 override_pct=diff, apply_discount=False)
                         for r in sub_recs:
                             r['via'] = sub
-                            r['customer'] = r['customer']
-                            r['exec_name']= sub
+                            r['exec_name'] = sub
                         records.extend(sub_recs)
-                        get_sub_chain(sub, diff)
+                        get_sub(sub, diff)
+                get_sub(dl, diff_pct)
 
-                get_sub_chain(dl, diff_pct)
-
-    collect_chain_diff(exec_name, exec_pct)
+    collect_chain(exec_name, exec_pct)
     return records
 
 def build_all(exec_name, date_from, date_to):
-    self_recs = build_self(exec_name, date_from, date_to)
-    group_recs = build_group(exec_name, date_from, date_to)
-    return self_recs + group_recs
+    return build_self(exec_name, date_from, date_to) + build_group(exec_name, date_from, date_to)
 
-# ---------------------------------------------------------------
-# 8. PDF GENERATOR (A4 Portrait)
-# ---------------------------------------------------------------
+# ── PDF ──────────────────────────────────────────────────────
 def generate_pdf(exec_name, records, date_from, date_to, mode_label):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4,
@@ -364,13 +290,14 @@ def generate_pdf(exec_name, records, date_from, date_to, mode_label):
     DKGRN = colors.HexColor("#065f46")
     story = []
 
-    # ── Company Header ──────────────────────────────────────────
+    # Header
     story.append(Spacer(1, 4))
     story.append(Paragraph("<b>FIRSTCHOICE INFRA</b>",
         ParagraphStyle('TT', fontSize=22, alignment=TA_CENTER,
                        fontName='Helvetica-Bold', spaceAfter=4)))
     story.append(Spacer(1, 4))
-    # Slogan with lines on both sides using a table
+
+    # Slogan with lines on both sides
     slogan_tbl = Table([[
         HRFlowable(width="100%", thickness=1, color=NAVY),
         Paragraph("<i> Symbol Of Trust... </i>",
@@ -378,12 +305,13 @@ def generate_pdf(exec_name, records, date_from, date_to, mode_label):
         HRFlowable(width="100%", thickness=1, color=NAVY),
     ]], colWidths=[40*mm, 80*mm, 40*mm])
     slogan_tbl.setStyle(TableStyle([
-        ('VALIGN', (0,0),(-1,-1), 'MIDDLE'),
-        ('TOPPADDING', (0,0),(-1,-1), 0),
-        ('BOTTOMPADDING', (0,0),(-1,-1), 0),
+        ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+        ('TOPPADDING',(0,0),(-1,-1),0),
+        ('BOTTOMPADDING',(0,0),(-1,-1),0),
     ]))
     story.append(slogan_tbl)
     story.append(Spacer(1, 6))
+
     story.append(Paragraph(
         "Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034",
         ParagraphStyle('AD', fontSize=8, alignment=TA_CENTER, spaceAfter=8)))
@@ -393,14 +321,12 @@ def generate_pdf(exec_name, records, date_from, date_to, mode_label):
                        fontName='Helvetica-Bold', spaceAfter=8)))
     story.append(HRFlowable(width="100%", thickness=0.5, color=NAVY, spaceAfter=8))
 
-    # ── Partner (left) + Period (right) ─────────────────────────
     exec_info = get_exec_info(exec_name)
     senior_nm = exec_info.get('senior_name', 'Direct')
-    pct, rs_d = get_exec_slab(exec_name)
 
     hdr = Table([[
         Paragraph(f"<b>Partner:</b> {exec_name} | <b>Senior:</b> {senior_nm}",
-                  ParagraphStyle('PL', fontSize=9, fontName='Helvetica')),
+                  ParagraphStyle('PL', fontSize=9)),
         Paragraph(f"<b>Period:</b> {date_from} to {date_to}",
                   ParagraphStyle('PR', fontSize=9, alignment=TA_RIGHT)),
     ]], colWidths=[110*mm, 60*mm])
@@ -408,8 +334,6 @@ def generate_pdf(exec_name, records, date_from, date_to, mode_label):
     story.append(hdr)
     story.append(Spacer(1, 6))
 
-    # ── Main Table ──────────────────────────────────────────────
-    # Client Name + Partner Name stacked in one column
     headers = ["Sr\nNo", "Project\nName", "Plot\nNo", "Mauza",
                "Client Name\n(Partner)",
                "Received\nAmt (Rs)", "Received\nDate",
@@ -421,24 +345,14 @@ def generate_pdf(exec_name, records, date_from, date_to, mode_label):
     tot = {k: 0.0 for k in ['received','gross','disc_amt','net_comm','tds','in_hand']}
 
     for idx, r in enumerate(records, 1):
-        # Client name on top, Partner/Executive name below in same cell
-        client_partner = Paragraph(
+        cp = Paragraph(
             f"{r['customer']}<br/><font size='6' color='#3b82f6'><i>{r['exec_name']}</i></font>",
             ParagraphStyle('CP', fontSize=7, leading=10))
-
         tdata.append([
-            str(idx),
-            r['project'],
-            str(r['plot']),
-            r['mauza'],
-            client_partner,
-            f"{r['received']:,.2f}",
-            r['date'],
-            f"{r['gross']:,.2f}",
-            f"{r['disc_amt']:,.2f}",
-            f"{r['net_comm']:,.2f}",
-            f"{r['tds']:,.2f}",
-            f"{r['in_hand']:,.2f}",
+            str(idx), r['project'], str(r['plot']), r['mauza'], cp,
+            f"{r['received']:,.2f}", r['date'],
+            f"{r['gross']:,.2f}", f"{r['disc_amt']:,.2f}",
+            f"{r['net_comm']:,.2f}", f"{r['tds']:,.2f}", f"{r['in_hand']:,.2f}",
         ])
         for k in tot: tot[k] += r[k]
 
@@ -449,35 +363,26 @@ def generate_pdf(exec_name, records, date_from, date_to, mode_label):
 
     tbl = Table(tdata, colWidths=cw, repeatRows=1)
     tbl.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), NAVY),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,0), 7),
-        ('ALIGN', (0,0), (-1,0), 'CENTER'),
-        ('FONTNAME', (0,1), (-1,-2), 'Helvetica'),
-        ('FONTSIZE', (0,1), (-1,-2), 7),
-        ('ALIGN', (0,1), (-1,-2), 'CENTER'),
-        ('ALIGN', (1,1), (1,-2), 'LEFT'),
-        ('ALIGN', (4,1), (4,-2), 'LEFT'),
-        ('ROWBACKGROUNDS',(0,1), (-1,-2), [colors.white, GREY]),
-        ('BACKGROUND', (0,-1),(-1,-1), NAVY),
-        ('TEXTCOLOR', (0,-1),(-1,-1), colors.white),
-        ('FONTNAME', (0,-1),(-1,-1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,-1),(-1,-1), 7),
-        ('BACKGROUND', (-1,1),(-1,-2), colors.HexColor("#fef3c7")),
-        ('TEXTCOLOR', (-1,1),(-1,-2), colors.HexColor("#92400e")),
-        ('FONTNAME', (-1,1),(-1,-2), 'Helvetica-Bold'),
-        ('BOX', (0,0), (-1,-1), 0.8, BLACK),
-        ('INNERGRID', (0,0), (-1,-1), 0.3, colors.HexColor("#cbd5e1")),
-        ('TOPPADDING', (0,0), (-1,-1), 3),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-        ('LEFTPADDING', (0,0), (-1,-1), 2),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('BACKGROUND',(0,0),(-1,0),NAVY), ('TEXTCOLOR',(0,0),(-1,0),colors.white),
+        ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'), ('FONTSIZE',(0,0),(-1,0),7),
+        ('ALIGN',(0,0),(-1,0),'CENTER'),
+        ('FONTNAME',(0,1),(-1,-2),'Helvetica'), ('FONTSIZE',(0,1),(-1,-2),7),
+        ('ALIGN',(0,1),(-1,-2),'CENTER'),
+        ('ALIGN',(1,1),(1,-2),'LEFT'), ('ALIGN',(4,1),(4,-2),'LEFT'),
+        ('ROWBACKGROUNDS',(0,1),(-1,-2),[colors.white,GREY]),
+        ('BACKGROUND',(0,-1),(-1,-1),NAVY), ('TEXTCOLOR',(0,-1),(-1,-1),colors.white),
+        ('FONTNAME',(0,-1),(-1,-1),'Helvetica-Bold'), ('FONTSIZE',(0,-1),(-1,-1),7),
+        ('BACKGROUND',(-1,1),(-1,-2),colors.HexColor("#fef3c7")),
+        ('TEXTCOLOR',(-1,1),(-1,-2),colors.HexColor("#92400e")),
+        ('FONTNAME',(-1,1),(-1,-2),'Helvetica-Bold'),
+        ('BOX',(0,0),(-1,-1),0.8,BLACK),
+        ('INNERGRID',(0,0),(-1,-1),0.3,colors.HexColor("#cbd5e1")),
+        ('TOPPADDING',(0,0),(-1,-1),3), ('BOTTOMPADDING',(0,0),(-1,-1),3),
+        ('LEFTPADDING',(0,0),(-1,-1),2), ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
     ]))
     story.append(tbl)
     story.append(Spacer(1, 8))
 
-    # ── Summary Bifurcation ──────────────────────────────────────
     story.append(Paragraph("<b>Summary Bifurcation</b>",
         ParagraphStyle('SB', fontSize=10, fontName='Helvetica-Bold',
                        textColor=NAVY, spaceAfter=4)))
@@ -488,19 +393,15 @@ def generate_pdf(exec_name, records, date_from, date_to, mode_label):
          f"Rs {tot['tds']:,.2f}", f"Rs {tot['in_hand']:,.2f}"],
     ], colWidths=[30*mm, 28*mm, 28*mm, 30*mm, 24*mm, 30*mm])
     stbl.setStyle(TableStyle([
-        ('BACKGROUND', (0,0),(-1,0), NAVY),
-        ('TEXTCOLOR', (0,0),(-1,0), colors.white),
-        ('FONTNAME', (0,0),(-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0),(-1,-1), 8),
-        ('ALIGN', (0,0),(-1,-1), 'CENTER'),
-        ('BACKGROUND', (0,1),(-2,1), LTBLUE),
-        ('BACKGROUND', (-1,1),(-1,1), GREEN),
-        ('TEXTCOLOR', (-1,1),(-1,1), DKGRN),
-        ('FONTNAME', (0,1),(-1,1), 'Helvetica-Bold'),
-        ('BOX', (0,0),(-1,-1), 1, NAVY),
-        ('INNERGRID', (0,0),(-1,-1), 0.4, colors.HexColor("#93c5fd")),
-        ('TOPPADDING', (0,0),(-1,-1), 6),
-        ('BOTTOMPADDING',(0,0),(-1,-1), 6),
+        ('BACKGROUND',(0,0),(-1,0),NAVY), ('TEXTCOLOR',(0,0),(-1,0),colors.white),
+        ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'), ('FONTSIZE',(0,0),(-1,-1),8),
+        ('ALIGN',(0,0),(-1,-1),'CENTER'),
+        ('BACKGROUND',(0,1),(-2,1),LTBLUE),
+        ('BACKGROUND',(-1,1),(-1,1),GREEN), ('TEXTCOLOR',(-1,1),(-1,1),DKGRN),
+        ('FONTNAME',(0,1),(-1,1),'Helvetica-Bold'),
+        ('BOX',(0,0),(-1,-1),1,NAVY),
+        ('INNERGRID',(0,0),(-1,-1),0.4,colors.HexColor("#93c5fd")),
+        ('TOPPADDING',(0,0),(-1,-1),6), ('BOTTOMPADDING',(0,0),(-1,-1),6),
     ]))
     story.append(stbl)
     story.append(Spacer(1, 10))
@@ -514,28 +415,24 @@ def generate_pdf(exec_name, records, date_from, date_to, mode_label):
     buffer.seek(0)
     return buffer.read()
 
-# ---------------------------------------------------------------
-# 9. STREAMLIT UI
-# ---------------------------------------------------------------
+# ── UI ───────────────────────────────────────────────────────
 st.markdown("### 👤 Step 1 — Partner Select Karo")
-
 exec_names_all = sorted([n for n, d in exec_data_root.items() if isinstance(d, dict)])
 if not exec_names_all:
-    st.warning("Koi executive nahi mila. Pehle Partner Portal mein add karo.")
+    st.warning("Koi executive nahi mila.")
     st.stop()
 
 selected_exec = st.selectbox("Partner / Executive:", exec_names_all)
-
 if selected_exec:
     pct, rs_d = get_exec_slab(selected_exec)
     senior = get_exec_senior(selected_exec)
     downlines = get_all_downlines_list(selected_exec)
     c1, c2, c3 = st.columns(3)
     slab_info = (f"{pct}% (Disc ₹{rs_d:,.0f})" if rs_d > 0 and pct > 0
-                  else f"{pct}%" if pct > 0 else f"₹{rs_d:,.0f} Fixed")
+                 else f"{pct}%" if pct > 0 else f"₹{rs_d:,.0f} Fixed")
     c1.info(f"**Slab:** {slab_info}")
     c2.info(f"**Senior:** {senior if senior else 'Direct (Company)'}")
-    c3.info(f"**Total Downlines:** {len(downlines)}")
+    c3.info(f"**Downlines:** {len(downlines)}")
 
 st.markdown("### 📅 Step 2 — Period Select Karo")
 col1, col2 = st.columns(2)
@@ -549,7 +446,6 @@ b1, b2, b3 = st.columns(3)
 self_clicked = b1.button("👤 SELF\n(Sirf Apni Bookings)", use_container_width=True)
 group_clicked = b2.button("👥 GROUP\n(Downline Difference Comm)", use_container_width=True)
 all_clicked = b3.button("🌐 ALL\n(Self + Group Dono)", use_container_width=True)
-
 
 def show_statement(records, exec_name, date_from, date_to, mode_label):
     if not records:
@@ -579,7 +475,6 @@ def show_statement(records, exec_name, date_from, date_to, mode_label):
     m5.metric("💰 In Hand", f"₹ {df['in_hand'].sum():,.2f}")
 
     st.divider()
-
     with st.spinner("PDF ban rahi hai..."):
         pdf_bytes = generate_pdf(exec_name, records, str(date_from), str(date_to), mode_label)
 
@@ -588,11 +483,8 @@ def show_statement(records, exec_name, date_from, date_to, mode_label):
 
     col_dl, col_pr = st.columns(2)
     with col_dl:
-        st.download_button(
-            label="📥 Download PDF (A4)",
-            data=pdf_bytes, file_name=fname,
-            mime="application/pdf",
-            use_container_width=True)
+        st.download_button(label="📥 Download PDF (A4)", data=pdf_bytes,
+            file_name=fname, mime="application/pdf", use_container_width=True)
     with col_pr:
         components.html(f"""
         <script>
@@ -612,20 +504,16 @@ def show_statement(records, exec_name, date_from, date_to, mode_label):
             🖨️ Print PDF (A4)
         </button>
         """, height=55)
-
-    st.info("💡 Download karo ya Print karo — dono A4 size mein honge.")
-
+    st.info("💡 Download ya Print — dono A4 mein honge.")
 
 if self_clicked:
     with st.spinner("Data collect ho raha hai..."):
         records = build_self(selected_exec, date_from, date_to)
     show_statement(records, selected_exec, date_from, date_to, "SELF")
-
 elif group_clicked:
     with st.spinner("Data collect ho raha hai..."):
         records = build_group(selected_exec, date_from, date_to)
     show_statement(records, selected_exec, date_from, date_to, "GROUP")
-
 elif all_clicked:
     with st.spinner("Data collect ho raha hai..."):
         records = build_all(selected_exec, date_from, date_to)
