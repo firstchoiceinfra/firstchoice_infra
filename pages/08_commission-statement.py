@@ -2,624 +2,520 @@ import streamlit as st
 import pandas as pd
 import database
 import datetime
-import urllib.parse
+import io
+import base64
 
-# --- 1. Page Configuration ---
-st.set_page_config(layout="wide", page_title="FC Infra - Premium Inventory Matrix")
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.units import mm
+from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
+                                 TableStyle, HRFlowable)
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+import streamlit.components.v1 as components
 
-# --- 2. Security Interceptor Check ---
+st.set_page_config(layout="wide", page_title="FC Infra - Commission Statement")
+
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.warning("🔒 Please login on the Main Page portal first.")
     st.stop()
 
-# --- 3. Database Sync ---
+if st.session_state.get('user_role', 'executive') != 'admin':
+    st.error("🚨 Access Denied! Yeh page sirf Admin ke liye hai.")
+    st.info("💡 Commission statement dekhne ke liye Admin se contact karo.")
+    st.stop()
+
 database.init_db()
 db_data = st.session_state.db_projects
+exec_data_root = db_data.get('executives', {})
 
-# ====================================================================
-# 🎨 Premium UI & Glassmorphism Theme Sync
-# ====================================================================
 bg_url = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
 p_color = "#1e3a8a"
 s_color = "#3b82f6"
-c_bg = "rgba(255, 255, 255, 0.85)"
-
+c_bg = "rgba(255,255,255,0.92)"
 if '_app_settings' in db_data:
-    global_settings = db_data['_app_settings']
-    bg_url = global_settings.get('bg_url', bg_url)
-    p_color = global_settings.get('primary_color', p_color)
-    s_color = global_settings.get('secondary_color', s_color)
+    gs = db_data['_app_settings']
+    bg_url = gs.get('bg_url', bg_url)
+    p_color = gs.get('primary_color', p_color)
+    s_color = gs.get('secondary_color', s_color)
+    c_bg = gs.get('card_bg', c_bg)
 
 st.markdown(f"""
 <style>
-.stApp {{
-    background-image: url("{bg_url}");
-    background-attachment: fixed;
-    background-size: cover;
-}}
-.block-container {{
-    background-color: {c_bg} !important;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    padding: 2.5rem 3.5rem !important;
-    border-radius: 24px;
-    box-shadow: 0px 20px 40px rgba(0,0,0,0.2);
-    border: 1px solid rgba(255,255,255,0.4);
-    margin-top: 2rem;
-    margin-bottom: 2rem;
-}}
-h1, h2, h3, h4 {{
-    color: {p_color} !important;
-    font-weight: 900;
-    letter-spacing: -0.5px;
-}}
-.plot-card {{
-    padding: 18px 10px;
-    border-radius: 14px;
-    text-align: center;
-    margin-bottom: 12px;
-    box-shadow: 0px 6px 15px rgba(0,0,0,0.08);
-    font-weight: bold;
-    transition: all 0.3s ease;
-    cursor: pointer;
-}}
-.plot-card:hover {{
-    transform: translateY(-5px);
-    box-shadow: 0px 12px 20px rgba(0,0,0,0.15);
-}}
-.plot-available {{
-    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
-    color: #155724 !important;
-    border: 1px solid #b1dfbb;
-}}
-.plot-booked {{
-    background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
-    color: #721c24 !important;
-    border: 1px solid #f1b0b7;
-}}
-.plot-hold {{
-    background: linear-gradient(135deg, #fff3cd 0%, #ffe8a1 100%);
-    color: #856404 !important;
-    border: 1px solid #ffeeba;
-}}
-.plot-locked {{
-    background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
-    color: #475569 !important;
-    border: 1px solid #94a3b8;
-}}
-.stButton>button {{
-    background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%);
-    color: white !important;
-    border-radius: 8px;
-    font-weight: 700;
-    border: none;
-    padding: 10px 20px;
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-    transition: all 0.3s ease;
-}}
-.stButton>button:hover {{
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(59, 130, 246, 0.6);
-}}
-.wa-btn {{
-    display: inline-block;
-    width: 100%;
-    background: linear-gradient(90deg, #25D366 0%, #128C7E 100%);
-    color: white;
-    text-align: center;
-    padding: 10px;
-    border-radius: 8px;
-    font-weight: 700;
-    font-size: 14px;
-    text-decoration: none;
-    box-shadow: 0 4px 12px rgba(37, 211, 102, 0.4);
-    transition: all 0.3s ease;
-    border: none;
-    font-family: inherit;
-}}
-.wa-btn:hover {{
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(37, 211, 102, 0.6);
-    color: white;
-}}
+.stApp {{ background-image: url("{bg_url}"); background-attachment: fixed; background-size: cover; }}
+.block-container {{ background-color: {c_bg} !important; padding: 2.5rem 3.5rem !important;
+    border-radius: 24px; box-shadow: 0px 20px 40px rgba(0,0,0,0.2); margin-top: 2rem; margin-bottom: 2rem; }}
+h1, h2, h3, h4 {{ color: {p_color} !important; font-weight: 900; }}
+.stButton>button {{ background: linear-gradient(90deg, {p_color} 0%, {s_color} 100%);
+    color: white !important; border-radius: 8px; font-weight: 700; border: none;
+    padding: 10px 20px; box-shadow: 0 4px 12px rgba(59,130,246,0.4); transition: all 0.3s ease; }}
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align: center;'>🏗️ Premium Inventory & Allocation Matrix</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center;'>💼 FC Infra — Commission Statement</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;color:#475569;'>🔐 Admin Only</p>", unsafe_allow_html=True)
+st.divider()
 
-# =========================================================
-# 🛡️ SMART AUTHORIZATION
-# =========================================================
-current_user = st.session_state.get('current_user_name', '')
-user_role = st.session_state.get('user_role', 'executive')
-exec_data_root = db_data.get('executives', {})
+# ── HELPERS ──────────────────────────────────────────────────
+def sf(val, default=0.0):
+    try:
+        if val is None or str(val).strip() == "": return float(default)
+        return float(val)
+    except: return float(default)
 
-def get_all_downlines(manager_name):
-    manager_clean = str(manager_name).strip().lower()
-    downlines = []
-    for ex_name, details in exec_data_root.items():
-        if str(details.get('senior_name', '')).strip().lower() == manager_clean:
-            downlines.append(ex_name)
-            downlines.extend(get_all_downlines(ex_name))
-    return list(set(downlines))
+def get_exec_info(name):
+    for k, v in exec_data_root.items():
+        if str(k).strip().lower() == str(name).strip().lower(): return v
+    return {}
 
-def is_authorized(plot_exec_name):
-    if str(user_role).lower() == 'admin': return True
-    plot_exec_clean = str(plot_exec_name).strip().lower()
-    curr_user_clean = str(current_user).strip().lower()
-    if plot_exec_clean == curr_user_clean: return True
-    all_downlines_lower = [d.lower() for d in get_all_downlines(curr_user_clean)]
-    if plot_exec_clean in all_downlines_lower: return True
-    return False
+def get_exec_slab(name):
+    info = get_exec_info(name)
+    return sf(info.get('percentage_exec', 0.0)), sf(info.get('rupees_exec', 0.0))
 
-# =========================================================
-# 🌟 Smart Associate Auto-Complete Registry
-# =========================================================
-project_names = []
-exec_list_temp = []
+def get_exec_senior(name):
+    info = get_exec_info(name)
+    s = str(info.get('senior_name', '')).strip()
+    return None if s.lower() in ['', 'company', 'direct', 'none', '-'] else s
 
-for key, val in db_data.items():
-    if isinstance(val, dict) and ('plots' in val or 'total_plots' in val or 'khasra' in val):
-        project_names.append(key)
+def is_top_level(v):
+    return str(v).strip().lower() in ['', 'company', 'direct', 'none', '-']
+
+def get_direct_downlines(mgr):
+    m = str(mgr).strip().lower()
+    return [ex for ex, det in exec_data_root.items()
+            if isinstance(det, dict) and str(det.get('senior_name','')).strip().lower() == m
+            and not is_top_level(det.get('senior_name',''))]
+
+def get_all_downlines_list(mgr):
+    result = []
+    for dl in get_direct_downlines(mgr):
+        result.append(dl)
+        result.extend(get_all_downlines_list(dl))
+    return list(set(result))
+
+def get_project_comm_type(p):
+    return db_data.get(p, {}).get('comm_type', 'Percentage (%)')
+
+def get_project_mauza(p):
+    return db_data.get(p, {}).get('mauza', '')
+
+def get_discount_pct(plot_info):
+    """
+    company_rate = original rate per sqft (saved at booking)
+    rate_per_sqft = actual selling rate per sqft (saved at booking)
+
+    Discount % = (company_rate - rate_per_sqft) / company_rate * 100
+
+    Safety rules:
+    - If company_rate = 0 → no discount
+    - If rate_per_sqft = 0 → try to derive from selling_rate/plot_area
+    - If derived rate still 0 → no discount (return 0, do NOT calculate)
+    - If disc_pct > 50% → data error, return 0
+    """
+    comp_rate = sf(plot_info.get('company_rate', 0.0))
+    actual_rate = sf(plot_info.get('rate_per_sqft', 0.0))
+
+    # If actual_rate not saved, try to derive
+    if actual_rate <= 0:
+        plot_area = sf(plot_info.get('plot_area', 0.0))
+        sell_val = sf(plot_info.get('selling_rate', 0.0))
+        if sell_val > 0 and plot_area > 0:
+            derived = sell_val / plot_area
+            # Only use if reasonable value (between 100 and comp_rate*1.5)
+            if 100 < derived <= (comp_rate * 1.5 if comp_rate > 0 else 99999):
+                actual_rate = derived
+
+    # No company_rate or no actual_rate → no discount
+    if comp_rate <= 0 or actual_rate <= 0:
+        return 0.0
+
+    # No discount if selling at or above company rate
+    if actual_rate >= comp_rate:
+        return 0.0
+
+    disc_pct = ((comp_rate - actual_rate) / comp_rate) * 100.0
+
+    # Safety cap: more than 50% discount is likely a data error
+    if disc_pct > 50.0:
+        return 0.0
+
+    return disc_pct
+
+def compute_row(received, comm_pct, rs_fixed, comm_type, disc_pct=0.0):
+    """
+    % project:
+      Gross = received × comm_pct / 100
+      Disc Amt = received × disc_pct / 100 ← on RECEIVED amount
+      Net = Gross - Disc Amt
+      TDS = Net × 2%
+      In Hand = Net - TDS
+
+    Rs project:
+      Gross = rs_fixed, no discount
+      TDS = Gross × 2%
+      In Hand = Gross - TDS
+    """
+    if received <= 0: return 0.0, 0.0, 0.0, 0.0, 0.0
+    is_pct = '%' in str(comm_type) or 'percentage' in str(comm_type).lower()
+
+    if is_pct:
+        gross = received * comm_pct / 100.0
+        disc_amt = received * disc_pct / 100.0 # on received amount
+        net = max(0.0, gross - disc_amt)
     else:
-        if isinstance(val, dict):
-            for k, v in val.items():
-                exec_list_temp.append(str(k))
-                if isinstance(v, dict):
-                    if 'name' in v: exec_list_temp.append(str(v['name']))
-                    if 'Name' in v: exec_list_temp.append(str(v['Name']))
-                    if 'exec_name' in v: exec_list_temp.append(str(v['exec_name']))
-        elif isinstance(val, list):
-            exec_list_temp.extend([str(e) for e in val if isinstance(e, str)])
+        gross = rs_fixed
+        disc_amt = 0.0
+        net = gross
 
-exec_list = ["Direct Sale"]
-for e in exec_list_temp:
-    e_clean = e.strip()
-    if e_clean and e_clean not in exec_list and e_clean.lower() not in ['true', 'false', 'none', 'select']:
-        exec_list.append(e_clean)
-exec_list.sort()
+    tds = net * 0.02
+    in_hand = net - tds
+    return gross, disc_amt, net, tds, in_hand
 
-if st.sidebar.button("🔄 Sync Cloud Storage (Refresh)"):
-    with st.spinner("Synchronizing database..."):
-        database.load_db_data()
-        st.success("Cloud Synchronized!")
-        st.rerun()
+def get_payments_in_range(plot_info, date_from, date_to):
+    payments = []
+    tok = sf(plot_info.get('token_amount', 0.0))
+    tok_date = plot_info.get('receipt_date', plot_info.get('booking_date', str(datetime.date.today())))
+    if tok > 0:
+        try: d = datetime.date.fromisoformat(str(tok_date)[:10])
+        except: d = datetime.date.today()
+        if date_from <= d <= date_to:
+            payments.append({'date': str(d), 'amount': tok})
+    for p in plot_info.get('partial_payments', []):
+        amt = sf(p.get('amount', 0.0))
+        if amt <= 0: continue
+        try: d = datetime.date.fromisoformat(str(p.get('date',''))[:10])
+        except: d = datetime.date.today()
+        if date_from <= d <= date_to:
+            payments.append({'date': str(d), 'amount': amt})
+    return payments
 
-st.sidebar.divider()
-st.sidebar.header("🏢 Select Project Blueprint")
+def fetch_records(exec_name, date_from, date_to, override_pct=None, apply_discount=True):
+    exec_pct, rs_fixed = get_exec_slab(exec_name)
+    use_pct = override_pct if override_pct is not None else exec_pct
+    records = []
+    project_names = [n for n, d in db_data.items()
+                     if isinstance(d, dict) and ('plots' in d or 'total_plots' in d)]
 
-if not project_names:
-    st.warning("No initialized layout found. Please construct projects via Admin Desk.")
-    st.stop()
+    for p_name in project_names:
+        p_info = db_data[p_name]
+        p_plots = p_info.get('plots', {})
+        if isinstance(p_plots, list):
+            p_plots = {str(i): p for i, p in enumerate(p_plots) if p is not None}
 
-selected_project_name = st.sidebar.selectbox("Active Blueprints Registry", project_names)
+        comm_type = get_project_comm_type(p_name)
+        mauza = get_project_mauza(p_name)
 
-if isinstance(st.session_state.db_projects[selected_project_name].get('plots'), list):
-    fixed_plots = {str(i): plot for i, plot in enumerate(st.session_state.db_projects[selected_project_name]['plots']) if plot is not None}
-    st.session_state.db_projects[selected_project_name]['plots'] = fixed_plots
+        for plot_id, plot_info in p_plots.items():
+            if not isinstance(plot_info, dict): continue
+            if str(plot_info.get('status', '')).lower() != 'booked': continue
+            if plot_info.get('is_primary', True) is False: continue
+            if str(plot_info.get('executive_name','')).strip().lower() != str(exec_name).strip().lower():
+                continue
 
-project_data = st.session_state.db_projects[selected_project_name]
-plots = project_data.get('plots', {})
+            customer = str(plot_info.get('customer_name', 'N/A')).title()
+            booked_str = plot_info.get('booked_plots_str', plot_id)
+            disc_pct = get_discount_pct(plot_info) if apply_discount else 0.0
+            payments = get_payments_in_range(plot_info, date_from, date_to)
 
-if not plots:
-    st.info("No plot matrix mapped inside this project profile.")
-    st.stop()
-
-# =========================================================
-# 📝 Interactive Booking Assignment Form Desk
-# =========================================================
-if 'booking_popup' in st.session_state:
-    p_info = st.session_state.booking_popup
-    proj = p_info['project']
-    plt = p_info['plot']
-    curr_stat = p_info['current_status']
-
-    p_khasra = project_data.get('khasra', 'N/A')
-    p_ph = project_data.get('ph_no', 'N/A')
-    p_mauza = project_data.get('mauza', 'N/A')
-    p_tahsil = project_data.get('tahsil', 'N/A')
-    p_dist = project_data.get('district', 'N/A')
-
-    st.markdown(f"### 📝 Project Matrix: {proj} | Secure Plot Node Assignment: P-{plt}")
-
-    # ── HOLD STATUS ───────────────────────────────────────────
-    if curr_stat == "Hold":
-        st.warning(f"🚧 **Plot P-{plt} is currently on HOLD (Blocked from Sale / Not for Sale).**")
-        st.info("This plot cannot be booked by executives.")
-        if st.session_state.get('user_role', 'executive') == 'admin':
-            if st.button("✅ Unblock & Make Available (Admin)", use_container_width=True, type="primary"):
-                st.session_state.db_projects[proj]['plots'][plt] = {"status": "Available"}
-                if database.save_db_data():
-                    st.success(f"Plot P-{plt} is now available for booking!")
-                    del st.session_state['booking_popup']
-                    st.rerun()
-        else:
-            st.error("🔒 Only Admins have the authority to unblock this plot.")
-
-    # ── AVAILABLE — BOOKING FORM ──────────────────────────────
-    elif curr_stat == "Available":
-        if st.session_state.get('user_role', 'executive') == 'admin':
-            if st.button("⏸️ Block Unit / Put on Hold (Admin Action)", use_container_width=True):
-                st.session_state.db_projects[proj]['plots'][plt] = {"status": "Hold"}
-                if database.save_db_data():
-                    st.success("Plot placed on Hold!")
-                    del st.session_state['booking_popup']
-                    st.rerun()
-            st.write("---")
-
-        st.info(f"📍 **Land Location Specifications:** Khasra No: {p_khasra} | PH No: {p_ph} | Mauza: {p_mauza} | Tahsil: {p_tahsil}")
-
-        st.subheader("🔗 Joint / Combo Booking (Optional)", divider="blue")
-        st.caption("💡 Select additional plots below if the client is buying multiple units.")
-        available_others = [p for p, d in st.session_state.db_projects[proj]['plots'].items()
-                            if d.get('status', 'Available') == 'Available' and p != plt]
-        combo_selections = st.multiselect(f"Select additional plots to combine with P-{plt}:", available_others)
-        all_booking_plots = [plt] + combo_selections
-        joined_plots_str = ", ".join(all_booking_plots)
-        if combo_selections:
-            st.success(f"🤝 **Joint Booking Active!** Master Ledger will be created for Plots: **P-{joined_plots_str}**")
-
-        st.subheader("👤 Client KYC & Personal Information", divider="blue")
-        col1, col2, col3 = st.columns(3)
-        c_name = col1.text_input("Client Full Name *")
-        c_dob = col2.date_input("Date of Birth (DOB)", min_value=datetime.date(1950, 1, 1))
-        c_phone = col3.text_input("Contact Mobile Number *")
-        c_address = st.text_area("Permanent Residential Address")
-        col4, col5 = st.columns(2)
-        c_aadhaar = col4.text_input("Aadhaar National ID Number")
-        c_pan = col5.text_input("PAN Card Alpha-Numeric ID")
-        col6, col7 = st.columns(2)
-        n_name = col6.text_input("Nominee Attributed Full Name")
-        n_age = col7.text_input("Nominee Declared Age")
-
-        st.subheader("📐 Layout Specifications & Commercial Valuation", divider="blue")
-        st.caption("*(💡 Company Rate = original rate, Selling Rate = actual deal rate. Difference = discount for commission calculation.)*")
-
-        col8, col9, col10 = st.columns(3)
-        plot_area_input = col8.text_input("Total Plot Area (Sq.Ft) *", value="0")
-        try:
-            area_val = float(plot_area_input.strip())
-        except:
-            area_val = 0.0
-
-        # ✅ NEW: Company Rate field
-        company_rate = col9.number_input("🏢 Company Rate (per Sq.Ft) *", min_value=0.0, step=1.0,
-                                          help="Original company rate per sqft — used for commission discount calculation")
-        selling_rate_sqft = col10.number_input("💸 Selling Rate (per Sq.Ft) *", min_value=0.0, step=1.0,
-                                                help="Actual rate at which plot was sold")
-
-        # Show discount if any
-        if company_rate > 0 and selling_rate_sqft > 0:
-            if selling_rate_sqft < company_rate:
-                disc_rs = company_rate - selling_rate_sqft
-                disc_pct = (disc_rs / company_rate) * 100
-                st.warning(f"⚠️ **Discount:** ₹{disc_rs:.0f}/Sq.Ft ({disc_pct:.2f}%) — Commission will be adjusted accordingly.")
-            elif selling_rate_sqft == company_rate:
-                st.success("✅ No discount — selling at company rate.")
-            else:
-                st.info("ℹ️ Selling above company rate.")
-
-        auto_calc_total = area_val * selling_rate_sqft
-        if auto_calc_total > 0:
-            st.success(f"💡 **Auto-Calculation:** {area_val} Sq.Ft × ₹{selling_rate_sqft} = **₹ {auto_calc_total:,.2f}**")
-
-        selling_rate_total = st.number_input("💰 Final Total Deal Value (₹) *", min_value=0.0,
-                                              value=float(auto_calc_total) if auto_calc_total > 0 else 0.0,
-                                              step=1000.0)
-
-        st.subheader("💳 Secured Advance & Token Collection Details", divider="blue")
-        col11, col12, col13 = st.columns(3)
-        token_amt = col11.number_input("Total Deposited Token Amount (₹) *", min_value=0.0, step=1000.0)
-        pay_mode = col12.selectbox("Payment Channel Mode", ["Cash", "Online/UPI", "Cheque", "RTGS/NEFT"])
-        trans_id = col13.text_input("Transaction ID / Instrument Reference Number")
-        receive_date = st.date_input("Date of Advance Receipt Collection")
-
-        st.subheader("👨‍💼 Associated Partner Credit Allocation", divider="blue")
-        if st.session_state.get('user_role', 'executive') == 'executive':
-            logged_name = st.session_state.get('current_user_name', 'Direct Sale')
-            st.text_input("Attributed Partner Profile", value=logged_name, disabled=True)
-            final_exec_name = logged_name
-        else:
-            final_exec_name = st.selectbox("Attributed Partner Profile", exec_list, index=0)
-
-        st.write("")
-        if st.button("🔒 Execute Permanent Inventory Lock & Allocation", use_container_width=True, type="primary"):
-            if c_name.strip() == "" or c_phone.strip() == "":
-                st.error("🚨 Client Name and Mobile are mandatory!")
-            elif token_amt <= 0:
-                st.error("🚨 Token Deposit Value must be greater than zero!")
-            elif selling_rate_total <= 0:
-                st.error("🚨 Final Total Deal Value cannot be zero!")
-            elif company_rate <= 0:
-                st.error("🚨 Company Rate per Sq.Ft is mandatory for commission calculation!")
-            else:
-                primary_booking_data = {
-                    "status": "Booked",
-                    "customer_name": c_name.strip(),
-                    "dob": str(c_dob),
-                    "phone": c_phone.strip(),
-                    "address": c_address.strip(),
-                    "aadhaar": c_aadhaar.strip(),
-                    "pan": c_pan.strip(),
-                    "nominee_name": n_name.strip(),
-                    "nominee_age": n_age.strip(),
-                    "plot_area": plot_area_input.strip(),
-                    "company_rate": company_rate, # ✅ NEW FIELD
-                    "selling_rate": selling_rate_total, # total deal value
-                    "rate_per_sqft": selling_rate_sqft, # actual per sqft
-                    "token_amount": token_amt,
-                    "payment_mode": pay_mode,
-                    "transaction_id": trans_id.strip(),
-                    "receipt_date": str(receive_date),
-                    "executive_name": final_exec_name,
-                    "booking_date": str(datetime.date.today()),
-                    "booked_plots_str": joined_plots_str,
-                    "is_primary": True,
-                    "primary_plot_id": plt
-                }
-                st.session_state.db_projects[proj]['plots'][plt].update(primary_booking_data)
-
-                for child_plt in combo_selections:
-                    child_data = {
-                        "status": "Booked",
-                        "customer_name": c_name.strip(),
-                        "phone": c_phone.strip(),
-                        "executive_name": final_exec_name,
-                        "booked_plots_str": joined_plots_str,
-                        "is_primary": False,
-                        "primary_plot_id": plt,
-                        "selling_rate": 0,
-                        "token_amount": 0,
-                        "plot_area": 0
-                    }
-                    st.session_state.db_projects[proj]['plots'][child_plt].update(child_data)
-
-                with st.spinner("Locking transaction matrix onto cloud security..."):
-                    if database.save_db_data():
-                        st.success(f"🎉 Plot(s) P-{joined_plots_str} successfully secured!")
-                        del st.session_state['booking_popup']
-                        st.rerun()
-
-    # ── BOOKED — STATEMENT + EDIT ─────────────────────────────
-    else:
-        p_data = st.session_state.db_projects[proj]['plots'][plt]
-
-        if not is_authorized(p_data.get('executive_name', '')):
-            st.error("🔒 **ACCESS DENIED:** You are not authorized to view this plot.")
-            if st.button("❌ Back to Grid Matrix", use_container_width=True):
-                del st.session_state['booking_popup']
-                st.rerun()
-            st.stop()
-
-        if not p_data.get('is_primary', True):
-            prim_id = p_data.get('primary_plot_id')
-            if prim_id and prim_id in st.session_state.db_projects[proj]['plots']:
-                p_data = st.session_state.db_projects[proj]['plots'][prim_id]
-                st.info(f"🔗 **Joint Booking Detected!** Viewing Master Ledger for Plots: **P-{p_data.get('booked_plots_str')}**")
-
-        joined_view_str = p_data.get('booked_plots_str', str(plt))
-        st.error(f"⚠️ Plot(s) **P-{joined_view_str}** are locked. Details below:")
-
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Customer", p_data.get('customer_name', 'N/A'))
-        c1.write(f"**DOB:** {p_data.get('dob', 'N/A')} | **Address:** {p_data.get('address', 'N/A')}")
-        c2.metric("Contact", p_data.get('phone', 'N/A'))
-        c2.write(f"**Aadhaar:** {p_data.get('aadhaar', 'N/A')} | **PAN:** {p_data.get('pan', 'N/A')}")
-        c3.metric("Executive", p_data.get('executive_name', 'N/A'))
-        c3.write(f"**Nominee:** {p_data.get('nominee_name', 'N/A')} (Age: {p_data.get('nominee_age', 'N/A')})")
-
-        with st.expander("📄 Financial Statement & Payout Ledger", expanded=True):
-            def sf(val, default=0.0):
-                try:
-                    if val is None or str(val).strip() == "": return float(default)
-                    return float(val)
-                except: return float(default)
-
-            plot_area_val = sf(p_data.get('plot_area', 0.0))
-            saved_selling_rate = sf(p_data.get('selling_rate', 0.0))
-            comp_rate_saved = sf(p_data.get('company_rate', 0.0))
-            rate_sqft_saved = sf(p_data.get('rate_per_sqft', 0.0))
-
-            if saved_selling_rate > 0 and saved_selling_rate <= 100000 and plot_area_val > 0:
-                total_cost_val = plot_area_val * saved_selling_rate
-                rate_applied = saved_selling_rate
-            else:
-                total_cost_val = saved_selling_rate
-                rate_applied = rate_sqft_saved
-
-            col_s1, col_s2, col_s3 = st.columns(3)
-            col_s1.write(f"📐 **Plot Size:** {p_data.get('plot_area', 'N/A')} Sq.Ft")
-            col_s1.write(f"📆 **Booking Date:** {p_data.get('booking_date', 'N/A')}")
-            col_s1.write(f"🏢 **Company Rate:** ₹ {comp_rate_saved:,.0f}/Sq.Ft")
-
-            col_s2.write(f"💰 **Total Deal Value:** ₹ {total_cost_val:,.2f}")
-            col_s2.write(f"📊 **Selling Rate:** ₹ {rate_applied}/Sq.Ft")
-            if comp_rate_saved > 0 and rate_applied > 0 and rate_applied < comp_rate_saved:
-                disc = comp_rate_saved - rate_applied
-                disc_pct = (disc / comp_rate_saved) * 100
-                col_s2.warning(f"⚠️ Discount: ₹{disc:.0f}/Sq.Ft ({disc_pct:.2f}%)")
-
-            col_s3.warning(f"💳 **Token:** ₹ {p_data.get('token_amount', 0)}")
-            col_s3.write(f"🏪 **Mode:** {p_data.get('payment_mode', 'N/A')}")
-            col_s3.write(f"🔑 **Ref ID:** {p_data.get('transaction_id', 'N/A')}")
-
-            st.markdown("#### 🔄 Live Payment & EMI Sync")
-            token_amt_val = sf(p_data.get('token_amount', 0.0))
-            partial_payments = p_data.get('partial_payments', [])
-            total_emi_paid = sum(sf(pmt.get('amount', 0.0)) for pmt in partial_payments)
-            total_overall_paid = token_amt_val + total_emi_paid
-            net_outstanding = max(0.0, total_cost_val - total_overall_paid)
-
-            c_emi1, c_emi2, c_emi3 = st.columns(3)
-            c_emi1.metric("Gross Deal Value", f"₹ {total_cost_val:,.2f}")
-            c_emi2.metric("Total Paid", f"₹ {total_overall_paid:,.2f}")
-            c_emi3.metric("Net Outstanding", f"₹ {net_outstanding:,.2f}")
-
-            history_rows = []
-            history_rows.append({
-                "Date": p_data.get('receipt_date', p_data.get('booking_date', 'N/A')),
-                "Type": "Booking Advance (Token)",
-                "Mode": p_data.get('payment_mode', 'N/A'),
-                "Slip No": p_data.get('token_slip_no', 'N/A'),
-                "Amount (₹)": token_amt_val
-            })
-            for pmt in partial_payments:
-                history_rows.append({
-                    "Date": pmt.get('date', 'N/A'),
-                    "Type": pmt.get('remarks', 'Installment Payment'),
-                    "Mode": pmt.get('mode', 'N/A'),
-                    "Slip No": pmt.get('slip_no', 'N/A'),
-                    "Amount (₹)": sf(pmt.get('amount', 0.0))
+            for pmt in payments:
+                gross, disc_amt, net, tds, in_hand = compute_row(
+                    pmt['amount'], use_pct, rs_fixed, comm_type, disc_pct)
+                if gross <= 0: continue
+                records.append({
+                    'project' : p_name,
+                    'plot' : booked_str,
+                    'mauza' : mauza,
+                    'customer' : customer,
+                    'exec_name': exec_name,
+                    'received' : pmt['amount'],
+                    'date' : pmt['date'],
+                    'gross' : gross,
+                    'disc_pct' : disc_pct,
+                    'disc_amt' : disc_amt,
+                    'net_comm' : net,
+                    'tds' : tds,
+                    'in_hand' : in_hand,
+                    'comm_pct' : use_pct,
                 })
+    return records
 
-            df_display = pd.DataFrame(history_rows)
-            df_display['Amount (₹)'] = df_display['Amount (₹)'].apply(lambda x: f"₹ {x:,.2f}")
-            st.dataframe(df_display, use_container_width=True, hide_index=True)
+def build_self(exec_name, date_from, date_to):
+    return fetch_records(exec_name, date_from, date_to, apply_discount=True)
 
-            # ── ADMIN EDIT SECTION ────────────────────────────
-            if st.session_state.get('user_role', 'executive') == 'admin':
-                st.write("")
+def build_group(exec_name, date_from, date_to):
+    records = []
+    exec_pct, _ = get_exec_slab(exec_name)
 
-                # ✅ NEW: Update Company Rate for old bookings
-                with st.expander("🏢 Update Company Rate (For Commission Calculation)", expanded=False):
-                    st.caption("⚠️ Purani bookings mein Company Rate nahi tha — yahan add/update karo.")
-                    with st.form(f"update_company_rate_{plt}"):
-                        current_cr = sf(p_data.get('company_rate', 0.0))
-                        new_cr = st.number_input(
-                            "Company Rate per Sq.Ft (₹)",
-                            min_value=0.0, step=1.0,
-                            value=current_cr,
-                            help="Yeh rate commission discount calculate karne ke liye use hoga"
-                        )
-                        curr_sr = sf(p_data.get('rate_per_sqft', 0.0))
-                        if new_cr > 0 and curr_sr > 0:
-                            if curr_sr < new_cr:
-                                d = new_cr - curr_sr
-                                dp = (d / new_cr) * 100
-                                st.warning(f"Discount: ₹{d:.0f}/Sq.Ft = {dp:.2f}%")
-                            else:
-                                st.success("No discount at this rate.")
-                        if st.form_submit_button("💾 Save Company Rate", use_container_width=True):
-                            real_plt = p_data.get('primary_plot_id', plt)
-                            st.session_state.db_projects[proj]['plots'][real_plt]['company_rate'] = new_cr
-                            if database.save_db_data():
-                                st.success(f"✅ Company Rate updated to ₹{new_cr}/Sq.Ft!")
-                                st.rerun()
+    def collect_chain(senior_name, senior_pct):
+        for dl in get_direct_downlines(senior_name):
+            dl_pct, _ = get_exec_slab(dl)
+            diff_pct = senior_pct - dl_pct
+            if diff_pct > 0:
+                # NO discount for upline difference rows
+                dl_recs = fetch_records(dl, date_from, date_to,
+                                        override_pct=diff_pct, apply_discount=False)
+                for r in dl_recs:
+                    r['via'] = dl
+                    r['exec_name'] = dl
+                records.extend(dl_recs)
 
-                # Edit Slip Numbers
-                with st.expander("✏️ Edit Missing Slip Numbers (Admin Only)"):
-                    with st.form(f"edit_slips_form_{plt}"):
-                        st.caption("Fill in or update any missing slip numbers below and hit Save.")
-                        new_tok_slip = st.text_input("Booking Advance (Token) - Slip No:",
-                                                      value=p_data.get('token_slip_no', ''))
-                        new_emi_slips = []
-                        for i, pmt in enumerate(partial_payments):
-                            ns = st.text_input(
-                                f"EMI on {pmt.get('date', 'N/A')} (₹{pmt.get('amount', 0)}) - Slip No:",
-                                value=pmt.get('slip_no', ''))
-                            new_emi_slips.append(ns)
-                        if st.form_submit_button("💾 Save Slip Updates", use_container_width=True):
-                            real_plt = p_data.get('primary_plot_id', plt)
-                            st.session_state.db_projects[proj]['plots'][real_plt]['token_slip_no'] = new_tok_slip
-                            for i, pmt in enumerate(partial_payments):
-                                st.session_state.db_projects[proj]['plots'][real_plt]['partial_payments'][i]['slip_no'] = new_emi_slips[i]
-                            if database.save_db_data():
-                                st.success("Slip numbers updated!")
-                                st.rerun()
+                def get_sub(node, diff):
+                    for sub in get_direct_downlines(node):
+                        sub_recs = fetch_records(sub, date_from, date_to,
+                                                 override_pct=diff, apply_discount=False)
+                        for r in sub_recs:
+                            r['via'] = sub
+                            r['exec_name'] = sub
+                        records.extend(sub_recs)
+                        get_sub(sub, diff)
+                get_sub(dl, diff_pct)
 
-            st.write("---")
-            c_btn1, c_btn2 = st.columns(2)
+    collect_chain(exec_name, exec_pct)
+    return records
 
-            csv_statement = pd.DataFrame(history_rows).to_csv(index=False).encode('utf-8-sig')
-            with c_btn1:
-                st.download_button(
-                    label="🖨️ Download Statement (Print/Save)",
-                    data=csv_statement,
-                    file_name=f"Plot_{joined_view_str}_Statement_{p_data.get('customer_name', 'Client').replace(' ', '_')}.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
+def build_all(exec_name, date_from, date_to):
+    return build_self(exec_name, date_from, date_to) + build_group(exec_name, date_from, date_to)
 
-            cust_phone = str(p_data.get('phone', '')).replace(' ', '').replace('+', '').strip()
-            if len(cust_phone) == 10:
-                cust_phone = "91" + cust_phone
+# ── PDF ──────────────────────────────────────────────────────
+def generate_pdf(exec_name, records, date_from, date_to, mode_label):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+               rightMargin=12*mm, leftMargin=12*mm,
+               topMargin=10*mm, bottomMargin=10*mm)
+    BLACK = colors.black
+    NAVY = colors.HexColor("#1e3a8a")
+    LTBLUE = colors.HexColor("#e0f2fe")
+    GREY = colors.HexColor("#f8fafc")
+    GREEN = colors.HexColor("#d1fae5")
+    DKGRN = colors.HexColor("#065f46")
+    story = []
 
-            wa_msg = (f"🌟 *FirstChoice Infra - Payment Update* 🌟\n\n"
-                      f"Dear *{str(p_data.get('customer_name', 'Sir/Madam')).title()}*,\n"
-                      f"Plot(s) *P-{joined_view_str}* in *{proj}*:\n\n"
-                      f"🔹 *Total Value:* ₹ {total_cost_val:,.2f}\n"
-                      f"✅ *Total Paid:* ₹ {total_overall_paid:,.2f}\n"
-                      f"⚠️ *Outstanding:* ₹ {net_outstanding:,.2f}\n\n"
-                      f"Thank you!\n*FC Infra Team*")
-            wa_url = f"https://wa.me/{cust_phone}?text={urllib.parse.quote(wa_msg)}"
+    # Header
+    story.append(Spacer(1, 4))
+    story.append(Paragraph("<b>FIRSTCHOICE INFRA</b>",
+        ParagraphStyle('TT', fontSize=22, alignment=TA_CENTER,
+                       fontName='Helvetica-Bold', spaceAfter=4)))
+    story.append(Spacer(1, 4))
 
-            with c_btn2:
-                st.markdown(f'<a href="{wa_url}" target="_blank" class="wa-btn">💬 Send Live Update on WhatsApp</a>',
-                            unsafe_allow_html=True)
+    # Slogan with lines on both sides
+    slogan_tbl = Table([[
+        HRFlowable(width="100%", thickness=1, color=NAVY),
+        Paragraph("<i> Symbol Of Trust... </i>",
+                  ParagraphStyle('SL', fontSize=10, alignment=TA_CENTER)),
+        HRFlowable(width="100%", thickness=1, color=NAVY),
+    ]], colWidths=[40*mm, 80*mm, 40*mm])
+    slogan_tbl.setStyle(TableStyle([
+        ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+        ('TOPPADDING',(0,0),(-1,-1),0),
+        ('BOTTOMPADDING',(0,0),(-1,-1),0),
+    ]))
+    story.append(slogan_tbl)
+    story.append(Spacer(1, 6))
 
-        if st.session_state.get('user_role', 'admin') == 'admin':
-            st.write("")
-            st.warning("Strategic Action: Force Cancel will revoke all plots attached to this Joint Booking.")
-            if st.button("✅ Force Cancel Allotment & Revoke Allocation", use_container_width=True):
-                plots_to_free = [p.strip() for p in p_data.get('booked_plots_str', str(plt)).split(",")]
-                for f_plt in plots_to_free:
-                    if f_plt in st.session_state.db_projects[proj]['plots']:
-                        st.session_state.db_projects[proj]['plots'][f_plt] = {"status": "Available"}
-                with st.spinner("Revoking ledger data strings..."):
-                    if database.save_db_data():
-                        st.success(f"Plots P-{joined_view_str} restored to open inventory!")
-                        del st.session_state['booking_popup']
-                        st.rerun()
+    story.append(Paragraph(
+        "Plot No. 06, Shop No.106, Motilal Nagar, Gonhi(Sim) Bahadura, Nagpur-440034",
+        ParagraphStyle('AD', fontSize=8, alignment=TA_CENTER, spaceAfter=8)))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=NAVY, spaceAfter=6))
+    story.append(Paragraph("<b>Executive Commission Statement</b>",
+        ParagraphStyle('ES', fontSize=13, alignment=TA_CENTER,
+                       fontName='Helvetica-Bold', spaceAfter=8)))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=NAVY, spaceAfter=8))
 
-    st.write("---")
-    if st.button("❌ Back to Grid Matrix Map View", use_container_width=True):
-        del st.session_state['booking_popup']
-        st.rerun()
+    exec_info = get_exec_info(exec_name)
+    senior_nm = exec_info.get('senior_name', 'Direct')
 
+    hdr = Table([[
+        Paragraph(f"<b>Partner:</b> {exec_name} | <b>Senior:</b> {senior_nm}",
+                  ParagraphStyle('PL', fontSize=9)),
+        Paragraph(f"<b>Period:</b> {date_from} to {date_to}",
+                  ParagraphStyle('PR', fontSize=9, alignment=TA_RIGHT)),
+    ]], colWidths=[110*mm, 60*mm])
+    hdr.setStyle(TableStyle([('BOTTOMPADDING',(0,0),(-1,-1),5)]))
+    story.append(hdr)
+    story.append(Spacer(1, 6))
+
+    headers = ["Sr\nNo", "Project\nName", "Plot\nNo", "Mauza",
+               "Client Name\n(Partner)",
+               "Received\nAmt (Rs)", "Received\nDate",
+               "Gross\nComm", "Discount\nAmt", "Net\nComm", "TDS\n2%", "In\nHand"]
+    cw = [8*mm, 28*mm, 10*mm, 16*mm, 34*mm,
+          18*mm, 18*mm, 16*mm, 16*mm, 16*mm, 12*mm, 16*mm]
+
+    tdata = [headers]
+    tot = {k: 0.0 for k in ['received','gross','disc_amt','net_comm','tds','in_hand']}
+
+    for idx, r in enumerate(records, 1):
+        cp = Paragraph(
+            f"{r['customer']}<br/><font size='6' color='#3b82f6'><i>{r['exec_name']}</i></font>",
+            ParagraphStyle('CP', fontSize=7, leading=10))
+        tdata.append([
+            str(idx), r['project'], str(r['plot']), r['mauza'], cp,
+            f"{r['received']:,.2f}", r['date'],
+            f"{r['gross']:,.2f}", f"{r['disc_amt']:,.2f}",
+            f"{r['net_comm']:,.2f}", f"{r['tds']:,.2f}", f"{r['in_hand']:,.2f}",
+        ])
+        for k in tot: tot[k] += r[k]
+
+    tdata.append(["TOTAL","","","","",
+        f"{tot['received']:,.2f}","",
+        f"{tot['gross']:,.2f}", f"{tot['disc_amt']:,.2f}",
+        f"{tot['net_comm']:,.2f}", f"{tot['tds']:,.2f}", f"{tot['in_hand']:,.2f}"])
+
+    tbl = Table(tdata, colWidths=cw, repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND',(0,0),(-1,0),NAVY), ('TEXTCOLOR',(0,0),(-1,0),colors.white),
+        ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'), ('FONTSIZE',(0,0),(-1,0),7),
+        ('ALIGN',(0,0),(-1,0),'CENTER'),
+        ('FONTNAME',(0,1),(-1,-2),'Helvetica'), ('FONTSIZE',(0,1),(-1,-2),7),
+        ('ALIGN',(0,1),(-1,-2),'CENTER'),
+        ('ALIGN',(1,1),(1,-2),'LEFT'), ('ALIGN',(4,1),(4,-2),'LEFT'),
+        ('ROWBACKGROUNDS',(0,1),(-1,-2),[colors.white,GREY]),
+        ('BACKGROUND',(0,-1),(-1,-1),NAVY), ('TEXTCOLOR',(0,-1),(-1,-1),colors.white),
+        ('FONTNAME',(0,-1),(-1,-1),'Helvetica-Bold'), ('FONTSIZE',(0,-1),(-1,-1),7),
+        ('BACKGROUND',(-1,1),(-1,-2),colors.HexColor("#fef3c7")),
+        ('TEXTCOLOR',(-1,1),(-1,-2),colors.HexColor("#92400e")),
+        ('FONTNAME',(-1,1),(-1,-2),'Helvetica-Bold'),
+        ('BOX',(0,0),(-1,-1),0.8,BLACK),
+        ('INNERGRID',(0,0),(-1,-1),0.3,colors.HexColor("#cbd5e1")),
+        ('TOPPADDING',(0,0),(-1,-1),3), ('BOTTOMPADDING',(0,0),(-1,-1),3),
+        ('LEFTPADDING',(0,0),(-1,-1),2), ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+    ]))
+    story.append(tbl)
+    story.append(Spacer(1, 8))
+
+    story.append(Paragraph("<b>Summary Bifurcation</b>",
+        ParagraphStyle('SB', fontSize=10, fontName='Helvetica-Bold',
+                       textColor=NAVY, spaceAfter=4)))
+    stbl = Table([
+        ["Total Received","Gross Comm","Total Discount","Net Commission","Total TDS","IN HAND"],
+        [f"Rs {tot['received']:,.2f}", f"Rs {tot['gross']:,.2f}",
+         f"Rs {tot['disc_amt']:,.2f}", f"Rs {tot['net_comm']:,.2f}",
+         f"Rs {tot['tds']:,.2f}", f"Rs {tot['in_hand']:,.2f}"],
+    ], colWidths=[30*mm, 28*mm, 28*mm, 30*mm, 24*mm, 30*mm])
+    stbl.setStyle(TableStyle([
+        ('BACKGROUND',(0,0),(-1,0),NAVY), ('TEXTCOLOR',(0,0),(-1,0),colors.white),
+        ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'), ('FONTSIZE',(0,0),(-1,-1),8),
+        ('ALIGN',(0,0),(-1,-1),'CENTER'),
+        ('BACKGROUND',(0,1),(-2,1),LTBLUE),
+        ('BACKGROUND',(-1,1),(-1,1),GREEN), ('TEXTCOLOR',(-1,1),(-1,1),DKGRN),
+        ('FONTNAME',(0,1),(-1,1),'Helvetica-Bold'),
+        ('BOX',(0,0),(-1,-1),1,NAVY),
+        ('INNERGRID',(0,0),(-1,-1),0.4,colors.HexColor("#93c5fd")),
+        ('TOPPADDING',(0,0),(-1,-1),6), ('BOTTOMPADDING',(0,0),(-1,-1),6),
+    ]))
+    story.append(stbl)
+    story.append(Spacer(1, 10))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=NAVY, spaceAfter=4))
+    story.append(Paragraph(
+        "This is a computer-generated statement by FC Infra — FirstChoice Infrastructure.",
+        ParagraphStyle('FT', fontSize=7, alignment=TA_CENTER,
+                       textColor=colors.HexColor("#94a3b8"))))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.read()
+
+# ── UI ───────────────────────────────────────────────────────
+st.markdown("### 👤 Step 1 — Partner Select Karo")
+exec_names_all = sorted([n for n, d in exec_data_root.items() if isinstance(d, dict)])
+if not exec_names_all:
+    st.warning("Koi executive nahi mila.")
     st.stop()
 
-# =========================================================
-# 📊 Interactive Plot Grid Matrix Render Layout
-# =========================================================
-st.markdown(f"### 📋 Project Inventory Gallery: {selected_project_name}")
-st.write(f"📍 Khasra No: {project_data.get('khasra','N/A')} | Mauza: {project_data.get('mauza','N/A')} | Total Plots: {project_data.get('total_plots', 0)}")
+selected_exec = st.selectbox("Partner / Executive:", exec_names_all)
+if selected_exec:
+    pct, rs_d = get_exec_slab(selected_exec)
+    senior = get_exec_senior(selected_exec)
+    downlines = get_all_downlines_list(selected_exec)
+    c1, c2, c3 = st.columns(3)
+    slab_info = (f"{pct}% (Disc ₹{rs_d:,.0f})" if rs_d > 0 and pct > 0
+                 else f"{pct}%" if pct > 0 else f"₹{rs_d:,.0f} Fixed")
+    c1.info(f"**Slab:** {slab_info}")
+    c2.info(f"**Senior:** {senior if senior else 'Direct (Company)'}")
+    c3.info(f"**Downlines:** {len(downlines)}")
 
-cols_per_row = 5
-plot_items = list(plots.items())
-rows = [plot_items[i:i + cols_per_row] for i in range(0, len(plot_items), cols_per_row)]
+st.markdown("### 📅 Step 2 — Period Select Karo")
+col1, col2 = st.columns(2)
+date_from = col1.date_input("From Date:", datetime.date(datetime.date.today().year, 1, 1))
+date_to = col2.date_input("To Date:", datetime.date.today())
 
-for row in rows:
-    cols = st.columns(cols_per_row)
-    for i, (plot_id, plot_info) in enumerate(row):
-        with cols[i]:
-            status = plot_info.get('status', 'Available')
-            plot_exec_name = plot_info.get('executive_name', '')
+st.divider()
+st.markdown("### 🖨️ Step 3 — Statement Type Choose Karo")
 
-            if status == "Available":
-                st.markdown(f'<div class="plot-card plot-available">🏠 Plot {plot_id}<br>✅ Available</div>', unsafe_allow_html=True)
-                btn_txt = "📝 Book Unit"
-                btn_disabled = False
-            elif status == "Hold":
-                st.markdown(f'<div class="plot-card plot-hold">🚧 Plot {plot_id}<br>🔒 On Hold</div>', unsafe_allow_html=True)
-                btn_txt = "🔓 View Hold"
-                btn_disabled = False
-            else:
-                if is_authorized(plot_exec_name):
-                    cust = plot_info.get('customer_name', 'N/A')
-                    st.markdown(f'<div class="plot-card plot-booked">🛑 Plot {plot_id}<br>❌ Booked ({cust.split(" ")[0]})</div>', unsafe_allow_html=True)
-                    btn_txt = "📄 Statement"
-                    btn_disabled = False
-                else:
-                    st.markdown(f'<div class="plot-card plot-locked">🛑 Plot {plot_id}<br>🔒 Booked</div>', unsafe_allow_html=True)
-                    btn_txt = "🔒 Access Denied"
-                    btn_disabled = True
+b1, b2, b3 = st.columns(3)
+self_clicked = b1.button("👤 SELF\n(Sirf Apni Bookings)", use_container_width=True)
+group_clicked = b2.button("👥 GROUP\n(Downline Difference Comm)", use_container_width=True)
+all_clicked = b3.button("🌐 ALL\n(Self + Group Dono)", use_container_width=True)
 
-            if st.button(btn_txt, key=f"btn_{selected_project_name}_{plot_id}",
-                         use_container_width=True, disabled=btn_disabled):
-                st.session_state['booking_popup'] = {
-                    'project': selected_project_name,
-                    'plot': plot_id,
-                    'current_status': status
-                }
-                st.rerun()
+def show_statement(records, exec_name, date_from, date_to, mode_label):
+    if not records:
+        st.warning("⚠️ Is period mein koi record nahi mila.")
+        return
+
+    records.sort(key=lambda x: x['date'])
+    st.success(f"✅ **{len(records)}** records mile — {mode_label}")
+
+    df = pd.DataFrame(records)
+    df_show = df[['project','plot','mauza','customer','exec_name',
+                  'received','date','gross','disc_amt','net_comm','tds','in_hand']].copy()
+    df_show.columns = ['Project','Plot','Mauza','Client','Partner',
+                       'Received','Date','Gross','Discount','Net Comm','TDS','In Hand']
+    df_show.index = range(1, len(df_show)+1)
+    df_show.index.name = "Sr"
+    for c in ['Received','Gross','Discount','Net Comm','TDS','In Hand']:
+        df_show[c] = df_show[c].apply(lambda x: f"₹ {x:,.2f}")
+    st.dataframe(df_show, use_container_width=True)
+
+    st.markdown("#### 📊 Summary")
+    m1,m2,m3,m4,m5 = st.columns(5)
+    m1.metric("Total Received", f"₹ {df['received'].sum():,.2f}")
+    m2.metric("Gross Comm", f"₹ {df['gross'].sum():,.2f}")
+    m3.metric("Discount", f"₹ {df['disc_amt'].sum():,.2f}")
+    m4.metric("Net Comm", f"₹ {df['net_comm'].sum():,.2f}")
+    m5.metric("💰 In Hand", f"₹ {df['in_hand'].sum():,.2f}")
+
+    st.divider()
+    with st.spinner("PDF ban rahi hai..."):
+        pdf_bytes = generate_pdf(exec_name, records, str(date_from), str(date_to), mode_label)
+
+    fname = f"Commission_{exec_name.replace(' ','_')}_{mode_label}_{date_from}_to_{date_to}.pdf"
+    b64 = base64.b64encode(pdf_bytes).decode()
+
+    col_dl, col_pr = st.columns(2)
+    with col_dl:
+        st.download_button(label="📥 Download PDF (A4)", data=pdf_bytes,
+            file_name=fname, mime="application/pdf", use_container_width=True)
+    with col_pr:
+        components.html(f"""
+        <script>
+        function printPDF() {{
+            var b=atob("{b64}"),n=new Array(b.length);
+            for(var i=0;i<b.length;i++) n[i]=b.charCodeAt(i);
+            var blob=new Blob([new Uint8Array(n)],{{type:'application/pdf'}});
+            var url=URL.createObjectURL(blob);
+            var win=window.open(url,'_blank');
+            win.addEventListener('load',function(){{win.print();}});
+        }}
+        </script>
+        <button onclick="printPDF()"
+            style="width:100%;background:linear-gradient(90deg,#059669,#10b981);
+                   color:white;padding:12px;border-radius:8px;border:none;
+                   font-weight:700;font-size:15px;cursor:pointer;">
+            🖨️ Print PDF (A4)
+        </button>
+        """, height=55)
+    st.info("💡 Download ya Print — dono A4 mein honge.")
+
+if self_clicked:
+    with st.spinner("Data collect ho raha hai..."):
+        records = build_self(selected_exec, date_from, date_to)
+    show_statement(records, selected_exec, date_from, date_to, "SELF")
+elif group_clicked:
+    with st.spinner("Data collect ho raha hai..."):
+        records = build_group(selected_exec, date_from, date_to)
+    show_statement(records, selected_exec, date_from, date_to, "GROUP")
+elif all_clicked:
+    with st.spinner("Data collect ho raha hai..."):
+        records = build_all(selected_exec, date_from, date_to)
+    show_statement(records, selected_exec, date_from, date_to, "ALL")
 
