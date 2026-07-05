@@ -111,22 +111,32 @@ def get_discount_pct(plot_info):
     - company_rate = 0 → no discount
     """
     comp_rate = sf(plot_info.get('company_rate', 0.0))
+
+    # Step 1: Try rate_per_sqft directly
     actual_rate = sf(plot_info.get('rate_per_sqft', 0.0))
 
-    # Derive actual_rate from selling_rate / plot_area if not saved directly
+    # Step 2: If rate_per_sqft missing, check selling_rate
+    # selling_rate can be:
+    # a) per sqft rate (< 10000) — old bookings stored this way
+    # b) total deal value (> 10000)
     if actual_rate <= 0:
-        plot_area = sf(plot_info.get('plot_area', 0.0))
         sell_val = sf(plot_info.get('selling_rate', 0.0))
-        if sell_val > 0 and plot_area > 0:
+        plot_area = sf(plot_info.get('plot_area', 0.0))
+
+        if 50 < sell_val <= 10000:
+            # selling_rate is per sqft rate directly
+            actual_rate = sell_val
+        elif sell_val > 10000 and plot_area > 0:
+            # selling_rate is total — derive per sqft
             derived = sell_val / plot_area
             if 50 < derived < 99999:
                 actual_rate = derived
 
-    # If company_rate not set, try to use it as no-discount case
+    # No company_rate → no discount
     if comp_rate <= 0:
         return 0.0
 
-    # If actual_rate still 0 after fallback → no discount
+    # No actual_rate → no discount
     if actual_rate <= 0:
         return 0.0
 
@@ -136,7 +146,7 @@ def get_discount_pct(plot_info):
 
     disc_pct = ((comp_rate - actual_rate) / comp_rate) * 100.0
 
-    # Safety cap
+    # Safety cap: > 50% is data error
     if disc_pct > 50.0:
         return 0.0
 
