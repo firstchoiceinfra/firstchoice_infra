@@ -4,7 +4,12 @@ import database
 st.set_page_config(layout="wide", page_title="Debug Check")
 
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
-    st.warning("Login karo pehle")
+    st.warning("🔒 Please login on the Main Page portal first.")
+    st.stop()
+
+if st.session_state.get('user_role', 'executive') != 'admin':
+    st.error("🚨 Access Denied! Yeh page sirf Admin ke liye hai.")
+    st.info("💡 Is page ke liye Admin se contact karo.")
     st.stop()
 
 database.init_db()
