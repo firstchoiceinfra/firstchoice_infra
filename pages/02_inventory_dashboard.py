@@ -283,9 +283,9 @@ if 'booking_popup' in st.session_state:
             area_val = 0.0
 
         # ✅ NEW: Company Rate field
-        company_rate = col9.number_input("🏢 Company Rate (per Sq.Ft) *", min_value=0.0, step=10.0,
+        company_rate = col9.number_input("🏢 Company Rate (per Sq.Ft) *", min_value=0.0, step=1.0,
                                           help="Original company rate per sqft — used for commission discount calculation")
-        selling_rate_sqft = col10.number_input("💸 Selling Rate (per Sq.Ft) *", min_value=0.0, step=10.0,
+        selling_rate_sqft = col10.number_input("💸 Selling Rate (per Sq.Ft) *", min_value=0.0, step=1.0,
                                                 help="Actual rate at which plot was sold")
 
         # Show discount if any
@@ -487,7 +487,7 @@ if 'booking_popup' in st.session_state:
                         current_cr = sf(p_data.get('company_rate', 0.0))
                         new_cr = st.number_input(
                             "Company Rate per Sq.Ft (₹)",
-                            min_value=0.0, step=10.0,
+                            min_value=0.0, step=1.0,
                             value=current_cr,
                             help="Yeh rate commission discount calculate karne ke liye use hoga"
                         )
@@ -500,7 +500,9 @@ if 'booking_popup' in st.session_state:
                             else:
                                 st.success("No discount at this rate.")
                         if st.form_submit_button("💾 Save Company Rate", use_container_width=True):
-                            real_plt = p_data.get('primary_plot_id', plt)
+                            # Save to the actual plot in database (use plt from session, not p_data redirect)
+                            actual_plt = st.session_state.booking_popup['plot']
+                            real_plt = st.session_state.db_projects[proj]['plots'].get(actual_plt, {}).get('primary_plot_id', actual_plt)
                             st.session_state.db_projects[proj]['plots'][real_plt]['company_rate'] = new_cr
                             if database.save_db_data():
                                 st.success(f"✅ Company Rate updated to ₹{new_cr}/Sq.Ft!")
