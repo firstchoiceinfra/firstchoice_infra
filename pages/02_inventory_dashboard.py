@@ -462,6 +462,58 @@ if 'booking_popup' in st.session_state:
                                 st.success("✅ Sab changes save ho gaye!")
                                 st.rerun()
 
+                # ✅ DELETE EMI PAYMENT
+                with st.expander("🗑️ Delete Galat Payment Entry (Admin Only)", expanded=False):
+                    st.caption("⚠️ Sirf galat entries delete karo — yeh action permanent hai!")
+                    if not partial_payments:
+                        st.info("Koi EMI payment nahi hai delete karne ke liye.")
+                    else:
+                        for i, pmt in enumerate(partial_payments):
+                            col_d1, col_d2, col_d3, col_d4 = st.columns([2, 2, 2, 1])
+                            col_d1.write(f"**Date:** {pmt.get('date','N/A')}")
+                            col_d2.write(f"**Amount:** ₹{sf(pmt.get('amount',0)):,.2f}")
+                            col_d3.write(f"**Mode:** {pmt.get('mode','N/A')} | **Slip:** {pmt.get('slip_no','N/A')}")
+                            if col_d4.button("🗑️ Delete", key=f"del_emi_{plt}_{i}", type="primary"):
+                                actual_plt = st.session_state.booking_popup['plot']
+                                real_plt   = st.session_state.db_projects[proj]['plots'].get(
+                                    actual_plt, {}).get('primary_plot_id', actual_plt)
+                                st.session_state.db_projects[proj]['plots'][real_plt]['partial_payments'].pop(i)
+                                if database.save_db_data():
+                                    st.success(f"✅ EMI #{i+1} (₹{sf(pmt.get('amount',0)):,.2f}) deleted!")
+                                    st.rerun()
+
+                # ✅ DELETE PAYMENT ENTRIES
+                with st.expander("🗑️ Delete Payment Entry (Admin Only)", expanded=False):
+                    st.caption("⚠️ Dhyan rakho — delete permanent hoga! Galat entry ko yahan se hatao.")
+
+                    actual_plt = st.session_state.booking_popup['plot']
+                    real_plt   = st.session_state.db_projects[proj]['plots'].get(
+                        actual_plt, {}).get('primary_plot_id', actual_plt)
+
+                    st.markdown("**📌 Token / Booking Advance Delete:**")
+                    st.warning(f"Token Amount: ₹{token_amt_val:,.2f} | Date: {p_data.get('receipt_date','N/A')} | Mode: {p_data.get('payment_mode','N/A')}")
+                    if st.button("🗑️ Delete Token Entry", key=f"del_tok_{plt}", use_container_width=True):
+                        st.session_state.db_projects[proj]['plots'][real_plt]['token_amount']  = 0.0
+                        st.session_state.db_projects[proj]['plots'][real_plt]['receipt_date']  = ''
+                        st.session_state.db_projects[proj]['plots'][real_plt]['token_slip_no'] = ''
+                        if database.save_db_data():
+                            st.success("✅ Token entry delete ho gayi!")
+                            st.rerun()
+
+                    if partial_payments:
+                        st.markdown("---")
+                        st.markdown("**📋 EMI / Installment Delete:**")
+                        for i, pmt in enumerate(partial_payments):
+                            col_d1, col_d2 = st.columns([4, 1])
+                            col_d1.info(f"EMI #{i+1} — ₹{sf(pmt.get('amount',0)):,.2f} | {pmt.get('date','N/A')} | {pmt.get('mode','N/A')} | Slip: {pmt.get('slip_no','N/A')}")
+                            if col_d2.button("🗑️ Delete", key=f"del_emi_{plt}_{i}", use_container_width=True):
+                                st.session_state.db_projects[proj]['plots'][real_plt]['partial_payments'].pop(i)
+                                if database.save_db_data():
+                                    st.success(f"✅ EMI #{i+1} delete ho gayi!")
+                                    st.rerun()
+                    else:
+                        st.info("Koi EMI payment nahi hai abhi.")
+
             st.write("---")
             c_btn1, c_btn2 = st.columns(2)
 
@@ -543,4 +595,3 @@ for row in rows:
                     'project': selected_project_name,
                     'plot': plot_id, 'current_status': status}
                 st.rerun()
-
