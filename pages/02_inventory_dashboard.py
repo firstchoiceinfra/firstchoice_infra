@@ -173,16 +173,16 @@ if 'booking_popup' in st.session_state:
 
         st.subheader("👤 Client KYC", divider="blue")
         col1, col2, col3 = st.columns(3)
-        c_name  = col1.text_input("Client Full Name *")
-        c_dob   = col2.date_input("Date of Birth", min_value=datetime.date(1950, 1, 1))
+        c_name = col1.text_input("Client Full Name *")
+        c_dob = col2.date_input("Date of Birth", min_value=datetime.date(1950, 1, 1))
         c_phone = col3.text_input("Contact Mobile *")
         c_address = st.text_area("Permanent Address")
         col4, col5 = st.columns(2)
         c_aadhaar = col4.text_input("Aadhaar Number")
-        c_pan     = col5.text_input("PAN Card")
+        c_pan = col5.text_input("PAN Card")
         col6, col7 = st.columns(2)
         n_name = col6.text_input("Nominee Name")
-        n_age  = col7.text_input("Nominee Age")
+        n_age = col7.text_input("Nominee Age")
 
         st.subheader("📐 Commercial Valuation", divider="blue")
         st.caption("Company Rate = original rate | Selling Rate = actual deal rate | Difference = discount")
@@ -192,12 +192,12 @@ if 'booking_popup' in st.session_state:
         try: area_val = float(plot_area_input.strip())
         except: area_val = 0.0
 
-        company_rate      = col9.number_input("🏢 Company Rate (per Sq.Ft) *", min_value=0.0, step=1.0)
+        company_rate = col9.number_input("🏢 Company Rate (per Sq.Ft) *", min_value=0.0, step=1.0)
         selling_rate_sqft = col10.number_input("💸 Selling Rate (per Sq.Ft) *", min_value=0.0, step=1.0)
 
         if company_rate > 0 and selling_rate_sqft > 0:
             if selling_rate_sqft < company_rate:
-                disc_rs  = company_rate - selling_rate_sqft
+                disc_rs = company_rate - selling_rate_sqft
                 disc_pct = (disc_rs / company_rate) * 100
                 st.warning(f"⚠️ Discount: ₹{disc_rs:.0f}/Sq.Ft ({disc_pct:.2f}%)")
             elif selling_rate_sqft == company_rate:
@@ -215,9 +215,9 @@ if 'booking_popup' in st.session_state:
 
         st.subheader("💳 Token Collection", divider="blue")
         col11, col12, col13 = st.columns(3)
-        token_amt    = col11.number_input("Token Amount (₹) *", min_value=0.0, step=1000.0)
-        pay_mode     = col12.selectbox("Payment Mode", ["Cash", "Online/UPI", "Cheque", "RTGS/NEFT"])
-        trans_id     = col13.text_input("Transaction ID / Ref")
+        token_amt = col11.number_input("Token Amount (₹) *", min_value=0.0, step=1000.0)
+        pay_mode = col12.selectbox("Payment Mode", ["Cash", "Online/UPI", "Cheque", "RTGS/NEFT"])
+        trans_id = col13.text_input("Transaction ID / Ref")
         receive_date = st.date_input("Date of Receipt")
 
         st.subheader("👨‍💼 Partner Credit", divider="blue")
@@ -301,17 +301,17 @@ if 'booking_popup' in st.session_state:
                     return float(val)
                 except: return float(default)
 
-            plot_area_val      = sf(p_data.get('plot_area', 0.0))
+            plot_area_val = sf(p_data.get('plot_area', 0.0))
             saved_selling_rate = sf(p_data.get('selling_rate', 0.0))
-            comp_rate_saved    = sf(p_data.get('company_rate', 0.0))
-            rate_sqft_saved    = sf(p_data.get('rate_per_sqft', 0.0))
+            comp_rate_saved = sf(p_data.get('company_rate', 0.0))
+            rate_sqft_saved = sf(p_data.get('rate_per_sqft', 0.0))
 
             if saved_selling_rate > 0 and saved_selling_rate <= 100000 and plot_area_val > 0:
                 total_cost_val = plot_area_val * saved_selling_rate
-                rate_applied   = saved_selling_rate
+                rate_applied = saved_selling_rate
             else:
                 total_cost_val = saved_selling_rate
-                rate_applied   = rate_sqft_saved
+                rate_applied = rate_sqft_saved
 
             col_s1, col_s2, col_s3 = st.columns(3)
             col_s1.write(f"📐 **Plot Size:** {p_data.get('plot_area','N/A')} Sq.Ft")
@@ -328,11 +328,11 @@ if 'booking_popup' in st.session_state:
             col_s3.write(f"🔑 **Ref ID:** {p_data.get('transaction_id','N/A')}")
 
             st.markdown("#### 🔄 Live Payment & EMI Sync")
-            token_amt_val    = sf(p_data.get('token_amount', 0.0))
+            token_amt_val = sf(p_data.get('token_amount', 0.0))
             partial_payments = p_data.get('partial_payments', [])
-            total_emi_paid   = sum(sf(pmt.get('amount', 0.0)) for pmt in partial_payments)
+            total_emi_paid = sum(sf(pmt.get('amount', 0.0)) for pmt in partial_payments)
             total_overall_paid = token_amt_val + total_emi_paid
-            net_outstanding  = max(0.0, total_cost_val - total_overall_paid)
+            net_outstanding = max(0.0, total_cost_val - total_overall_paid)
 
             c_emi1, c_emi2, c_emi3 = st.columns(3)
             c_emi1.metric("Gross Deal Value", f"₹ {total_cost_val:,.2f}")
@@ -379,7 +379,7 @@ if 'booking_popup' in st.session_state:
                             st.warning(f"Discount: ₹{d:.0f}/Sq.Ft = {dp:.2f}%")
                         if st.form_submit_button("💾 Save Company Rate", use_container_width=True):
                             actual_plt = st.session_state.booking_popup['plot']
-                            real_plt   = st.session_state.db_projects[proj]['plots'].get(
+                            real_plt = st.session_state.db_projects[proj]['plots'].get(
                                 actual_plt, {}).get('primary_plot_id', actual_plt)
                             st.session_state.db_projects[proj]['plots'][real_plt]['company_rate'] = new_cr
                             if database.save_db_data():
@@ -393,7 +393,7 @@ if 'booking_popup' in st.session_state:
                     with st.form(f"full_edit_form_{plt}"):
                         st.markdown("**📌 Token / Booking Advance**")
                         col_t1, col_t2, col_t3, col_t4 = st.columns(4)
-                        new_tok_amt  = col_t1.number_input("Token Amount (₹)",
+                        new_tok_amt = col_t1.number_input("Token Amount (₹)",
                                                             min_value=0.0, step=100.0,
                                                             value=float(token_amt_val))
                         new_tok_date = col_t2.text_input("Token Date (YYYY-MM-DD)",
@@ -415,7 +415,7 @@ if 'booking_popup' in st.session_state:
                         for i, pmt in enumerate(partial_payments):
                             st.markdown(f"**EMI #{i+1}**")
                             ec1, ec2, ec3, ec4 = st.columns(4)
-                            e_amt  = ec1.number_input(f"Amount (₹) #{i+1}",
+                            e_amt = ec1.number_input(f"Amount (₹) #{i+1}",
                                                        min_value=0.0, step=100.0,
                                                        value=float(sf(pmt.get('amount', 0.0))),
                                                        key=f"emi_amt_{i}")
@@ -432,26 +432,26 @@ if 'booking_popup' in st.session_state:
                             e_slip = ec4.text_input(f"Slip No #{i+1}",
                                                      value=str(pmt.get('slip_no', '')),
                                                      key=f"emi_slip_{i}")
-                            e_rmk  = st.text_input(f"Remarks #{i+1}",
+                            e_rmk = st.text_input(f"Remarks #{i+1}",
                                                     value=str(pmt.get('remarks', 'Installment Payment')),
                                                     key=f"emi_rmk_{i}")
                             new_emi_data.append({
                                 'amount' : e_amt,
-                                'date'   : e_date,
-                                'mode'   : e_mode,
+                                'date' : e_date,
+                                'mode' : e_mode,
                                 'slip_no': e_slip,
                                 'remarks': e_rmk,
                             })
 
                         if st.form_submit_button("💾 Save All Changes", use_container_width=True, type="primary"):
                             actual_plt = st.session_state.booking_popup['plot']
-                            real_plt   = st.session_state.db_projects[proj]['plots'].get(
+                            real_plt = st.session_state.db_projects[proj]['plots'].get(
                                 actual_plt, {}).get('primary_plot_id', actual_plt)
 
                             # Save token updates
-                            st.session_state.db_projects[proj]['plots'][real_plt]['token_amount']  = new_tok_amt
-                            st.session_state.db_projects[proj]['plots'][real_plt]['receipt_date']  = new_tok_date
-                            st.session_state.db_projects[proj]['plots'][real_plt]['payment_mode']  = new_tok_mode
+                            st.session_state.db_projects[proj]['plots'][real_plt]['token_amount'] = new_tok_amt
+                            st.session_state.db_projects[proj]['plots'][real_plt]['receipt_date'] = new_tok_date
+                            st.session_state.db_projects[proj]['plots'][real_plt]['payment_mode'] = new_tok_mode
                             st.session_state.db_projects[proj]['plots'][real_plt]['token_slip_no'] = new_tok_slip
 
                             # Save EMI updates
@@ -473,9 +473,9 @@ if 'booking_popup' in st.session_state:
                             col_d1.write(f"**Date:** {pmt.get('date','N/A')}")
                             col_d2.write(f"**Amount:** ₹{sf(pmt.get('amount',0)):,.2f}")
                             col_d3.write(f"**Mode:** {pmt.get('mode','N/A')} | **Slip:** {pmt.get('slip_no','N/A')}")
-                            if col_d4.button("🗑️ Delete", key=f"del_emi_{plt}_{i}", type="primary"):
+                            if col_d4.button("🗑️", key=f"del_emi_{selected_project_name}_{plt}_{i}_{pmt.get('date',i)}", type="primary"):
                                 actual_plt = st.session_state.booking_popup['plot']
-                                real_plt   = st.session_state.db_projects[proj]['plots'].get(
+                                real_plt = st.session_state.db_projects[proj]['plots'].get(
                                     actual_plt, {}).get('primary_plot_id', actual_plt)
                                 st.session_state.db_projects[proj]['plots'][real_plt]['partial_payments'].pop(i)
                                 if database.save_db_data():
@@ -487,14 +487,14 @@ if 'booking_popup' in st.session_state:
                     st.caption("⚠️ Dhyan rakho — delete permanent hoga! Galat entry ko yahan se hatao.")
 
                     actual_plt = st.session_state.booking_popup['plot']
-                    real_plt   = st.session_state.db_projects[proj]['plots'].get(
+                    real_plt = st.session_state.db_projects[proj]['plots'].get(
                         actual_plt, {}).get('primary_plot_id', actual_plt)
 
                     st.markdown("**📌 Token / Booking Advance Delete:**")
                     st.warning(f"Token Amount: ₹{token_amt_val:,.2f} | Date: {p_data.get('receipt_date','N/A')} | Mode: {p_data.get('payment_mode','N/A')}")
                     if st.button("🗑️ Delete Token Entry", key=f"del_tok_{plt}", use_container_width=True):
-                        st.session_state.db_projects[proj]['plots'][real_plt]['token_amount']  = 0.0
-                        st.session_state.db_projects[proj]['plots'][real_plt]['receipt_date']  = ''
+                        st.session_state.db_projects[proj]['plots'][real_plt]['token_amount'] = 0.0
+                        st.session_state.db_projects[proj]['plots'][real_plt]['receipt_date'] = ''
                         st.session_state.db_projects[proj]['plots'][real_plt]['token_slip_no'] = ''
                         if database.save_db_data():
                             st.success("✅ Token entry delete ho gayi!")
@@ -564,14 +564,14 @@ st.markdown(f"### 📋 Project Inventory: {selected_project_name}")
 st.write(f"📍 Khasra: {project_data.get('khasra','N/A')} | Mauza: {project_data.get('mauza','N/A')} | Total: {project_data.get('total_plots', 0)}")
 
 cols_per_row = 5
-plot_items   = list(plots.items())
-rows         = [plot_items[i:i+cols_per_row] for i in range(0, len(plot_items), cols_per_row)]
+plot_items = list(plots.items())
+rows = [plot_items[i:i+cols_per_row] for i in range(0, len(plot_items), cols_per_row)]
 
 for row in rows:
     cols = st.columns(cols_per_row)
     for i, (plot_id, plot_info) in enumerate(row):
         with cols[i]:
-            status         = plot_info.get('status', 'Available')
+            status = plot_info.get('status', 'Available')
             plot_exec_name = plot_info.get('executive_name', '')
 
             if status == "Available":
@@ -595,3 +595,4 @@ for row in rows:
                     'project': selected_project_name,
                     'plot': plot_id, 'current_status': status}
                 st.rerun()
+
